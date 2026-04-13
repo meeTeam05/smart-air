@@ -1,0 +1,112 @@
+#
+# .clang-format — ESP-IDF / ESP32 firmware style
+#
+---
+Language: Cpp
+
+# Indentation
+IndentWidth: 4
+ContinuationIndentWidth: 4
+UseTab: Never
+TabWidth: 4
+
+# Line length
+ColumnLimit: 120
+
+# Brace wrapping
+# Functions: opening brace on its own line (Allman).
+# Control flow (if/for/while/struct/enum): K&R (same line).
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: false
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterExternBlock: false
+  BeforeCatch: false
+  BeforeElse: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+
+# Pointer / reference alignment
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+# Short constructs
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+# Includes
+# ESP-IDF includes have a deliberate order (system -> esp -> freertos -> local).
+# Do NOT reorder them.
+SortIncludes: Never
+IncludeBlocks: Preserve
+
+# Alignment
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+AlignOperands: Align
+AlignEscapedNewlines: Left
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+
+# Spaces
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: Never
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeAssignmentOperators: true
+
+# Comments
+ReflowComments: false
+
+# Breaking
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: false
+BreakStringLiterals: false
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+
+# Packing
+BinPackArguments: false
+BinPackParameters: false
+
+# Penalties (tuned to keep ESP-IDF-style call-site breaks readable)
+PenaltyBreakAssignment: 10
+PenaltyBreakBeforeFirstCallParameter: 30
+PenaltyBreakComment: 10
+PenaltyBreakFirstLessLess: 0
+PenaltyBreakString: 10
+PenaltyExcessCharacter: 100
+PenaltyReturnTypeOnItsOwnLine: 200
+
+# Case labels
+IndentCaseLabels: false
+
+# Misc
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+FixNamespaceComments: false
+
+# ESP-IDF / FreeRTOS for-each macros
+ForEachMacros:
+  - "LIST_FOR_EACH"
+  - "LIST_FOR_EACH_PREV"
+  - "listFOR_EACH_LIST_ITEM"
+  - "listFOR_EACH_LIST_ITEM_BACKWARDS"
+  - "SLIST_FOREACH"
+  - "TAILQ_FOREACH"
+  - "TAILQ_FOREACH_REVERSE"
