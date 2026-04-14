@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+    "sht3x.c"
+    INCLUDE_DIRS
+    "include"
+    REQUIRES
+    i2c_bus
+    freertos
+    log
+    esp_timer
+    config
+)
