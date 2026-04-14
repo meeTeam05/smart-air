@@ -69,13 +69,13 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
                     /* 0xFF01 — SSID write */
                     .uuid = &SSID_CHR_UUID.u,
                     .access_cb = prov_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE_NO_RSP,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
                 },
                 {
                     /* 0xFF02 — Password write */
                     .uuid = &PASS_CHR_UUID.u,
                     .access_cb = prov_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE_NO_RSP,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
                 },
                 {
                     /* 0xFF03 — Status notify */
