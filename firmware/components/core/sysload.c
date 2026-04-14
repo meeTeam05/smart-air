@@ -24,6 +24,7 @@
 #include "sht3x.h"
 #include "ds3231.h"
 #include "led.h"
+#include "factory_reset.h"
 #include "sensor_task.h"
 #include "httpd.h"
 #include "ota.h"
@@ -42,20 +43,60 @@ void sysload_init(void)
     ESP_ERROR_CHECK(led_init());
     led_set_state(LED_STATE_BOOT);
 
-    /* 1 — NVS init (required by Wi-Fi and BLE provisioning) */
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
+    /* 0.5 — Factory reset button (early so it works in every boot phase) */
+    {
+        esp_err_t err = factory_reset_init((gpio_num_t)CONFIG_SA_FACTORY_RESET_PIN);
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "factory_reset_init failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
     }
-    ESP_ERROR_CHECK(ret);
+
+    /* 1 — NVS init (required by Wi-Fi and BLE provisioning) */
+    {
+        esp_err_t err = nvs_flash_init();
+        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+            ESP_ERROR_CHECK(nvs_flash_erase());
+            err = nvs_flash_init();
+        }
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "nvs_flash_init failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+    }
 
     /* 2 — Network stack (must precede wifi_sta_init) */
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    {
+        esp_err_t err = esp_netif_init();
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "esp_netif_init failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+        err = esp_event_loop_create_default();
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "esp_event_loop_create_default failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+    }
 
     /* 3 — I2C bus (shared by SHT3x and DS3231, HW-01: 400 kHz) */
-    ESP_ERROR_CHECK(i2c_bus_init(I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN, SA_I2C_FREQ_HZ));
+    {
+        esp_err_t err = i2c_bus_init(I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN, SA_I2C_FREQ_HZ);
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "i2c_bus_init failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+    }
 
     /* 4 — SHT3x temperature/humidity sensor (addr 0x44, ADDR pin low — HW-04) */
     esp_err_t sht_err = sht3x_init_desc(
@@ -78,7 +119,15 @@ void sysload_init(void)
     }
 
     /* 6 — Wi-Fi station (no connect yet) */
-    ESP_ERROR_CHECK(wifi_sta_init());
+    {
+        esp_err_t err = wifi_sta_init();
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "wifi_sta_init failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+    }
 
     /* 7 — BLE provisioning on first boot */
     if (!ble_prov_is_provisioned()) {
@@ -98,7 +147,15 @@ void sysload_init(void)
     /* 8 — Load stored credentials and connect Wi-Fi (skip if already connected via ble_prov) */
     char ssid[64] = {0};
     char password[64] = {0};
-    ESP_ERROR_CHECK(ble_prov_load_credentials(ssid, sizeof(ssid), password, sizeof(password)));
+    {
+        esp_err_t err = ble_prov_load_credentials(ssid, sizeof(ssid), password, sizeof(password));
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "ble_prov_load_credentials failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+    }
 
     if (!wifi_sta_is_connected()) {
         led_set_state(LED_STATE_WIFI);
@@ -119,9 +176,25 @@ void sysload_init(void)
     char broker_uri[128] = {0};
     char device_id[64] = {0};
     char secret_key[64] = {0};
-    ESP_ERROR_CHECK(config_get_mqtt_creds(
-        broker_uri, sizeof(broker_uri), device_id, sizeof(device_id), secret_key, sizeof(secret_key)));
-    ESP_ERROR_CHECK(mqtt_start(broker_uri, device_id, secret_key));
+    {
+        esp_err_t err = config_get_mqtt_creds(
+            broker_uri, sizeof(broker_uri), device_id, sizeof(device_id), secret_key, sizeof(secret_key));
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "config_get_mqtt_creds failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+    }
+    {
+        esp_err_t err = mqtt_start(broker_uri, device_id, secret_key);
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "mqtt_start failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+    }
 
     /* Resolve display device_id once: use config value or fall back to MAC */
     char resolved_id[64] = {0};
@@ -135,7 +208,7 @@ void sysload_init(void)
                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
 
-    /* 9.5 — HTTP server */
+    /* 9.5 — HTTP server (non-fatal: device operates without it) */
     {
         char ip_str[16] = {0};
         esp_netif_ip_info_t ip_info = {0};
@@ -143,11 +216,19 @@ void sysload_init(void)
         if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
             snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
         }
-        ESP_ERROR_CHECK(httpd_server_start(resolved_id, ip_str));
+        esp_err_t err = httpd_server_start(resolved_id, ip_str);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "httpd_server_start failed (%s) — continuing without HTTP server", esp_err_to_name(err));
+        }
     }
 
-    /* 9.6 — OTA task (waits for MQTT trigger, Core 1, Priority 3) */
-    ESP_ERROR_CHECK(ota_task_start(resolved_id));
+    /* 9.6 — OTA task (non-fatal: device operates without OTA capability) */
+    {
+        esp_err_t err = ota_task_start(resolved_id);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "ota_task_start failed (%s) — OTA unavailable", esp_err_to_name(err));
+        }
+    }
 
     /* 10 — Sensor polling task (publishes telemetry every 5 s) */
     if (sht_err == ESP_OK && rtc_err == ESP_OK) {
