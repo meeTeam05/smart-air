@@ -79,7 +79,7 @@ CREATE TABLE device_types (
 -- ══════════════════════════════════════════════════════════════
 
 CREATE TABLE devices (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id              TEXT PRIMARY KEY,
     home_id         UUID REFERENCES homes(id),
     room_id         UUID REFERENCES rooms(id),
     type_id         UUID REFERENCES device_types(id),
@@ -97,7 +97,7 @@ CREATE TABLE devices (
 -- ══════════════════════════════════════════════════════════════
 
 CREATE TABLE device_shadows (
-    device_id       UUID PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+    device_id       TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
     reported        JSONB DEFAULT '{}',  -- actual state from device
     desired         JSONB DEFAULT '{}',  -- target state from app
     updated_at      TIMESTAMPTZ DEFAULT NOW()
@@ -110,7 +110,7 @@ CREATE TABLE device_shadows (
 
 CREATE TABLE commands (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    device_id       UUID REFERENCES devices(id) ON DELETE CASCADE,
+    device_id       TEXT REFERENCES devices(id) ON DELETE CASCADE,
     user_id         UUID REFERENCES users(id),
     payload         JSONB NOT NULL,
     status          VARCHAR DEFAULT 'pending', -- pending → sent → done | failed
@@ -123,17 +123,17 @@ CREATE TABLE commands (
 -- ══════════════════════════════════════════════════════════════
 
 CREATE TABLE telemetry (
-    device_id       UUID NOT NULL,
+    device_id       TEXT NOT NULL,
     ts              TIMESTAMPTZ NOT NULL,
     payload         JSONB NOT NULL
     -- payload example: {"temperature":28.5,"humidity":65.2}
 );
 
 -- Convert to hypertable (partition by ts, 7-day chunks by default)
-SELECT create_hypertable('telemetry', 'ts');
+SELECT create_hypertable('telemetry', 'ts', if_not_exists => TRUE);
 
 -- Auto-drop data older than 1 year
-SELECT add_retention_policy('telemetry', INTERVAL '1 year');
+SELECT add_retention_policy('telemetry', INTERVAL '1 year', if_not_exists => TRUE);
 
 -- ══════════════════════════════════════════════════════════════
 -- AUTOMATIONS
