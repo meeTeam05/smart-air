@@ -13,16 +13,28 @@
 #include "esp_event.h"
 #include "esp_log.h"
 
+#include <string.h>
+
+#include "esp_mac.h"
+
 #include "ble_prov.h"
 #include "wifi.h"
+#include "mqtt.h"
 #include "i2cdev.h"
 #include "sht3x.h"
 #include "ds3231.h"
 #include "led.h"
+#include "sensor_task.h"
+#include "httpd.h"
+#include "ota.h"
 
 #include "sysload.h"
 
 static const char *TAG = "sysload";
+
+/* File-scope sensor handles — kept alive after sysload_init task exits */
+static sht3x_t s_sht3x_dev;
+static ds3231_t s_ds3231_dev;
 
 void sysload_init(void)
 {
@@ -46,23 +58,21 @@ void sysload_init(void)
     ESP_ERROR_CHECK(i2c_bus_init(I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN, SA_I2C_FREQ_HZ));
 
     /* 4 — SHT3x temperature/humidity sensor (addr 0x44, ADDR pin low — HW-04) */
-    static sht3x_t sht3x_dev;
     esp_err_t sht_err = sht3x_init_desc(
-        &sht3x_dev, SHT3X_I2C_ADDR_GND, I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN);
+        &s_sht3x_dev, SHT3X_I2C_ADDR_GND, I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN);
     if (sht_err == ESP_OK)
-        sht_err = i2c_dev_init(&sht3x_dev.i2c_dev);
+        sht_err = i2c_dev_init(&s_sht3x_dev.i2c_dev);
     if (sht_err == ESP_OK)
-        sht_err = sht3x_init(&sht3x_dev);
+        sht_err = sht3x_init(&s_sht3x_dev);
     if (sht_err != ESP_OK) {
         ESP_LOGW(TAG, "SHT3x init failed (%s) — sensor unavailable", esp_err_to_name(sht_err));
     }
 
     /* 5 — DS3231 RTC (addr 0x68 — HW-04) */
-    static ds3231_t ds3231_dev;
     esp_err_t rtc_err =
-        ds3231_init_desc(&ds3231_dev, I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN);
+        ds3231_init_desc(&s_ds3231_dev, I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN);
     if (rtc_err == ESP_OK)
-        rtc_err = i2c_dev_init(&ds3231_dev.i2c_dev);
+        rtc_err = i2c_dev_init(&s_ds3231_dev.i2c_dev);
     if (rtc_err != ESP_OK) {
         ESP_LOGW(TAG, "DS3231 init failed (%s) — RTC unavailable", esp_err_to_name(rtc_err));
     }
@@ -104,9 +114,50 @@ void sysload_init(void)
     }
 
     led_set_state(LED_STATE_ONLINE);
-    ESP_LOGI(TAG, "Wi-Fi connected — TODO: start MQTT");
 
-    /* 9 — TODO: mqtt_start(CONFIG_SA_MQTT_BROKER_URI); */
+    /* 9 — MQTT client (TLS, connects async in background task) */
+    char broker_uri[128] = {0};
+    char device_id[64] = {0};
+    char secret_key[64] = {0};
+    ESP_ERROR_CHECK(config_get_mqtt_creds(
+        broker_uri, sizeof(broker_uri), device_id, sizeof(device_id), secret_key, sizeof(secret_key)));
+    ESP_ERROR_CHECK(mqtt_start(broker_uri, device_id, secret_key));
+
+    /* Resolve display device_id once: use config value or fall back to MAC */
+    char resolved_id[64] = {0};
+    if (device_id[0] != '\0') {
+        strlcpy(resolved_id, device_id, sizeof(resolved_id));
+    } else {
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_WIFI_STA);
+        snprintf(resolved_id, sizeof(resolved_id),
+                 "%02x:%02x:%02x:%02x:%02x:%02x",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    }
+
+    /* 9.5 — HTTP server */
+    {
+        char ip_str[16] = {0};
+        esp_netif_ip_info_t ip_info = {0};
+        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+            snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+        }
+        ESP_ERROR_CHECK(httpd_server_start(resolved_id, ip_str));
+    }
+
+    /* 9.6 — OTA task (waits for MQTT trigger, Core 1, Priority 3) */
+    ESP_ERROR_CHECK(ota_task_start(resolved_id));
+
+    /* 10 — Sensor polling task (publishes telemetry every 5 s) */
+    if (sht_err == ESP_OK && rtc_err == ESP_OK) {
+        ESP_ERROR_CHECK(sensor_task_start(&s_sht3x_dev, &s_ds3231_dev));
+    } else {
+        ESP_LOGW(TAG, "Sensor(s) unavailable — sensor_task not started");
+    }
+
+    /* 11 — Validate OTA firmware after all subsystems running (SEC-03) */
+    ota_validate_and_commit();
 
     vTaskDelete(NULL);
 }

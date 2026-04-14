@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
     "sysload.c"
+    "sensor_task.c"
     INCLUDE_DIRS
     "include"
     REQUIRES
@@ -10,9 +11,12 @@ idf_component_register(
     freertos
     ble_prov
     wifi
+    sa_mqtt
     config
     i2c_bus
     sht3x
     ds3231
     led
+    httpd
+    ota
 )
