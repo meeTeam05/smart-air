@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+    "ota.c"
+    INCLUDE_DIRS
+    "include"
+    REQUIRES
+    config
+    esp_https_ota
+    app_update
+    freertos
+    log
+)
