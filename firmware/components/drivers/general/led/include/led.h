@@ -11,12 +11,13 @@
 #include "esp_err.h"
 
 typedef enum {
-    LED_STATE_BOOT,   /**< white blink  — boot / init          */
-    LED_STATE_BLE,    /**< blue blink   — BLE awaiting app     */
-    LED_STATE_WIFI,   /**< yellow blink — connecting to WiFi   */
-    LED_STATE_ONLINE, /**< green static — WiFi (+ MQTT) ok     */
-    LED_STATE_OTA,    /**< purple blink — OTA in progress      */
-    LED_STATE_ERROR,  /**< red static   — any fatal error      */
+    LED_STATE_BOOT,           /**< white blink  — boot / init                      */
+    LED_STATE_BLE,            /**< blue blink   — BLE awaiting app                 */
+    LED_STATE_WIFI,           /**< yellow blink — connecting to WiFi               */
+    LED_STATE_ONLINE,         /**< green static — WiFi (+ MQTT) ok                 */
+    LED_STATE_OTA,            /**< purple blink — OTA in progress                  */
+    LED_STATE_ERROR,          /**< red static   — fatal error, no recovery         */
+    LED_STATE_FACTORY_RESET,  /**< red blink    — reset hold in progress, cancellable */
     LED_STATE_OFF,
 } led_state_t;
 
