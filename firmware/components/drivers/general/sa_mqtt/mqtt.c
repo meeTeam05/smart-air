@@ -242,3 +242,15 @@ int mqtt_publish(const char *topic, const char *payload, int qos, bool retain)
     }
     return esp_mqtt_client_publish(s_client, topic, payload, 0, qos, retain ? 1 : 0);
 }
+
+esp_err_t mqtt_stop(void)
+{
+    if (s_client == NULL) {
+        return ESP_OK;
+    }
+    esp_mqtt_client_stop(s_client);
+    esp_mqtt_client_destroy(s_client);
+    s_client = NULL;
+    ESP_LOGI(TAG, "MQTT client stopped");
+    return ESP_OK;
+}

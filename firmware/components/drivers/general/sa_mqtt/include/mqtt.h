@@ -43,3 +43,15 @@ esp_err_t mqtt_start(const char *broker_uri,
  * @return Message ID (>= 0) on success, -1 if client not ready.
  */
 int mqtt_publish(const char *topic, const char *payload, int qos, bool retain);
+
+/**
+ * @brief Stop and destroy the MQTT client.
+ *
+ * Publishes the offline LWT is handled automatically by the broker on disconnect.
+ * Call before factory reset or any clean-shutdown sequence that precedes esp_restart().
+ *
+ * Safe to call if mqtt_start() was never called (no-op when client is NULL).
+ *
+ * @return ESP_OK always.
+ */
+esp_err_t mqtt_stop(void);
