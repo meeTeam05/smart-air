@@ -1,89 +1,44 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'app_theme.dart';
 import 'app_state.dart';
-import 'screens/home_screen.dart';
-import 'screens/automation_screen.dart';
-import 'screens/profile_screen.dart';
+import 'core/router.dart';
 
-void main() => runApp(const SmartAirApp());
+void main() => runApp(const ProviderScope(child: SmartAirApp()));
 
-class SmartAirApp extends StatefulWidget {
+class SmartAirApp extends ConsumerStatefulWidget {
   const SmartAirApp({super.key});
 
   @override
-  State<SmartAirApp> createState() => _SmartAirAppState();
+  ConsumerState<SmartAirApp> createState() => _SmartAirAppState();
 }
 
-class _SmartAirAppState extends State<SmartAirApp> {
+class _SmartAirAppState extends ConsumerState<SmartAirApp> {
   @override
   void initState() {
     super.initState();
-    // Rebuild whenever theme changes.
-    AppState.themeMode.addListener(_onStateChange);
+    AppState.themeMode.addListener(_onThemeChange);
   }
 
   @override
   void dispose() {
-    AppState.themeMode.removeListener(_onStateChange);
+    AppState.themeMode.removeListener(_onThemeChange);
     super.dispose();
   }
 
-  void _onStateChange() => setState(() {});
+  void _onThemeChange() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'MT Home',
+    final router = ref.watch(routerProvider);
+    return MaterialApp.router(
+      title: 'Smart Air',
       themeMode: AppState.themeMode.value,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       debugShowCheckedModeBanner: false,
-      home: const NavShell(),
-    );
-  }
-}
-
-class NavShell extends StatefulWidget {
-  const NavShell({super.key});
-
-  @override
-  State<NavShell> createState() => _NavShellState();
-}
-
-class _NavShellState extends State<NavShell> {
-  int _idx = 0;
-
-  static const _screens = <Widget>[
-    HomeScreen(),
-    AutomationScreen(),
-    ProfileScreen(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _idx, children: _screens),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _idx,
-        onDestinationSelected: (i) => setState(() => _idx = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.timer_outlined),
-            selectedIcon: Icon(Icons.timer),
-            label: 'Automation',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
-      ),
+      routerConfig: router,
     );
   }
 }
