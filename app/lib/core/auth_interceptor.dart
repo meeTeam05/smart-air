@@ -35,8 +35,11 @@ class AuthInterceptor extends Interceptor {
       DioException err, ErrorInterceptorHandler handler) async {
     final statusCode = err.response?.statusCode;
 
-    // Only attempt refresh on 401; skip if already refreshing to prevent loops.
-    if (statusCode != 401 || _isRefreshing) {
+    // Only attempt refresh on 401 from non-auth endpoints.
+    // Auth endpoints (login, register, refresh) must propagate 401 as-is.
+    final path = err.requestOptions.path;
+    final isAuthPath = path.contains('/auth/');
+    if (statusCode != 401 || _isRefreshing || isAuthPath) {
       handler.next(_classified(err));
       return;
     }
