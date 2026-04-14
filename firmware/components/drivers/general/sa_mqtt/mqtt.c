@@ -42,10 +42,11 @@ static esp_mqtt_client_handle_t s_client = NULL;
 static char s_broker_uri[128];
 static char s_device_id[64];
 static char s_secret_key[64];
-static char s_status_topic[96];  /* device/{id}/status */
-static char s_cmd_topic[96];     /* device/{id}/command */
-static char s_shadow_topic[128]; /* device/{id}/shadow/get_response */
-static char s_ota_topic[96];     /* device/{id}/ota/update */
+static char s_status_topic[96];    /* device/{id}/status */
+static char s_cmd_topic[96];       /* device/{id}/command */
+static char s_response_topic[96];  /* device/{id}/response */
+static char s_shadow_topic[128];   /* device/{id}/shadow/get_response */
+static char s_ota_topic[96];       /* device/{id}/ota/update */
 
 /* ── Internal helpers ────────────────────────────────────────────────────── */
 
@@ -99,7 +100,28 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         if (topic && payload) {
             ESP_LOGI(TAG, "RX [%s]: %s", topic, payload);
 
-            /* Route OTA update trigger */
+            /* Route: command → ack response */
+            if (strstr(topic, "/command") != NULL) {
+                cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
+                if (root != NULL) {
+                    cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
+                    if (cJSON_IsString(j_cmd_id)) {
+                        char response[128];
+                        snprintf(response, sizeof(response),
+                                 "{\"command_id\":\"%s\",\"status\":\"done\"}",
+                                 j_cmd_id->valuestring);
+                        esp_mqtt_client_publish(s_client, s_response_topic, response, 0, 1, 0);
+                        ESP_LOGI(TAG, "Command ack → %s", s_response_topic);
+                    } else {
+                        ESP_LOGW(TAG, "command message missing command_id");
+                    }
+                    cJSON_Delete(root);
+                } else {
+                    ESP_LOGW(TAG, "command message is not valid JSON");
+                }
+            }
+
+            /* Route: OTA update trigger */
             if (strstr(topic, "/ota/update") != NULL) {
                 cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
                 if (root != NULL) {
@@ -196,10 +218,11 @@ esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *
     strlcpy(s_secret_key, secret_key != NULL ? secret_key : "", sizeof(s_secret_key));
 
     /* Build topic strings from device ID */
-    snprintf(s_status_topic, sizeof(s_status_topic), "device/%s/status", s_device_id);
-    snprintf(s_cmd_topic, sizeof(s_cmd_topic), "device/%s/command", s_device_id);
-    snprintf(s_shadow_topic, sizeof(s_shadow_topic), "device/%s/shadow/get_response", s_device_id);
-    snprintf(s_ota_topic, sizeof(s_ota_topic), "device/%s/ota/update", s_device_id);
+    snprintf(s_status_topic,   sizeof(s_status_topic),   "device/%s/status",            s_device_id);
+    snprintf(s_cmd_topic,      sizeof(s_cmd_topic),      "device/%s/command",           s_device_id);
+    snprintf(s_response_topic, sizeof(s_response_topic), "device/%s/response",          s_device_id);
+    snprintf(s_shadow_topic,   sizeof(s_shadow_topic),   "device/%s/shadow/get_response", s_device_id);
+    snprintf(s_ota_topic,      sizeof(s_ota_topic),      "device/%s/ota/update",        s_device_id);
 
     ESP_LOGI(TAG, "Starting MQTT client (id=%s, broker=%s)", s_device_id, s_broker_uri);
 

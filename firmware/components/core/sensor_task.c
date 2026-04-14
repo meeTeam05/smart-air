@@ -62,6 +62,7 @@ static void sensor_task_fn(void *arg)
     /* Resolve device_id once to build the telemetry topic */
     char device_id[64] = {0};
     char telemetry_topic[96] = {0};
+    char shadow_topic[96] = {0};
     {
         char broker_uri[128] = {0};
         char config_device_id[64] = {0};
@@ -75,7 +76,8 @@ static void sensor_task_fn(void *arg)
             return;
         }
         resolve_device_id(config_device_id, device_id, sizeof(device_id));
-        snprintf(telemetry_topic, sizeof(telemetry_topic), "device/%s/telemetry", device_id);
+        snprintf(telemetry_topic, sizeof(telemetry_topic), "device/%s/telemetry",     device_id);
+        snprintf(shadow_topic,    sizeof(shadow_topic),    "device/%s/shadow/report", device_id);
         ESP_LOGI(TAG, "Telemetry topic: %s", telemetry_topic);
     }
 
@@ -109,6 +111,12 @@ static void sensor_task_fn(void *arg)
             } else {
                 ESP_LOGW(TAG, "mqtt_publish failed — MQTT not ready yet");
             }
+
+            /* Shadow report — current sensor state for device shadow sync */
+            char shadow[64];
+            snprintf(shadow, sizeof(shadow),
+                     "{\"temperature\":%.1f,\"humidity\":%.1f}", temperature, humidity);
+            mqtt_publish(shadow_topic, shadow, 1, false);
         }
 
         vTaskDelay(pdMS_TO_TICKS(SENSOR_POLL_MS));
