@@ -1,12 +1,14 @@
 idf_component_register(
     SRCS
-    "wifi.c"
+    "ble_prov.c"
     INCLUDE_DIRS
     "include"
     REQUIRES
+    nvs_flash
+    bt
     esp_wifi
-    esp_event
-    esp_netif
+    esp_hw_support
     freertos
+    wifi
     config
 )

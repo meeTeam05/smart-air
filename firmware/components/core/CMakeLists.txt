@@ -1,12 +1,18 @@
 idf_component_register(
     SRCS
-    "wifi.c"
+    "sysload.c"
     INCLUDE_DIRS
     "include"
     REQUIRES
-    esp_wifi
-    esp_event
+    nvs_flash
     esp_netif
+    esp_event
     freertos
+    ble_prov
+    wifi
     config
+    i2c_bus
+    sht3x
+    ds3231
+    led
 )

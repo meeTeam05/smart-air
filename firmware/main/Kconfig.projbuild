@@ -1,0 +1,76 @@
+menu "Smart Air Configuration"
+
+    config FIRMWARE_VERSION
+        string "Firmware version"
+        default "1.0.0"
+        help
+            Version string to include in the firmware. This is not used for
+            any functionality, but can be helpful for tracking firmware versions.
+
+    config SA_PROV_NAME_PREFIX
+        string "BLE provisioning name prefix"
+        default "PROV"
+        help
+            The advertised BLE name will be <prefix>_<6-hex-MAC-suffix>.
+
+    config SA_MQTT_BROKER_URI
+        string "MQTT broker URI"
+        default "mqtts://192.168.1.16:8883"
+        help
+            Full URI of the MQTT broker. Use mqtts:// for TLS (SEC-04 — required).
+
+    config SA_WIFI_CONNECT_TIMEOUT_MS
+        int "Wi-Fi connection timeout (ms)"
+        default 30000
+        range 5000 120000
+        help
+            Maximum time in milliseconds to wait for an IP address after
+            calling esp_wifi_connect().
+
+    config SA_DEVICE_ID
+        string "Device ID"
+        default ""
+        help
+            Unique device identifier (UUID). Sensitive — do not commit a real value.
+            Override at runtime via NVS namespace "device", key "device_id".
+
+    config SA_MQTT_SECRET_KEY
+        string "MQTT secret key"
+        default ""
+        help
+            Per-device secret for MQTT authentication. Sensitive — do not commit.
+            Override at runtime via NVS namespace "device", key "secret_key".
+
+    config SA_CONFIG_SELF_TEST
+        bool "Enable NVS config self-test on boot"
+        default n
+        help
+            When enabled, config_self_test() runs at startup to verify NVS
+            write/read roundtrip. Disable in production.
+
+    config SA_I2C_SDA_PIN
+        int "I2C SDA GPIO pin"
+        default 8
+        help
+            GPIO number for I2C SDA. Shared bus for SHT3x and DS3231.
+
+    config SA_I2C_SCL_PIN
+        int "I2C SCL GPIO pin"
+        default 9
+        help
+            GPIO number for I2C SCL. Shared bus for SHT3x and DS3231.
+
+    config SA_I2C_TIMEOUT_MS
+        int "I2C operation timeout (ms)"
+        default 1000
+        range 100 5000
+        help
+            Timeout for I2C read/write operations in milliseconds.
+
+    config SA_LED_PIN
+        int "RGB LED GPIO pin (WS2812)"
+        default 38
+        help
+            GPIO for the onboard WS2812 RGB LED. DevKitC-1 uses GPIO38.
+
+endmenu
