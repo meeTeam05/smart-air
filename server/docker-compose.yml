@@ -33,8 +33,8 @@ services:
     environment:
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-changeme}
     volumes:
-      - ./emqx/data:/opt/emqx/data
-      - ./emqx/log:/opt/emqx/log
+      - emqx-data:/opt/emqx/data
+      - emqx-log:/opt/emqx/log
       - ./emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
       - ./emqx/certs:/opt/emqx/etc/certs:ro
     restart: unless-stopped
@@ -139,7 +139,9 @@ services:
     networks:
       - sa-net
 
-volumes: {}
+volumes:
+  emqx-data:
+  emqx-log:
 
 networks:
   sa-net:
