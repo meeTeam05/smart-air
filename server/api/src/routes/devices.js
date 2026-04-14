@@ -10,8 +10,12 @@ export default async function devicesRoutes(fastify) {
         const userId = request.user.sub;
         const { device_id, name, home_id, room_id } = request.body || {};
         const normalizedDeviceId = normalizeDeviceId(device_id);
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!normalizedDeviceId || !name || !home_id) {
             return reply.code(400).send({ error: 'device_id, name, home_id required' });
+        }
+        if (!uuidRe.test(home_id)) {
+            return reply.code(400).send({ error: 'home_id must be a valid UUID' });
         }
 
         // Verify caller is a member of the home
