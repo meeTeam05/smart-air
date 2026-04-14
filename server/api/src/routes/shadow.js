@@ -1,4 +1,5 @@
 import { getShadow, setDesired } from '../services/shadow.js';
+import { normalizeDeviceId } from '../utils/device-id.js';
 
 export default async function shadowRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
@@ -14,13 +15,14 @@ export default async function shadowRoutes(fastify) {
     }
 
     fastify.get('/devices/:id/shadow', auth, async (request, reply) => {
-        const allowed = await checkDeviceAccess(fastify, request.params.id, request.user.sub);
+        const deviceId = normalizeDeviceId(request.params.id);
+        const allowed = await checkDeviceAccess(fastify, deviceId, request.user.sub);
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
-        return getShadow(fastify, request.params.id);
+        return getShadow(fastify, deviceId);
     });
 
     fastify.put('/devices/:id/shadow/desired', auth, async (request, reply) => {
-        const deviceId = request.params.id;
+        const deviceId = normalizeDeviceId(request.params.id);
         const allowed = await checkDeviceAccess(fastify, deviceId, request.user.sub);
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
 

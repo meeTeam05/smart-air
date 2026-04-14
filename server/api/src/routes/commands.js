@@ -1,4 +1,5 @@
 import { sendCommand } from '../services/commands.js';
+import { normalizeDeviceId } from '../utils/device-id.js';
 
 export default async function commandsRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
@@ -14,7 +15,7 @@ export default async function commandsRoutes(fastify) {
     }
 
     fastify.post('/devices/:id/command', auth, async (request, reply) => {
-        const deviceId = request.params.id;
+        const deviceId = normalizeDeviceId(request.params.id);
         const userId = request.user.sub;
         const allowed = await checkDeviceAccess(fastify, deviceId, userId);
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
@@ -27,7 +28,7 @@ export default async function commandsRoutes(fastify) {
     });
 
     fastify.get('/devices/:id/commands', auth, async (request, reply) => {
-        const deviceId = request.params.id;
+        const deviceId = normalizeDeviceId(request.params.id);
         const userId = request.user.sub;
         const allowed = await checkDeviceAccess(fastify, deviceId, userId);
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });

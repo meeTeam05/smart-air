@@ -2,6 +2,7 @@ import fp from 'fastify-plugin';
 import mqtt from 'mqtt';
 import { updateReported, getShadow } from '../services/shadow.js';
 import { flushPending } from '../services/commands.js';
+import { normalizeDeviceId } from '../utils/device-id.js';
 
 async function mqttPlugin(fastify) {
     const client = mqtt.connect(process.env.EMQX_MQTT_URL || 'mqtt://emqx:1883', {
@@ -24,7 +25,7 @@ async function mqttPlugin(fastify) {
 
     client.on('message', async (topic, buf) => {
         const parts = topic.split('/');
-        const deviceId = parts[1];
+        const deviceId = normalizeDeviceId(parts[1]);
         let payload;
         try {
             payload = JSON.parse(buf.toString());

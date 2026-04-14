@@ -1,8 +1,10 @@
+import { normalizeDeviceId } from '../utils/device-id.js';
+
 export default async function telemetryRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
 
     fastify.get('/devices/:id/telemetry', auth, async (request, reply) => {
-        const deviceId = request.params.id;
+        const deviceId = normalizeDeviceId(request.params.id);
         const userId = request.user.sub;
 
         const { rows: accessRows } = await fastify.db.query(

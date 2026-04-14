@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createDeviceUser, deleteDeviceUser } from '../services/emqx.js';
+import { normalizeDeviceId } from '../utils/device-id.js';
 
 export default async function devicesRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
@@ -8,7 +9,8 @@ export default async function devicesRoutes(fastify) {
     fastify.post('/devices', auth, async (request, reply) => {
         const userId = request.user.sub;
         const { device_id, name, home_id, room_id } = request.body || {};
-        if (!device_id || !name || !home_id) {
+        const normalizedDeviceId = normalizeDeviceId(device_id);
+        if (!normalizedDeviceId || !name || !home_id) {
             return reply.code(400).send({ error: 'device_id, name, home_id required' });
         }
 
@@ -31,7 +33,7 @@ export default async function devicesRoutes(fastify) {
             const { rows } = await fastify.db.query(
                 `INSERT INTO devices (id, home_id, room_id, type_id, owner_id, name, secret_key)
                  VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-                [device_id, home_id, room_id || null, typeId, userId, name, secretKey]
+                [normalizedDeviceId, home_id, room_id || null, typeId, userId, name, secretKey]
             );
             device = rows[0];
         } catch (err) {
@@ -41,7 +43,7 @@ export default async function devicesRoutes(fastify) {
 
         // Create EMQX user + ACL
         try {
-            await createDeviceUser(device_id, secretKey);
+            await createDeviceUser(normalizedDeviceId, secretKey);
         } catch (err) {
             fastify.log.warn({ err }, 'EMQX user creation failed — device still saved');
         }
@@ -66,9 +68,10 @@ export default async function devicesRoutes(fastify) {
     // PUT /api/devices/:id
     fastify.put('/devices/:id', auth, async (request, reply) => {
         const userId = request.user.sub;
+        const deviceId = normalizeDeviceId(request.params.id);
         const { rows: devRows } = await fastify.db.query(
             'SELECT home_id FROM devices WHERE id = $1',
-            [request.params.id]
+            [deviceId]
         );
         if (devRows.length === 0) return reply.code(404).send({ error: 'Not found' });
         const { rows: m } = await fastify.db.query(
@@ -83,7 +86,7 @@ export default async function devicesRoutes(fastify) {
                name = COALESCE($1, name),
                room_id = COALESCE($2, room_id)
              WHERE id = $3 RETURNING id, name, home_id, room_id, online, last_seen, firmware_ver`,
-            [name || null, room_id || null, request.params.id]
+            [name || null, room_id || null, deviceId]
         );
         return rows[0];
     });
@@ -91,7 +94,7 @@ export default async function devicesRoutes(fastify) {
     // DELETE /api/devices/:id
     fastify.delete('/devices/:id', auth, async (request, reply) => {
         const userId = request.user.sub;
-        const deviceId = request.params.id;
+        const deviceId = normalizeDeviceId(request.params.id);
         const { rows: devRows } = await fastify.db.query(
             'SELECT home_id, owner_id FROM devices WHERE id = $1',
             [deviceId]
