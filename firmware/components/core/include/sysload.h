@@ -6,11 +6,8 @@
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
-#ifndef _SYSLOAD_H
-#define _SYSLOAD_H
+#pragma once
 
 #include "config.h"
 
 void sysload_init(void);
-
-#endif /* _SYSLOAD_H */
