@@ -51,6 +51,16 @@ export default async function devicesRoutes(fastify) {
         return reply.code(201).send({ ...device, secret_key: secretKey });
     });
 
+    // GET /api/devices/announce/:mac — provisioning poll: has device announced itself online?
+    // Returns {announced: true} when MQTT bridge saw the device come online.
+    // The record disappears after 5 minutes so stale announcements don't linger.
+    fastify.get('/devices/announce/:mac', auth, async (request, reply) => {
+        const deviceId = normalizeDeviceId(request.params.mac);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid mac' });
+        const announced = await fastify.redis.get(`announce:${deviceId}`);
+        return { announced: !!announced };
+    });
+
     // GET /api/devices
     fastify.get('/devices', auth, async (request) => {
         const userId = request.user.sub;
