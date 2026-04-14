@@ -53,12 +53,14 @@ export default async function authRoutes(fastify) {
         reply.setCookie('refreshToken', refreshToken, {
             httpOnly: true, sameSite: 'Strict', path: '/api/auth/refresh', maxAge: REFRESH_EXPIRES_DAYS * 86400
         });
-        return { accessToken, user: { id: user.id, email: user.email, full_name: user.full_name } };
+        // refreshToken also in body for mobile clients (no cookie jar)
+        return { accessToken, refreshToken, user: { id: user.id, email: user.email, full_name: user.full_name } };
     });
 
     // POST /api/auth/refresh
     fastify.post('/auth/refresh', rl, async (request, reply) => {
-        const token = request.cookies?.refreshToken;
+        // body.refreshToken takes priority (mobile); fallback to HttpOnly cookie (browser)
+        const token = request.body?.refreshToken ?? request.cookies?.refreshToken;
         if (!token) return reply.code(401).send({ error: 'No refresh token' });
 
         const { rows } = await fastify.db.query(
@@ -84,7 +86,7 @@ export default async function authRoutes(fastify) {
         reply.setCookie('refreshToken', newRefreshToken, {
             httpOnly: true, sameSite: 'Strict', path: '/api/auth/refresh', maxAge: REFRESH_EXPIRES_DAYS * 86400
         });
-        return { accessToken };
+        return { accessToken, refreshToken: newRefreshToken };
     });
 
     // POST /api/auth/logout
