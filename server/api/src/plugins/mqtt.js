@@ -35,12 +35,12 @@ async function mqttPlugin(fastify) {
 
         try {
             if (parts[2] === 'status') {
-                const { rowCount } = await fastify.db.query(
+                await fastify.db.query(
                     'UPDATE devices SET online = $1, last_seen = NOW() WHERE id = $2',
                     [payload.online === true, deviceId]
                 );
-                // Device not yet registered — store announcement for provisioning poll
-                if (rowCount === 0 && payload.online === true) {
+                // Store announcement for provisioning poll (works for new and re-provisioned devices)
+                if (payload.online === true) {
                     await fastify.redis.set(`announce:${deviceId}`, '1', 'EX', 300);
                 }
                 if (payload.online === true) {
