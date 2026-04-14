@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Allow cleartext HTTP to local network IPs (Pi server on LAN).
+     HTTPS is still enforced for all other domains. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Local subnet — adjust if your Pi is on a different subnet -->
+        <domain includeSubdomains="false">192.168.1.16</domain>
+        <domain includeSubdomains="false">192.168.0.16</domain>
+        <domain includeSubdomains="false">10.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
