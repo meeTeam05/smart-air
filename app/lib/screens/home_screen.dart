@@ -442,8 +442,8 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: InputDecoration(
             enabledBorder:
                 UnderlineInputBorder(borderSide: BorderSide(color: c.border)),
-            focusedBorder: UnderlineInputBorder(
-                borderSide: const BorderSide(color: AppColors.primary)),
+            focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: AppColors.primary)),
           ),
         ),
         actions: [
