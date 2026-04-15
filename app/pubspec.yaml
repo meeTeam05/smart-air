@@ -28,8 +28,6 @@ dependencies:
   json_annotation: ^4.9.0
   # Charts
   fl_chart: ^0.68.0
-  # UI
-  google_fonts: ^6.1.0
 
 dev_dependencies:
   flutter_test:

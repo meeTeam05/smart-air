@@ -1,71 +1,70 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   AppColors._();
 
   // ── Dark palette ─────────────────────────────────────────────────────────
-  static const Color bg = Color(0xFF0B0F19);
-  static const Color surface = Color(0xFF131A2A);
-  static const Color surfaceVar = Color(0xFF1E283C);
-  static const Color border = Color(0xFF26324D);
-  static const Color primary = Color(0xFF4F46E5);
-  static const Color primaryGlow = Color(0xFF818CF8);
-  static const Color textPrimary = Color(0xFFF8FAFC);
-  static const Color textSecondary = Color(0xFF94A3B8);
-  
-  // Status colors
+  static const Color bg = Color(0xFF0A0A12);
+  static const Color surface = Color(0xFF15151F);
+  static const Color surfaceVar = Color(0xFF1E1E2C);
+  static const Color border = Color(0xFF2A2A3A);
+  static const Color primary = Color(0xFF2B7FFF);
+  static const Color textPrimary = Color(0xFFE8E8F0);
+  static const Color textSecondary = Color(0xFF8A8A9A);
   static const Color online = Color(0xFF10B981);
-  static const Color onlineGlow = Color(0xFF34D399);
-  static const Color offline = Color(0xFF64748B);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color error = Color(0xFFEF4444);
+  static const Color offline = Color(0xFF6B7280);
+  static const Color warning = Color(0xFFFF9500);
 }
 
 class AppTheme {
   AppTheme._();
 
   static ThemeData dark() {
-    final base = ThemeData(
+    return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.dark,
         surface: AppColors.surface,
+      ).copyWith(
         primary: AppColors.primary,
         onPrimary: Colors.white,
+        surface: AppColors.surface,
         onSurface: AppColors.textPrimary,
         onSurfaceVariant: AppColors.textSecondary,
       ),
       scaffoldBackgroundColor: AppColors.bg,
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent, // We will use custom headers
+        backgroundColor: AppColors.bg,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: AppColors.surface.withValues(alpha: 0.9),
-        indicatorColor: AppColors.primary.withValues(alpha: 0.15),
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: AppColors.primary.withValues(alpha: 0.2),
         elevation: 0,
         height: 64,
-        labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary);
-          }
-          return const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textSecondary);
-        }),
       ),
       cardTheme: CardThemeData(
         color: AppColors.surface,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppColors.border, width: 0.5),
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.border),
         ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: AppColors.textSecondary,
+        textColor: AppColors.textPrimary,
       ),
       dividerTheme: const DividerThemeData(
         color: AppColors.border,
@@ -73,52 +72,65 @@ class AppTheme {
         space: 0,
       ),
     );
-
-    return base.copyWith(
-      textTheme: GoogleFonts.outfitTextTheme(base.textTheme),
-    );
   }
 
   static ThemeData light() {
-    const lightBg = Color(0xFFF8FAFC);
     const lightSurface = Color(0xFFFFFFFF);
-    const lightSurfaceVar = Color(0xFFF1F5F9);
-    const lightBorder = Color(0xFFE2E8F0);
-    const lightText = Color(0xFF0F172A);
-    const lightTextSec = Color(0xFF64748B);
+    const lightBg = Color(0xFFF2F4F7);
+    const lightBorder = Color(0xFFE0E4EA);
+    const lightText = Color(0xFF1A1A2E);
+    const lightTextSec = Color(0xFF6B7280);
 
-    final base = ThemeData(
+    return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.light,
+      ).copyWith(
         primary: AppColors.primary,
+        onPrimary: Colors.white,
         surface: lightSurface,
         onSurface: lightText,
         onSurfaceVariant: lightTextSec,
       ),
       scaffoldBackgroundColor: lightBg,
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
+        backgroundColor: lightBg,
         foregroundColor: lightText,
         elevation: 0,
         scrolledUnderElevation: 0,
-        centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: lightText,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: lightSurface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: AppColors.primary.withValues(alpha: 0.15),
+        elevation: 0,
+        height: 64,
       ),
       cardTheme: CardThemeData(
         color: lightSurface,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: lightBorder, width: 0.5),
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: lightBorder),
         ),
       ),
-    );
-
-    return base.copyWith(
-      textTheme: GoogleFonts.outfitTextTheme(base.textTheme),
+      listTileTheme: const ListTileThemeData(
+        iconColor: lightTextSec,
+        textColor: lightText,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: lightBorder,
+        thickness: 0.5,
+        space: 0,
+      ),
     );
   }
 }
@@ -143,21 +155,21 @@ class AppPalette {
   });
 
   static const _dark = AppPalette(
-    bg: AppColors.bg,
-    surface: AppColors.surface,
-    surfaceVar: AppColors.surfaceVar,
-    border: AppColors.border,
-    textPrimary: AppColors.textPrimary,
-    textSecondary: AppColors.textSecondary,
+    bg: Color(0xFF0A0A12),
+    surface: Color(0xFF15151F),
+    surfaceVar: Color(0xFF1E1E2C),
+    border: Color(0xFF2A2A3A),
+    textPrimary: Color(0xFFE8E8F0),
+    textSecondary: Color(0xFF8A8A9A),
   );
 
   static const _light = AppPalette(
-    bg: Color(0xFFFAFAFA),
+    bg: Color(0xFFF2F4F7),
     surface: Color(0xFFFFFFFF),
-    surfaceVar: Color(0xFFF1F5F9),
-    border: Color(0xFFE2E8F0),
-    textPrimary: Color(0xFF0F172A),
-    textSecondary: Color(0xFF64748B),
+    surfaceVar: Color(0xFFEEF0F5),
+    border: Color(0xFFE0E4EA),
+    textPrimary: Color(0xFF1A1A2E),
+    textSecondary: Color(0xFF6B7280),
   );
 }
 
