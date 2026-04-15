@@ -5,6 +5,8 @@ import '../core/secure_storage.dart';
 import '../core/api_client.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import 'devices_provider.dart';
+import 'homes_provider.dart';
 
 final authProvider = AsyncNotifierProvider<AuthNotifier, User?>(AuthNotifier.new);
 
@@ -20,26 +22,20 @@ class AuthNotifier extends AsyncNotifier<User?> {
     // When interceptor fires forced logout, clear state
     ref.listen<int>(forceLogoutSignalProvider, (_, __) {
       state = const AsyncData(null);
+      ref.invalidate(devicesProvider);
+      ref.invalidate(homesProvider);
     });
 
-    // Restore session from SecureStorage
+    // Restore session from SecureStorage.
+    // If token + user exist, return immediately — no network call needed.
+    // AuthInterceptor will refresh the access token on the first API request that gets 401.
     final refreshToken = await _storage.getRefreshToken();
     if (refreshToken == null) return null;
 
     final userJson = await _storage.getUserJson();
     if (userJson == null) return null;
 
-    try {
-      final result = await _auth.refresh(refreshToken);
-      setAccessToken(result.accessToken);
-      if (result.refreshToken != null) {
-        await _storage.saveRefreshToken(result.refreshToken!);
-      }
-      return User.fromJson(userJson);
-    } catch (_) {
-      await _storage.clear();
-      return null;
-    }
+    return User.fromJson(userJson);
   }
 
   Future<void> login(String email, String password) async {

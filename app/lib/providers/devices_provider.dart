@@ -53,7 +53,7 @@ class ShadowNotifier extends FamilyAsyncNotifier<DeviceShadow, String> {
   }
 
   Future<void> refresh() async {
-    state = const AsyncLoading();
+    // Do NOT set AsyncLoading — keeps previous data visible while fetching (no flicker).
     state = await AsyncValue.guard(() => _service.getShadow(arg));
   }
 }
