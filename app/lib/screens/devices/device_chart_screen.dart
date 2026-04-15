@@ -80,15 +80,15 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
                   }
 
                   final minTs = points.first.ts.millisecondsSinceEpoch.toDouble();
-                  final maxTs = points.last.ts.millisecondsSinceEpoch.toDouble();
+                  // Ensure at least 1 minute x-range so the chart renders with 1 data point
+                  final maxTs = (points.last.ts.millisecondsSinceEpoch.toDouble())
+                      .clamp(minTs + 60000, double.infinity);
                   final temps = points.map((p) => p.temperature);
                   final hums = points.map((p) => p.humidity);
-                  final minY = (temps.reduce((a, b) => a < b ? a : b))
-                      .clamp(0, 50)
-                      .toDouble() - 5;
-                  final maxY = (hums.reduce((a, b) => a > b ? a : b))
-                      .clamp(0, 100)
-                      .toDouble() + 5;
+                  final minTemp = temps.reduce((a, b) => a < b ? a : b);
+                  final maxHum = hums.reduce((a, b) => a > b ? a : b);
+                  final minY = (minTemp - 5).clamp(0, 50).toDouble();
+                  final maxY = (maxHum + 5).clamp(0, 100).toDouble();
 
                   return LineChart(
                     LineChartData(
@@ -129,7 +129,7 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: 24,
-                            interval: (maxTs - minTs) / 4,
+                            interval: ((maxTs - minTs) / 4).clamp(1000, double.infinity),
                             getTitlesWidget: (v, _) {
                               final dt = DateTime.fromMillisecondsSinceEpoch(
                                   v.toInt());
