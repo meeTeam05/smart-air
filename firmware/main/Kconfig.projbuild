@@ -69,8 +69,16 @@ menu "Smart Air Configuration"
 
     config SA_LED_PIN
         int "RGB LED GPIO pin (WS2812)"
-        default 38
+        default 48
         help
-            GPIO for the onboard WS2812 RGB LED. DevKitC-1 uses GPIO38.
+            GPIO for the onboard WS2812 RGB LED. ESP32-S3-DevKitC-1 uses GPIO48.
+
+    config SA_HTTPD_PORT
+        int "HTTP server port"
+        default 80
+        range 1 65535
+        help
+            TCP port for the device's built-in HTTP API server.
+            Endpoints: GET /api/info, POST /api/config.
 
 endmenu

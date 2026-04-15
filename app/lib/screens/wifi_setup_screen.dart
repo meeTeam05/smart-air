@@ -630,12 +630,12 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
 
       final services = await _bleDevice!.discoverServices();
       final svc = services.firstWhere(
-        (s) => s.serviceUuid.toString().toLowerCase() == _kProvSvcUuid,
+        (s) => s.serviceUuid.str128.toLowerCase() == _kProvSvcUuid,
         orElse: () => throw Exception('Provisioning service not found'),
       );
 
       BluetoothCharacteristic chr(String uuid) => svc.characteristics.firstWhere(
-            (c) => c.characteristicUuid.toString().toLowerCase() == uuid,
+            (c) => c.characteristicUuid.str128.toLowerCase() == uuid,
             orElse: () => throw Exception('Missing characteristic: $uuid'),
           );
       final ssidChr   = chr(_kSsidUuid);

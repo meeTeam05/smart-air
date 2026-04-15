@@ -6,4 +6,6 @@ idf_component_register(
     REQUIRES
     nvs_flash
     log
+    EMBED_TXTFILES
+    "certs/ca_cert.pem"
 )
