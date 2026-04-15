@@ -23,19 +23,22 @@ export default async function telemetryRoutes(fastify) {
 
         if (agg) {
             const { rows } = await fastify.db.query(
-                `SELECT time_bucket($1::interval, ts) AS bucket,
+                `SELECT time_bucket($1::interval, ts) AS ts,
                         AVG((payload->>'temperature')::float) AS temperature,
                         AVG((payload->>'humidity')::float) AS humidity
                  FROM telemetry
                  WHERE device_id = $2 AND ts BETWEEN $3 AND $4
-                 GROUP BY bucket ORDER BY bucket DESC`,
+                 GROUP BY ts ORDER BY ts DESC`,
                 [agg, deviceId, from, to]
             );
             return rows;
         }
 
         const { rows } = await fastify.db.query(
-            `SELECT ts, payload FROM telemetry
+            `SELECT ts,
+                    (payload->>'temperature')::float AS temperature,
+                    (payload->>'humidity')::float AS humidity
+             FROM telemetry
              WHERE device_id = $1 AND ts BETWEEN $2 AND $3
              ORDER BY ts DESC LIMIT $4`,
             [deviceId, from, to, limit]
