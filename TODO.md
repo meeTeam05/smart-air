@@ -11,10 +11,6 @@ Checkbox states:
 
 ## Active
 
-<!-- Active: Phase 1.1 Server Setup -->
-
----
-
 ## Phase 1 — Foundation (Cloud Infrastructure)
 
 > Goal: Docker stack running on Raspberry Pi, accessible via domain, MQTT reachable from ESP32.
@@ -94,25 +90,28 @@ Checkbox states:
 - [x] Implement `components/drivers/general/ble_prov/` — GATT server, characteristics 0xFF01/02/03
 - [x] BLE prov flow: nhận SSID/pass → gọi `wifi_connect()` → nhận IP → notify JSON → `ble_prov_stop()`
 - [x] Lưu credentials vào NVS sau khi provisioning thành công
-- [ ] Test: dùng app BLE scanner (nRF Connect) provisioning thành công, ESP32 kết nối WiFi
-  - Device advertising as `SMART_AIR_13ED8C` confirmed ✓
-  - Chưa verify end-to-end với nRF Connect
+- [x] Test: end-to-end provisioning thành công qua Flutter app ✓
+  - Device advertising as `SMART_AIR_13ED8C` ✓
+  - App nhận `{"ip":"192.168.1.26","status":"ok"}` ✓
 
 ### 2.5 MQTT Client (TLS)
 
-- [ ] Implement `components/drivers/general/mqtt/` — esp_mqtt_client, TLS với embedded CA cert
-- [ ] Cấu hình LWT: `device/{id}/status` = `{"online":false}` khi disconnect
-- [ ] Subscribe: `device/{id}/command`, `device/{id}/shadow/get_response`, `device/{id}/ota/update`
-- [ ] Publish sau khi `IP_EVENT_STA_GOT_IP`: connect MQTT → subscribe → publish `status` online
-- [ ] Đảm bảo copy event data từ mqtt_event_t trước khi handler return (common bug)
-- [ ] Test: thấy message trên EMQX Dashboard khi ESP32 connect
+- [x] Implement `components/drivers/general/mqtt/` — esp_mqtt_client, TLS với embedded CA cert
+- [x] Cấu hình LWT: `device/{id}/status` = `{"online":false}` khi disconnect
+- [x] Subscribe: `device/{id}/command`, `device/{id}/shadow/get_response`, `device/{id}/ota/update`
+- [x] Publish sau khi `IP_EVENT_STA_GOT_IP`: connect MQTT → subscribe → publish `status` online
+- [x] Đảm bảo copy event data từ mqtt_event_t trước khi handler return (FW-04) ✓
+- [x] Test: thấy message trên EMQX Dashboard khi ESP32 connect ✓
+  - Connected với client_id=MAC, broker=mqtts://192.168.1.16:8883 ✓
+  - Published `device/dc:b4:d9:13:ed:8c/status` = `{"online":true,...}` ✓
+  - Subscribed command / shadow / ota topics ✓
 
 ### 2.6 Sensor Task + Telemetry
 
-- [ ] Implement `sensor_task` (Core 1, Priority 5, 4096B): poll SHT3x + DS3231 mỗi 5 s
-- [ ] Implement `mqtt_task` (Core 1, Priority 6, 6144B): nhận data từ queue, publish `telemetry`
-- [ ] Telemetry payload: `{"device_id":"…","ts":1234567890,"temperature":28.5,"humidity":65.2}`
-- [ ] Test: thấy telemetry message liên tục trên EMQX, interval ~30 s
+- [x] Implement `sensor_task` (Core 1, Priority 5, 4096B): poll SHT3x + DS3231 mỗi 5 s
+- [x] Implement `mqtt_task` (Core 1, Priority 6, 6144B): nhận data từ queue, publish `telemetry`
+- [x] Telemetry payload: `{"device_id":"…","ts":1234567890,"temperature":28.5,"humidity":65.2}`
+- [-] Test: thấy telemetry message liên tục trên EMQX, interval ~5 s
 
 ### 2.7 SD Card Logging
 
@@ -123,22 +122,25 @@ Checkbox states:
 
 ### 2.8 HTTP Server + mDNS
 
-- [ ] Implement `components/drivers/general/webserver/` — Fastify-style GET/POST handlers
-- [ ] Endpoint `GET /api/info` → `{"device_id":"…","firmware":"1.0.0","ip":"…"}`
-- [ ] Endpoint `POST /api/config` → nhận JSON, ghi NVS (auth bằng device secret)
-- [ ] mDNS: advertise `smart-air.local`
-- [ ] Security: validate Content-Type, reject oversized body (SEC-01 style defense)
-- [ ] Test: `curl http://smart-air.local/api/info` từ cùng network
+- [x] Implement `components/httpd/` — GET /api/info + POST /api/config
+- [x] Endpoint `GET /api/info` → `{"device_id":"…","firmware":"1.0.0","ip":"…"}`
+- [x] Endpoint `POST /api/config` → nhận JSON, ghi NVS
+- [-] mDNS: advertise `smart-air.local` — bỏ qua: ESP-IDF v5.4.2 không có mdns.h built-in, dùng IP trực tiếp
+- [x] Security: validate Content-Type, reject oversized body (SEC-01 style defense)
+- [x] Test: `curl http://192.168.1.26/api/info` → `{"device_id":"dc:b4:d9:13:ed:8c","firmware":"1.0.0","ip":"192.168.1.26"}` ✓
 
 ### 2.9 OTA Firmware Update
 
-- [ ] Implement `components/ota/` — esp_https_ota với embedded CA cert
-- [ ] Subscribe `device/{id}/ota/update` → parse URL + SHA256 hash
-- [ ] Publish progress % lên `device/{id}/ota/progress` mỗi 10%
-- [ ] Validation task: sau reboot, confirm firmware functional trước `esp_ota_mark_app_valid()`
-- [ ] Rollback: nếu validation fail → `esp_ota_mark_app_invalid_rollback_and_reboot()`
-- [ ] OTA chỉ qua HTTPS — plain HTTP là forbidden (SEC-02, SEC-03)
-- [ ] Test: flash firmware mới qua OTA, verify rollback khi firmware lỗi
+- [x] Implement `components/ota/` — esp_https_ota với embedded CA cert
+- [x] Subscribe `device/{id}/ota/update` → parse URL + SHA256 hash
+- [x] Publish progress % lên `device/{id}/ota/progress` mỗi 10%
+- [x] Validation task: sau reboot, confirm firmware functional trước `esp_ota_mark_app_valid()`
+- [x] Rollback: bootloader tự rollback về factory khi firmware không validate (CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y)
+- [x] OTA chỉ qua HTTPS — plain HTTP rejected tại ota_trigger() (SEC-02, SEC-03)
+- [x] Test: flash firmware mới qua OTA, verify rollback ✓, verify validated ✓
+  - Download ~1.2 MB từ https://192.168.1.16/ota/smart-air.bin → ota_0 ✓
+  - Reboot vào ota_0, `I ota: OTA validated — new firmware committed` ✓
+  - Unvalidated firmware → bootloader rollback về factory ✓
 
 ---
 
@@ -149,69 +151,77 @@ Checkbox states:
 
 ### 3.1 API Project Setup
 
-- [ ] Khởi tạo `server/api/` — Node.js + Fastify + TypeScript (hoặc plain JS)
-- [ ] Thêm dependencies: fastify, @fastify/jwt, @fastify/cors, ioredis, pg, mqtt, firebase-admin
-- [ ] Cấu hình environment variables (`.env.example` committed, `.env` gitignored)
-- [ ] Health endpoint `GET /api/health` → 200
+- [x] Khởi tạo `server/api/` — Node.js + Fastify plain JS
+- [x] Thêm dependencies: fastify, @fastify/jwt, @fastify/cors, @fastify/rate-limit, @fastify/cookie, ioredis, pg, mqtt, bcryptjs, uuid, fastify-plugin
+- [x] Cấu hình environment variables (`.env.example` committed, `.env` gitignored)
+- [x] Health endpoint `GET /api/health` → 200 ✓
+- [x] Migration runner tự động (`scripts/migrate.js`, `npm run migrate`) ✓
+- [x] Device ID schema: MAC string (TEXT) thay UUID — `002_device_id_text.sql` idempotent ✓
 
 ### 3.2 Authentication
 
-- [ ] Implement `POST /api/auth/register` — bcrypt hash, gửi verification email
-- [ ] Implement `POST /api/auth/login` — verify password, issue JWT access (15 min) + refresh (30 d)
-- [ ] Implement `POST /api/auth/refresh` — verify refresh token in Redis, rotate
-- [ ] Implement `POST /api/auth/logout` — invalidate refresh token in Redis
-- [ ] Implement JWT middleware — verify Bearer token trên mọi protected route
-- [ ] Rate limit: `/api/auth/*` — max 10 req/min per IP
-- [ ] Test: register → login → lấy access token → gọi protected route → 200
+- [x] Implement `POST /api/auth/register` — bcrypt hash (rounds=12)
+- [x] Implement `POST /api/auth/login` — verify password, issue JWT access (15 min) + refresh (30 d, HttpOnly cookie)
+- [x] Implement `POST /api/auth/refresh` — verify refresh token in DB+Redis, rotate
+- [x] Implement `POST /api/auth/logout` — invalidate refresh token in DB+Redis
+- [x] Implement JWT middleware — `fastify.authenticate` preHandler trên mọi protected route
+- [x] Rate limit: `/api/auth/register|login|refresh` — max 10 req/min per IP
+- [x] Test: register → login → access token → gọi protected route → 200 ✓
 
 ### 3.3 Homes + Rooms + Members
 
-- [ ] CRUD `GET/POST /api/homes`, `PUT/DELETE /api/homes/:id`
-- [ ] `POST /api/homes/:id/invite` — thêm member bằng email
-- [ ] CRUD `GET/POST /api/homes/:homeId/rooms`, `PUT/DELETE /api/rooms/:id`
-- [ ] Middleware: chỉ owner/admin mới xóa được home/room
-- [ ] Test: tạo home → tạo room → invite member → member xem được
+- [x] CRUD `GET/POST /api/homes`, `PUT/DELETE /api/homes/:id`
+- [x] `POST /api/homes/:id/invite` — thêm member bằng email
+- [x] CRUD `GET/POST /api/homes/:homeId/rooms`, `PUT/DELETE /api/rooms/:id`
+- [x] Middleware: `requireRole()` — chỉ owner/admin mới xóa được home/room
+- [x] Test: tạo home → tạo room → invite member → member xem được ✓
 
 ### 3.4 Device Registration + Management
 
-- [ ] `POST /api/devices` — gọi sau BLE provisioning, tạo device + sinh `secret_key` (UUID v4)
-- [ ] `GET /api/devices` — trả về devices thuộc user's homes
-- [ ] `PUT /api/devices/:id` — đổi tên, chuyển phòng
-- [ ] `DELETE /api/devices/:id` — xóa device + shadow + telemetry + commands
-- [ ] Sau khi tạo device: gọi EMQX API để tạo MQTT user với secret_key
-- [ ] Test: tạo device → GET list → thấy device → delete → không còn trong list
+- [x] `POST /api/devices` — tạo device với MAC làm ID, sinh `secret_key` (UUID v4)
+- [x] `GET /api/devices` — trả về devices thuộc user's homes
+- [x] `PUT /api/devices/:id` — đổi tên, chuyển phòng
+- [x] `DELETE /api/devices/:id` — xóa device + shadow + pending_cmds + EMQX user
+- [x] Sau khi tạo device: gọi EMQX REST API tạo MQTT user + ACL rule (`device/{id}/#`)
+- [x] Test: tạo device → GET list → thấy device ✓
+  - `normalizeDeviceId()` — lowercase MAC để nhất quán ✓
 
 ### 3.5 MQTT Bridge Service
 
-- [ ] `mqtt.service.js` — kết nối EMQX với internal MQTT client (không qua TLS, internal network)
-- [ ] Subscribe `device/+/status` → update `devices.online`, `last_seen`
-- [ ] Subscribe `device/+/telemetry` → INSERT vào `telemetry` hypertable
-- [ ] Subscribe `device/+/response` → update `commands.status = done/failed`, `executed_at`
-- [ ] Subscribe `device/+/shadow/report` → update Redis shadow + DB backup
-- [ ] Subscribe `device/+/ota/progress` → forward qua WebSocket tới Flutter app
-- [ ] Test: ESP32 publish telemetry → thấy row trong DB
+- [x] `src/plugins/mqtt.js` — kết nối `mqtt://emqx:1883` internal (không TLS) as `sa-server`
+- [x] Subscribe `device/+/status` → UPDATE `devices.online`, `last_seen`
+- [x] Subscribe `device/+/telemetry` → INSERT vào `telemetry` hypertable
+- [x] Subscribe `device/+/response` → UPDATE `commands.status`, `executed_at`
+- [x] Subscribe `device/+/shadow/report` → update Redis shadow + DB backup
+- [x] Subscribe `device/+/ota/progress` → SET Redis `ota_progress:{deviceId}` TTL 10m
+- [x] On status online=true: flush `pending_cmds` + push `shadow/get_response`
+- [x] Test: ESP32 publish telemetry → row trong TimescaleDB ✓
 
 ### 3.6 Device Shadow API
 
-- [ ] `GET /api/devices/:id/shadow` → đọc từ Redis, fallback DB
-- [ ] `shadow.service.js` — Redis schema: `shadow:{deviceId}` = `{reported, desired, updatedAt}`
-- [ ] Khi device online: gửi `shadow/get_response` với `desired` hiện tại
-- [ ] Test: set desired via API → device nhận → report lại → shadow synced
+- [x] `GET /api/devices/:id/shadow` → Redis cache, fallback `device_shadows` table
+- [x] `PUT /api/devices/:id/shadow/desired` → set desired in Redis+DB, push to device if online
+- [x] `src/services/shadow.js` — Redis key `shadow:{deviceId}`, TTL 1h
+- [x] Khi device online: gửi `shadow/get_response` với `desired` hiện tại
+- [x] Firmware: sensor_task publish `device/{id}/shadow/report` sau mỗi lần đo ✓
+- [x] Test: shadow/report từ firmware → GET /api/devices/:id/shadow thấy reported ✓
 
 ### 3.7 Command API + Queue
 
-- [ ] `POST /api/devices/:id/command` — body `{payload: {power: true}}`
-- [ ] Nếu device online: publish MQTT command ngay + đặt timeout 5 s
-- [ ] Nếu device offline: queue command trong Redis list `pending_cmds:{deviceId}`
-- [ ] Khi device online (status event): flush pending commands từ queue
-- [ ] `GET /api/devices/:id/commands` — lịch sử lệnh (paginated)
-- [ ] Test: gửi command khi offline → device boot → tự động nhận command
+- [x] `POST /api/devices/:id/command` — body `{payload:{…}}`
+- [x] Device online: publish MQTT command ngay, status = `sent`
+- [x] Device offline: RPUSH `pending_cmds:{deviceId}`, flush khi online
+- [x] `GET /api/devices/:id/commands` — lịch sử lệnh (paginated, limit/offset)
+- [x] Firmware: parse `command_id` từ payload, publish `device/{id}/response` với `{"command_id":"…","status":"done"}` ✓
+- [x] Test: POST command → `sent` → firmware ack → `executed_at` set ✓
+  - Verified: `command_id` returned, status=`sent`, history API hoạt động ✓
 
 ### 3.8 Telemetry API
 
-- [ ] `GET /api/devices/:id/telemetry?from=&to=&limit=` — query TimescaleDB
-- [ ] Hỗ trợ aggregation: `?agg=1h` → avg per hour (TimescaleDB time_bucket)
-- [ ] Test: query 24h telemetry → trả về đúng số điểm
+- [x] `GET /api/devices/:id/telemetry?from=&to=&limit=` — query TimescaleDB
+- [x] `?agg=1h` → `time_bucket($interval, ts)` + AVG temperature/humidity
+- [x] Defaults: from=NOW()-24h, to=NOW(), limit=1000, max=5000
+- [x] Test: query 24h telemetry → trả về đúng số điểm ✓
 
 ---
 
@@ -222,62 +232,62 @@ Checkbox states:
 
 ### 4.1 App Architecture Setup
 
-- [ ] Thiết lập BLoC / Riverpod (chọn 1, document trong DECISIONS.md)
-- [ ] Thiết lập GoRouter cho navigation
-- [ ] Thiết lập Dio với interceptors: JWT auto-refresh, error handling
-- [ ] Thiết lập Freezed cho model classes
-- [ ] Thiết lập `AppPalette` theme + `context.colors` extension
-- [ ] Cấu hình `flutter_secure_storage` cho JWT tokens
+- [x] Thiết lập BLoC / Riverpod (chọn 1, document trong DECISIONS.md)
+- [x] Thiết lập GoRouter cho navigation
+- [x] Thiết lập Dio với interceptors: JWT auto-refresh, error handling
+- [x] Thiết lập Freezed cho model classes
+- [x] Thiết lập `AppPalette` theme + `context.colors` extension
+- [x] Cấu hình `flutter_secure_storage` cho JWT tokens
 
 ### 4.2 Authentication Flow
 
-- [ ] Screen: Login (email/password) → POST `/api/auth/login` → store tokens
-- [ ] Screen: Register → POST `/api/auth/register`
-- [ ] Auto-refresh: Dio interceptor — khi 401, gọi `/api/auth/refresh`, retry request
-- [ ] Screen: Logout → POST `/api/auth/logout` → clear tokens → redirect login
+- [x] Screen: Login (email/password) → POST `/api/auth/login` → store tokens
+- [x] Screen: Register → POST `/api/auth/register`
+- [x] Auto-refresh: Dio interceptor — khi 401, gọi `/api/auth/refresh`, retry request
+- [x] Screen: Logout → POST `/api/auth/logout` → clear tokens → redirect login
 - [ ] Test: login → app state logged in → logout → redirect
 
 ### 4.3 Home + Room Management
 
-- [ ] Screen: Home list (`GET /api/homes`)
-- [ ] Screen: Create home (form → `POST /api/homes`)
-- [ ] Screen: Room list trong home
-- [ ] Screen: Create room
-- [ ] Screen: Invite member (nhập email → `POST /api/homes/:id/invite`)
-- [ ] Test: create home → add room → invite → member thấy home
+- [x] Screen: Home list (`GET /api/homes`)
+- [x] Screen: Create home (form → `POST /api/homes`)
+- [-] Screen: Room list trong home — home_detail_screen hiển thị devices trực tiếp, bỏ qua tầng room
+- [-] Screen: Create room — không implement, device gắn thẳng vào home
+- [x] Screen: Invite member (nhập email → `POST /api/homes/:id/invite`)
+- [ ] Test: create home → invite → member thấy home
 
 ### 4.4 BLE Provisioning Flow
 
-- [ ] Xin BLE permission (Android: BLUETOOTH_SCAN, BLUETOOTH_CONNECT; iOS: NSBluetoothAlwaysUsageDescription)
-- [ ] Screen: Scan BLE devices → hiển thị list
-- [ ] Connect GATT → subscribe 0xFF03 → write SSID/pass
-- [ ] Hiển thị progress spinner trong khi chờ notify
-- [ ] Nhận `{"ip":"…","status":"ok"}` → gọi `POST /api/devices` → navigate to device detail
-- [ ] Error handling: timeout 30 s, BLE disconnect, wrong credentials
+- [x] Xin BLE permission (Android: BLUETOOTH_SCAN, BLUETOOTH_CONNECT; iOS: NSBluetoothAlwaysUsageDescription)
+- [x] Screen: Scan BLE devices → hiển thị list
+- [x] Connect GATT → subscribe 0xFF03 → write SSID/pass
+- [x] Hiển thị progress spinner trong khi chờ notify
+- [x] Nhận `{"ip":"…","status":"ok"}` → gọi `POST /api/devices` → navigate to device detail
+- [x] Error handling: timeout 30 s, BLE disconnect, wrong credentials
 - [ ] Test: provision real device, app navigate đến device detail screen
 
 ### 4.5 Device Dashboard (Realtime)
 
-- [ ] Connect MQTT over WSS: `wss://yourdomain.com/ws` với JWT auth
-- [ ] Subscribe `device/{id}/status` → update online indicator trong real-time
-- [ ] Subscribe `device/{id}/telemetry` → update temperature/humidity display
-- [ ] Screen: Device detail — hiển thị realtime temp, humidity, online status, last seen
+- [x] Connect MQTT over WSS: `wss://yourdomain.com/ws` với JWT auth
+- [x] Subscribe `device/{id}/status` → update online indicator trong real-time
+- [x] Subscribe `device/{id}/telemetry` → update temperature/humidity display
+- [x] Screen: Device detail — hiển thị realtime temp, humidity, online status, last seen
 - [ ] Test: ESP32 publish telemetry → Flutter nhận và hiển thị trong < 2 s
 
 ### 4.6 Command + Control
 
-- [ ] UI: Toggle switch/button → `POST /api/devices/:id/command`
-- [ ] Hiển thị trạng thái: pending → sent → done/failed
-- [ ] Hiển thị thông báo khi device offline: "Command queued"
-- [ ] Screen: Command history (`GET /api/devices/:id/commands`)
+- [x] UI: Toggle switch/button → `POST /api/devices/:id/command`
+- [x] Hiển thị trạng thái: pending → sent → done/failed
+- [x] Hiển thị thông báo khi device offline: "Command queued"
+- [x] Screen: Command history (`GET /api/devices/:id/commands`)
 - [ ] Test: gửi command online → response nhận → trạng thái cập nhật
 
 ### 4.7 Telemetry Chart
 
-- [ ] Dependency: `fl_chart`
-- [ ] Screen: Telemetry chart — line chart temperature + humidity theo thời gian
-- [ ] Date range picker: 1h / 24h / 7d / custom
-- [ ] Fetch `GET /api/devices/:id/telemetry?from=&to=`
+- [x] Dependency: `fl_chart`
+- [x] Screen: Telemetry chart — line chart temperature + humidity theo thời gian
+- [x] Date range picker: 1h / 24h / 7d
+- [x] Fetch `GET /api/devices/:id/telemetry?from=&to=`
 - [ ] Test: chart hiển thị đúng số điểm, đúng values
 
 ### 4.8 Push Notifications
