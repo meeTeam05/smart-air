@@ -16,18 +16,21 @@ class DeviceChartScreen extends ConsumerStatefulWidget {
 
 class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
   int _rangeIndex = 1; // 0=1h, 1=24h, 2=7d
+  late TelemetryParams _params;
 
   static const _ranges = ['1h', '24h', '7d'];
 
-  TelemetryParams _params() {
+  TelemetryParams _buildParams(int rangeIndex) {
     final now = DateTime.now();
-    final from = switch (_rangeIndex) {
+    final from = switch (rangeIndex) {
       0 => now.subtract(const Duration(hours: 1)),
       1 => now.subtract(const Duration(hours: 24)),
       _ => now.subtract(const Duration(days: 7)),
     };
-    final agg = switch (_rangeIndex) {
-      0 => '1m',
+    // 1h: raw data (device reports every 30s → max 120 pts, no need to aggregate)
+    // 24h: 15m buckets, 7d: 1h buckets
+    final agg = switch (rangeIndex) {
+      0 => null,
       1 => '15m',
       _ => '1h',
     };
@@ -39,11 +42,24 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
     );
   }
 
+  // Fixed x-axis intervals per range so labels are evenly spaced
+  // regardless of how sparse the data is.
+  double _xInterval() => switch (_rangeIndex) {
+        0 => 15 * 60 * 1000.0,   // 1h  → tick every 15 min
+        1 => 6 * 3600 * 1000.0,  // 24h → tick every 6 h
+        _ => 86400 * 1000.0,     // 7d  → tick every 1 day
+      };
+
+  @override
+  void initState() {
+    super.initState();
+    _params = _buildParams(_rangeIndex);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final params = _params();
-    final telemetry = ref.watch(telemetryProvider(params));
+    final telemetry = ref.watch(telemetryProvider(_params));
 
     return Scaffold(
       backgroundColor: c.bg,
@@ -61,7 +77,10 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
               (i) => ButtonSegment(value: i, label: Text(_ranges[i])),
             ),
             selected: {_rangeIndex},
-            onSelectionChanged: (s) => setState(() => _rangeIndex = s.first),
+            onSelectionChanged: (s) => setState(() {
+              _rangeIndex = s.first;
+              _params = _buildParams(_rangeIndex);
+            }),
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -79,21 +98,27 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
                     );
                   }
 
-                  final minTs = points.first.ts.millisecondsSinceEpoch.toDouble();
-                  // Ensure at least 1 minute x-range so the chart renders with 1 data point
-                  final maxTs = (points.last.ts.millisecondsSinceEpoch.toDouble())
-                      .clamp(minTs + 60000, double.infinity);
+                  // Always use the full requested range so the chart shows
+                  // correct temporal context even when data is sparse.
+                  final minX = _params.from!.millisecondsSinceEpoch.toDouble();
+                  final maxX = _params.to!.millisecondsSinceEpoch.toDouble();
+
                   final temps = points.map((p) => p.temperature);
                   final hums = points.map((p) => p.humidity);
                   final minTemp = temps.reduce((a, b) => a < b ? a : b);
+                  final maxTemp = temps.reduce((a, b) => a > b ? a : b);
+                  final minHum = hums.reduce((a, b) => a < b ? a : b);
                   final maxHum = hums.reduce((a, b) => a > b ? a : b);
-                  final minY = (minTemp - 5).clamp(0, 50).toDouble();
-                  final maxY = (maxHum + 5).clamp(0, 100).toDouble();
+                  // Y range must cover both series; pad 5 units each side.
+                  final minY = ((minTemp < minHum ? minTemp : minHum) - 5)
+                      .clamp(0.0, 100.0);
+                  final maxY = ((maxTemp > maxHum ? maxTemp : maxHum) + 5)
+                      .clamp(0.0, 110.0);
 
                   return LineChart(
                     LineChartData(
-                      minX: minTs,
-                      maxX: maxTs,
+                      minX: minX,
+                      maxX: maxX,
                       minY: minY,
                       maxY: maxY,
                       gridData: FlGridData(
@@ -129,7 +154,7 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: 24,
-                            interval: ((maxTs - minTs) / 4).clamp(1000, double.infinity),
+                            interval: _xInterval(),
                             getTitlesWidget: (v, _) {
                               final dt = DateTime.fromMillisecondsSinceEpoch(
                                   v.toInt());
@@ -157,7 +182,7 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
                           isCurved: true,
                           color: AppColors.warning,
                           barWidth: 2,
-                          dotData: const FlDotData(show: false),
+                          dotData: FlDotData(show: points.length <= 10),
                           belowBarData: BarAreaData(
                             show: true,
                             color: AppColors.warning.withValues(alpha: 0.1),
@@ -174,7 +199,7 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
                           isCurved: true,
                           color: AppColors.primary,
                           barWidth: 2,
-                          dotData: const FlDotData(show: false),
+                          dotData: FlDotData(show: points.length <= 10),
                           belowBarData: BarAreaData(
                             show: true,
                             color: AppColors.primary.withValues(alpha: 0.1),

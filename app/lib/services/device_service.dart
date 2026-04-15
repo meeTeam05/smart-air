@@ -114,8 +114,9 @@ class DeviceService {
       final res = await _dio.get('/devices/$deviceId/telemetry',
           queryParameters: {
             'from': (from ?? now.subtract(const Duration(hours: 24)))
+                .toUtc()
                 .toIso8601String(),
-            'to': (to ?? now).toIso8601String(),
+            'to': (to ?? now).toUtc().toIso8601String(),
             if (agg != null) 'agg': agg,
             'limit': limit,
           });
