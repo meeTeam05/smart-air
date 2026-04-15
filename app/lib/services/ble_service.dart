@@ -127,14 +127,25 @@ class BleService {
     _device = BluetoothDevice.fromId(mac);
     try {
       await _device!.connect(timeout: const Duration(seconds: 10), mtu: null);
+      // Request larger MTU so notify payloads (JSON ~70 bytes) arrive in one packet.
+      // Default BLE MTU payload is 20 bytes which fragments our JSON.
+      await _device!.requestMtu(256);
     } catch (e) {
       _device = null;
       throw BleException('Connection failed: $e');
     }
   }
 
-  /// Write SSID and password to provisioning characteristics, then subscribe notify.
-  Future<void> sendCredentials(String ssid, String password) async {
+  /// Write SSID and password to provisioning characteristics, wait for device
+  /// to connect WiFi, then return the device's WiFi STA MAC (device_id).
+  ///
+  /// Keeps BLE connected until the notify arrives (device sends it after
+  /// WiFi connect, up to [timeout]). Throws [BleException] on failure or timeout.
+  Future<String> sendCredentials(
+    String ssid,
+    String password, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
     if (_device == null) throw const BleException('Not connected');
 
     final services = await _device!.discoverServices();
@@ -158,16 +169,51 @@ class BleService {
       throw const BleException('Provisioning characteristics not found');
     }
 
-    // Subscribe notify before writing credentials
+    // Subscribe notify before writing credentials so we don't miss the response
     await notifyChar.setNotifyValue(true);
+    final buffer = StringBuffer();
     notifyChar.onValueReceived.listen((data) {
-      if (!_notifyController.isClosed) {
-        _notifyController.add(utf8.decode(data));
+      buffer.write(utf8.decode(data));
+      // Emit to stream only when we have a complete JSON object
+      final s = buffer.toString();
+      if (s.contains('{') && s.contains('}')) {
+        if (!_notifyController.isClosed) {
+          _notifyController.add(s);
+        }
+        buffer.clear();
       }
     });
 
     await ssidChar.write(utf8.encode(ssid), withoutResponse: false);
     await passChar.write(utf8.encode(password), withoutResponse: false);
+
+    // Wait for the notify — device sends it after WiFi connect attempt
+    final String jsonStr;
+    try {
+      jsonStr = await notifyStream
+          .timeout(timeout, onTimeout: (sink) => sink.close())
+          .first;
+    } catch (_) {
+      throw BleException('Timed out waiting for device response (${timeout.inSeconds}s)');
+    }
+
+    final Map<String, dynamic> result;
+    try {
+      result = jsonDecode(jsonStr) as Map<String, dynamic>;
+    } catch (_) {
+      throw BleException('Invalid response from device: $jsonStr');
+    }
+
+    if (result['status'] != 'ok') {
+      throw BleException('Device failed to connect to WiFi — check password');
+    }
+
+    final deviceId = result['device_id'] as String?;
+    if (deviceId == null || deviceId.isEmpty) {
+      throw BleException('Device did not report its ID');
+    }
+
+    return deviceId;
   }
 
   // ── Connect + read ─────────────────────────────────────────────────────────

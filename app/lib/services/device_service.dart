@@ -34,6 +34,17 @@ class DeviceService {
     }
   }
 
+  /// Returns true when the device has announced itself online via MQTT.
+  /// Poll this after BLE credential write to confirm WiFi connect succeeded.
+  Future<bool> checkAnnounce(String mac) async {
+    try {
+      final res = await _dio.get('/devices/announce/$mac');
+      return (res.data as Map<String, dynamic>)['announced'] == true;
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<List<Device>> getDevices() async {
     try {
       final res = await _dio.get('/devices');
