@@ -37,6 +37,7 @@ extern const uint8_t ca_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 /* ── Driver state ────────────────────────────────────────────────────────── */
 
 static esp_mqtt_client_handle_t s_client = NULL;
+static mqtt_time_sync_cb_t s_time_sync_cb = NULL;
 
 /* Buffers filled once in mqtt_start() and kept alive for the MQTT client/task */
 static char s_broker_uri[128];
@@ -100,7 +101,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         if (topic && payload) {
             ESP_LOGI(TAG, "RX [%s]: %s", topic, payload);
 
-            /* Route: command → ack response */
+            /* Route: command → ack response + dispatch handlers */
             if (strstr(topic, "/command") != NULL) {
                 cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
                 if (root != NULL) {
@@ -115,6 +116,16 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                     } else {
                         ESP_LOGW(TAG, "command message missing command_id");
                     }
+
+                    /* set_time: sync DS3231 RTC from phone timestamp */
+                    cJSON *j_type = cJSON_GetObjectItemCaseSensitive(root, "type");
+                    cJSON *j_ts   = cJSON_GetObjectItemCaseSensitive(root, "ts");
+                    if (cJSON_IsString(j_type) && strcmp(j_type->valuestring, "set_time") == 0
+                        && cJSON_IsNumber(j_ts) && s_time_sync_cb != NULL) {
+                        s_time_sync_cb((uint32_t)j_ts->valuedouble);
+                        ESP_LOGI(TAG, "set_time dispatched: ts=%lu", (unsigned long)(uint32_t)j_ts->valuedouble);
+                    }
+
                     cJSON_Delete(root);
                 } else {
                     ESP_LOGW(TAG, "command message is not valid JSON");
@@ -209,6 +220,11 @@ static void mqtt_task(void *arg)
 }
 
 /* ── Public API ──────────────────────────────────────────────────────────── */
+
+void mqtt_register_time_sync_cb(mqtt_time_sync_cb_t cb)
+{
+    s_time_sync_cb = cb;
+}
 
 esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *secret_key)
 {
