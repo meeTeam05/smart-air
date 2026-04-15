@@ -37,6 +37,18 @@ static const char *TAG = "sysload";
 static sht3x_t s_sht3x_dev;
 static ds3231_t s_ds3231_dev;
 
+/* ── Time sync callback (app → MQTT → DS3231) ───────────────────────────── */
+
+static void on_time_sync(uint32_t ts)
+{
+    esp_err_t err = ds3231_set_timestamp(&s_ds3231_dev, ts);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "DS3231 time updated: %lu", (unsigned long)ts);
+    } else {
+        ESP_LOGW(TAG, "DS3231 set_timestamp failed: %s", esp_err_to_name(err));
+    }
+}
+
 void sysload_init(void)
 {
     /* 0 — LED (init first so status is visible immediately) */
@@ -195,6 +207,9 @@ void sysload_init(void)
             esp_restart();
         }
     }
+
+    /* 9.1 — Register time sync callback (app → MQTT → DS3231) */
+    mqtt_register_time_sync_cb(on_time_sync);
 
     /* Resolve display device_id once: use config value or fall back to MAC */
     char resolved_id[64] = {0};
