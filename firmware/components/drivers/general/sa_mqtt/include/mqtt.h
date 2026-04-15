@@ -10,6 +10,23 @@
 
 #include "esp_err.h"
 #include <stdbool.h>
+#include <stdint.h>
+
+/**
+ * @brief Callback invoked when a set_time command is received from the app.
+ *        The implementation should write the timestamp to the DS3231 RTC.
+ *
+ * @param ts Unix timestamp in seconds (from phone).
+ */
+typedef void (*mqtt_time_sync_cb_t)(uint32_t ts);
+
+/**
+ * @brief Register a callback to be called when a set_time command arrives.
+ *        Call once from sysload_init() after DS3231 is initialised.
+ *
+ * @param cb Callback function pointer. Pass NULL to deregister.
+ */
+void mqtt_register_time_sync_cb(mqtt_time_sync_cb_t cb);
 
 /**
  * @brief Start the MQTT client and connect to the broker asynchronously.
@@ -43,3 +60,15 @@ esp_err_t mqtt_start(const char *broker_uri,
  * @return Message ID (>= 0) on success, -1 if client not ready.
  */
 int mqtt_publish(const char *topic, const char *payload, int qos, bool retain);
+
+/**
+ * @brief Stop and destroy the MQTT client.
+ *
+ * Publishes the offline LWT is handled automatically by the broker on disconnect.
+ * Call before factory reset or any clean-shutdown sequence that precedes esp_restart().
+ *
+ * Safe to call if mqtt_start() was never called (no-op when client is NULL).
+ *
+ * @return ESP_OK always.
+ */
+esp_err_t mqtt_stop(void);

@@ -112,10 +112,11 @@ static void sensor_task_fn(void *arg)
                 ESP_LOGW(TAG, "mqtt_publish failed — MQTT not ready yet");
             }
 
-            /* Shadow report — current sensor state for device shadow sync */
-            char shadow[64];
+            /* Shadow report — current sensor state + device timestamp */
+            char shadow[96];
             snprintf(shadow, sizeof(shadow),
-                     "{\"temperature\":%.1f,\"humidity\":%.1f}", temperature, humidity);
+                     "{\"temperature\":%.1f,\"humidity\":%.1f,\"ts\":%lu}",
+                     temperature, humidity, (unsigned long)timestamp);
             mqtt_publish(shadow_topic, shadow, 1, false);
         }
 

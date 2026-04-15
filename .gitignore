@@ -6,6 +6,7 @@ firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/tools/**/sdkconfig
 firmware/tools/**/sdkconfig.old
+firmware/managed_components
 
 # Hardware / KiCad local artifacts
 hardware/**/fp-info-cache
@@ -25,3 +26,6 @@ TODO.md
 # Server secrets
 server/.env
 server/api/.env
+
+# Others
+.env

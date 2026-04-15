@@ -33,13 +33,14 @@ typedef struct {
 } led_color_t;
 
 static const led_color_t s_color_table[] = {
-    [LED_STATE_BOOT]   = {80,  80,  80,  true},  /* white  blink  */
-    [LED_STATE_BLE]    = {0,   0,   180, true},  /* blue   blink  */
-    [LED_STATE_WIFI]   = {200, 180, 0,   true},  /* yellow blink  */
-    [LED_STATE_ONLINE] = {0,   180, 0,   false}, /* green  static */
-    [LED_STATE_OTA]    = {120, 0,   120, true},  /* purple blink  */
-    [LED_STATE_ERROR]  = {180, 0,   0,   false}, /* red    static */
-    [LED_STATE_OFF]    = {0,   0,   0,   false},
+    [LED_STATE_BOOT]          = {80,  80,  80,  true},  /* white  blink  */
+    [LED_STATE_BLE]           = {0,   0,   180, true},  /* blue   blink  */
+    [LED_STATE_WIFI]          = {200, 180, 0,   true},  /* yellow blink  */
+    [LED_STATE_ONLINE]        = {0,   180, 0,   false}, /* green  static */
+    [LED_STATE_OTA]           = {120, 0,   120, true},  /* purple blink  */
+    [LED_STATE_ERROR]         = {180, 0,   0,   false}, /* red    static — fatal   */
+    [LED_STATE_FACTORY_RESET] = {180, 0,   0,   true},  /* red    blink  — cancellable */
+    [LED_STATE_OFF]           = {0,   0,   0,   false},
 };
 
 /* ── Driver state ────────────────────────────────────────────────────────── */

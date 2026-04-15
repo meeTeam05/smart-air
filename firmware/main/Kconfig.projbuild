@@ -81,4 +81,20 @@ menu "Smart Air Configuration"
             TCP port for the device's built-in HTTP API server.
             Endpoints: GET /api/info, POST /api/config.
 
+    config SA_FACTORY_RESET_PIN
+        int "Factory reset button GPIO"
+        default 0
+        help
+            GPIO number for the factory reset button. Active-low with internal
+            pull-up enabled by the driver. GPIO 0 = BOOT button on ESP32-S3-DevKitC-1.
+
+    config SA_FACTORY_RESET_HOLD_MS
+        int "Factory reset hold duration (ms)"
+        default 5000
+        range 3000 10000
+        help
+            How long the button must be continuously held to trigger a factory reset.
+            LED blinks red after 1 s of holding as feedback to the user.
+            Release before this threshold to cancel without any side effects.
+
 endmenu

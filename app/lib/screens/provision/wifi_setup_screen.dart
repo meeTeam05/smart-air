@@ -1,13 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app_theme.dart';
+import '../../core/app_exception.dart';
 import '../../providers/devices_provider.dart';
 import '../../services/ble_service.dart';
+import '../../services/device_service.dart';
 
 class WifiSetupScreen extends ConsumerStatefulWidget {
   const WifiSetupScreen(
@@ -23,7 +24,6 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
   final _bleService = BleService();
   final _ssidCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController();
   bool _provisioning = false;
   String _status = '';
 
@@ -31,7 +31,6 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
   void dispose() {
     _ssidCtrl.dispose();
     _passCtrl.dispose();
-    _nameCtrl.dispose();
     _bleService.disconnect();
     super.dispose();
   }
@@ -45,68 +44,59 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
     });
 
     try {
-      // Connect via BLE
+      // Step 1 — BLE: send credentials, wait for device to connect WiFi.
+      // sendCredentials() keeps BLE alive and returns the device's WiFi STA MAC
+      // (device_id) once the notify arrives (device connected to WiFi successfully).
       await _bleService.connect(widget.mac);
       setState(() => _status = 'Sending WiFi credentials…');
+      final deviceId =
+          await _bleService.sendCredentials(_ssidCtrl.text, _passCtrl.text);
+      await _bleService.disconnect();
 
-      // Send credentials via GATT
-      await _bleService.sendCredentials(_ssidCtrl.text, _passCtrl.text);
-      setState(() => _status = 'Waiting for device to connect… (30s)');
+      // Step 2 — Device connected WiFi; poll backend until MQTT status arrives.
+      // The firmware connects MQTT → publishes online status.
+      // Server MQTT bridge stores announcement in Redis (TTL 5 min).
+      setState(() => _status = 'Waiting for device to come online…');
+      final deviceService = ref.read(deviceServiceProvider);
+      bool announced = false;
+      const pollInterval = Duration(seconds: 3);
+      const maxWait = Duration(seconds: 60);
+      final deadline = DateTime.now().add(maxWait);
 
-      // Wait for notify with timeout
-      final json = await _bleService.notifyStream
-          .timeout(const Duration(seconds: 30))
-          .firstWhere((msg) => msg.contains('"status"'));
+      while (DateTime.now().isBefore(deadline)) {
+        await Future.delayed(pollInterval);
+        announced = await deviceService.checkAnnounce(deviceId);
+        if (announced) break;
+      }
 
-      final data = jsonDecode(json) as Map<String, dynamic>;
-      if (data['status'] != 'ok') throw Exception('Provisioning failed');
+      if (!announced) {
+        throw Exception(
+            'Device did not come online — check WiFi password and try again');
+      }
 
+      // Step 3 — Device is online; register with MAC as default name.
+      if (!mounted) return;
       setState(() => _status = 'Registering device…');
-
-      // Ask for device name
-      final name = await _askDeviceName();
-      if (name == null || !mounted) return;
-
-      await ref.read(devicesProvider.notifier).register(
-            deviceId: widget.mac,
-            name: name,
-            homeId: widget.homeId,
-          );
+      try {
+        await ref.read(devicesProvider.notifier).register(
+              deviceId: deviceId,
+              name: 'Smart Air ${deviceId.substring(deviceId.length - 5).toUpperCase()}',
+              homeId: widget.homeId,
+            );
+      } on ApiException catch (e) {
+        // 409 = device already registered — treat as success and navigate
+        if (e.statusCode != 409) rethrow;
+      }
 
       if (mounted) {
-        context.go('/devices/${Uri.encodeComponent(widget.mac)}');
+        context.go('/homes/${widget.homeId}');
       }
-    } on TimeoutException {
-      _showError('Timed out — device did not respond in 30 seconds');
     } catch (e) {
       _showError(e.toString());
     } finally {
       await _bleService.disconnect();
       if (mounted) setState(() => _provisioning = false);
     }
-  }
-
-  Future<String?> _askDeviceName() async {
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text('Name this device'),
-        content: TextField(
-          controller: _nameCtrl,
-          autofocus: true,
-          decoration:
-              const InputDecoration(hintText: 'e.g. Living Room Air Monitor'),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, _nameCtrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showError(String msg) {

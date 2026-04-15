@@ -39,6 +39,10 @@ async function mqttPlugin(fastify) {
                     'UPDATE devices SET online = $1, last_seen = NOW() WHERE id = $2',
                     [payload.online === true, deviceId]
                 );
+                // Store announcement for provisioning poll (works for new and re-provisioned devices)
+                if (payload.online === true) {
+                    await fastify.redis.set(`announce:${deviceId}`, '1', 'EX', 300);
+                }
                 if (payload.online === true) {
                     await flushPending(fastify, deviceId);
                     // Push current desired state to device

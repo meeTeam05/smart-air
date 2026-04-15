@@ -10,8 +10,12 @@ export default async function devicesRoutes(fastify) {
         const userId = request.user.sub;
         const { device_id, name, home_id, room_id } = request.body || {};
         const normalizedDeviceId = normalizeDeviceId(device_id);
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!normalizedDeviceId || !name || !home_id) {
             return reply.code(400).send({ error: 'device_id, name, home_id required' });
+        }
+        if (!uuidRe.test(home_id)) {
+            return reply.code(400).send({ error: 'home_id must be a valid UUID' });
         }
 
         // Verify caller is a member of the home
@@ -49,6 +53,16 @@ export default async function devicesRoutes(fastify) {
         }
 
         return reply.code(201).send({ ...device, secret_key: secretKey });
+    });
+
+    // GET /api/devices/announce/:mac — provisioning poll: has device announced itself online?
+    // Returns {announced: true} when MQTT bridge saw the device come online.
+    // The record disappears after 5 minutes so stale announcements don't linger.
+    fastify.get('/devices/announce/:mac', auth, async (request, reply) => {
+        const deviceId = normalizeDeviceId(request.params.mac);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid mac' });
+        const announced = await fastify.redis.get(`announce:${deviceId}`);
+        return { announced: !!announced };
     });
 
     // GET /api/devices

@@ -39,12 +39,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
       GoRoute(path: '/homes', builder: (_, __) => const HomesScreen()),
+      GoRoute(path: '/homes/create', builder: (_, __) => const CreateHomeScreen()),
       GoRoute(
         path: '/homes/:homeId',
         builder: (_, state) =>
             HomeDetailScreen(homeId: state.pathParameters['homeId']!),
       ),
-      GoRoute(path: '/homes/create', builder: (_, __) => const CreateHomeScreen()),
       GoRoute(
         path: '/provision/scan',
         builder: (_, state) =>

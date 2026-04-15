@@ -5,8 +5,9 @@ set(EXTRA_COMPONENT_DIRS
     components/core
     components/drivers/general/ble_prov
     components/drivers/general/wifi
-    components/drivers/general/mqtt
+    components/drivers/general/sa_mqtt
     components/drivers/general/led
+    components/drivers/general/factory_reset
     components/drivers/general/buzzer
     components/drivers/general/dns
     components/drivers/i2c_bus

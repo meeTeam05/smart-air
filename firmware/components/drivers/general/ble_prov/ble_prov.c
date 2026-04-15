@@ -69,13 +69,13 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
                     /* 0xFF01 — SSID write */
                     .uuid = &SSID_CHR_UUID.u,
                     .access_cb = prov_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE_NO_RSP,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
                 },
                 {
                     /* 0xFF02 — Password write */
                     .uuid = &PASS_CHR_UUID.u,
                     .access_cb = prov_chr_access,
-                    .flags = BLE_GATT_CHR_F_WRITE_NO_RSP,
+                    .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
                 },
                 {
                     /* 0xFF03 — Status notify */
@@ -156,7 +156,12 @@ static void prov_task(void *arg)
     if (err == ESP_OK) {
         char ip[16] = {0};
         wifi_sta_get_ip(ip, sizeof(ip));
-        snprintf(json, sizeof(json), "{\"ip\":\"%s\",\"status\":\"ok\"}", ip);
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_WIFI_STA);
+        char mac_str[18];
+        snprintf(mac_str, sizeof(mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        snprintf(json, sizeof(json), "{\"ip\":\"%s\",\"device_id\":\"%s\",\"status\":\"ok\"}", ip, mac_str);
         save_credentials(s_ssid, s_password);
         ESP_LOGI(TAG, "Provisioning OK — IP: %s", ip);
     } else {

@@ -17,6 +17,7 @@ idf_component_register(
     sht3x
     ds3231
     led
+    factory_reset
     httpd
     ota
 )

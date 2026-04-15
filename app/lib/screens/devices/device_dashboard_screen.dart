@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app_theme.dart';
+import '../../models/device.dart';
 import '../../providers/devices_provider.dart';
+import '../../services/device_service.dart';
 import '../../widgets/async_value_widget.dart';
 
 class DeviceDashboardScreen extends ConsumerStatefulWidget {
@@ -20,13 +22,21 @@ class DeviceDashboardScreen extends ConsumerStatefulWidget {
 class _DeviceDashboardScreenState
     extends ConsumerState<DeviceDashboardScreen> {
   Timer? _timer;
+  Device? _device; // cache — prevents flicker when devicesProvider reloads
 
   @override
   void initState() {
     super.initState();
-    // Auto-refresh shadow every 10s
+    // Refresh device status once on enter (updates online field)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(devicesProvider);
+    });
+    // Auto-refresh shadow + device status every 10s.
+    // devicesProvider invalidate is safe here — _device cache prevents UI flicker.
     _timer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted) return;
       ref.read(shadowProvider(widget.deviceId).notifier).refresh();
+      ref.invalidate(devicesProvider);
     });
   }
 
@@ -36,14 +46,46 @@ class _DeviceDashboardScreenState
     super.dispose();
   }
 
-  Future<void> _sendCommand(Map<String, dynamic> payload) async {
+  Future<void> _removeDevice() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Remove device'),
+        content: const Text(
+            'This will unlink the device from your account. You can re-add it later by provisioning again.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     try {
+      await ref.read(devicesProvider.notifier).delete(widget.deviceId);
+      if (mounted) context.go('/homes');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Future<void> _syncTime() async {
+    try {
+      final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       await ref
-          .read(commandsProvider(widget.deviceId).notifier)
-          .send(payload);
+          .read(deviceServiceProvider)
+          .sendCommand(widget.deviceId, {'type': 'set_time', 'ts': ts});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Command sent')),
+          const SnackBar(content: Text('Time synced')),
         );
       }
     } catch (e) {
@@ -58,11 +100,17 @@ class _DeviceDashboardScreenState
   Widget build(BuildContext context) {
     final c = context.colors;
     final shadow = ref.watch(shadowProvider(widget.deviceId));
-    final devices = ref.watch(devicesProvider);
 
-    final device = devices.valueOrNull
+    // Update cache when fresh data arrives — never resets to null mid-reload
+    final freshDevice = ref
+        .watch(devicesProvider)
+        .valueOrNull
         ?.where((d) => d.id == widget.deviceId)
         .firstOrNull;
+    if (freshDevice != null) _device = freshDevice;
+    final device = _device;
+
+    final deviceTs = shadow.valueOrNull?.reported['ts'] as num?;
 
     return Scaffold(
       backgroundColor: c.bg,
@@ -81,18 +129,50 @@ class _DeviceDashboardScreenState
             onPressed: () =>
                 context.push('/devices/${widget.deviceId}/commands'),
           ),
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'sync_time') await _syncTime();
+              if (value == 'remove') await _removeDevice();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'sync_time',
+                child: Row(
+                  children: [
+                    Icon(Icons.access_time),
+                    SizedBox(width: 8),
+                    Text('Sync device time'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'remove',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Remove device', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () =>
+        onRefresh: () async {
+          await Future.wait([
             ref.read(shadowProvider(widget.deviceId).notifier).refresh(),
+            ref.refresh(devicesProvider.future),
+          ]);
+        },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Online status
+              // Online status + device time
               if (device != null)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -101,31 +181,43 @@ class _DeviceDashboardScreenState
                     color: c.surface,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(
-                        radius: 6,
-                        backgroundColor: device.online
-                            ? AppColors.online
-                            : AppColors.offline,
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 6,
+                            backgroundColor: device.online
+                                ? AppColors.online
+                                : AppColors.offline,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            device.online ? 'Online' : 'Offline',
+                            style: TextStyle(
+                              color: device.online
+                                  ? AppColors.online
+                                  : c.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (device.lastSeen != null)
+                            Text(
+                              'Last seen ${_relativeTime(device.lastSeen!)}',
+                              style: TextStyle(
+                                  color: c.textSecondary, fontSize: 12),
+                            ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        device.online ? 'Online' : 'Offline',
-                        style: TextStyle(
-                          color: device.online
-                              ? AppColors.online
-                              : c.textSecondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (device.lastSeen != null)
+                      if (deviceTs != null && deviceTs.toInt() > 1704067200) ...[
+                        const SizedBox(height: 4),
                         Text(
-                          'Last seen ${_relativeTime(device.lastSeen!)}',
-                          style: TextStyle(
-                              color: c.textSecondary, fontSize: 12),
+                          'Device time: ${_formatDeviceTime(deviceTs.toInt())}',
+                          style: TextStyle(color: c.textSecondary, fontSize: 11),
                         ),
+                      ],
                     ],
                   ),
                 ),
@@ -156,28 +248,6 @@ class _DeviceDashboardScreenState
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-
-              // Quick commands
-              Text('Controls',
-                  style: TextStyle(
-                      color: c.textPrimary, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: device?.online == true
-                    ? () => _sendCommand({'power': true})
-                    : null,
-                icon: const Icon(Icons.power_settings_new),
-                label: const Text('Power On'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: device?.online == true
-                    ? () => _sendCommand({'power': false})
-                    : null,
-                icon: const Icon(Icons.power_off),
-                label: const Text('Power Off'),
-              ),
             ],
           ),
         ),
@@ -190,6 +260,13 @@ class _DeviceDashboardScreenState
     if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     return '${diff.inHours}h ago';
+  }
+
+  String _formatDeviceTime(int unixSec) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
+    return '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')} '
+        '${dt.day}/${dt.month}/${dt.year}';
   }
 }
 
