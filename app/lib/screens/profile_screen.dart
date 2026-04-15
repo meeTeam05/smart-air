@@ -242,7 +242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 Divider(height: 0, color: c.border),
                 SwitchListTile(
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   title: Text('Enable notifications',
                       style: TextStyle(color: c.textPrimary)),
                   subtitle: Text('Receive alerts from devices',

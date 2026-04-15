@@ -412,12 +412,12 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
           Divider(color: c.border, height: 0),
           const SizedBox(height: 10),
 
-          Row(
+          const Row(
             children: [
               _InfoChip(icon: Icons.memory, label: 'ESP32-S3'),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               _InfoChip(icon: Icons.bluetooth, label: 'BLE 5.0'),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               _InfoChip(icon: Icons.wifi, label: 'Wi-Fi 4'),
             ],
           ),

@@ -1,23 +1,29 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'ble_models.dart';
 
-/// Singleton that owns the full BLE lifecycle for Smart Air test mode.
+/// Singleton that owns the full BLE lifecycle for Smart Air provisioning + test mode.
 ///
-/// Usage:
+/// Usage (provisioning):
 /// ```dart
-/// final service = BleService.instance;
-/// await service.ensurePermissions();   // request runtime perms
-/// await for (final r in service.scan()) { ... }
-/// final snap = await service.connectAndRead(deviceInfo);
-/// service.dispose();
+/// final service = BleService();
+/// await service.ensurePermissions();
+/// service.scan().listen(...);
+/// await service.connect(mac);
+/// await service.sendCredentials(ssid, pass);
+/// final json = await service.notifyStream.timeout(...).firstWhere(...);
+/// await service.disconnect();
 /// ```
 class BleService {
   BleService._();
   static final instance = BleService._();
+
+  // Allow constructing non-singleton instances for screens that manage lifecycle
+  factory BleService() => instance;
 
   BluetoothDevice? _device;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
@@ -107,6 +113,62 @@ class BleService {
 
   /// Stop an in-progress scan early.
   Future<void> stopScan() => FlutterBluePlus.stopScan();
+
+  // ── Provisioning ───────────────────────────────────────────────────────────
+
+  final _notifyController = StreamController<String>.broadcast();
+
+  /// Stream of JSON strings received on the notify characteristic (0xFF03).
+  Stream<String> get notifyStream => _notifyController.stream;
+
+  /// Connect to a device by MAC address for provisioning.
+  Future<void> connect(String mac) async {
+    await disconnect();
+    _device = BluetoothDevice.fromId(mac);
+    try {
+      await _device!.connect(timeout: const Duration(seconds: 10), mtu: null);
+    } catch (e) {
+      _device = null;
+      throw BleException('Connection failed: $e');
+    }
+  }
+
+  /// Write SSID and password to provisioning characteristics, then subscribe notify.
+  Future<void> sendCredentials(String ssid, String password) async {
+    if (_device == null) throw const BleException('Not connected');
+
+    final services = await _device!.discoverServices();
+    final svc = services.firstWhere(
+      (s) => s.uuid.str128.toLowerCase() == SmartAirGatt.serviceUuid,
+      orElse: () => throw const BleException('Provisioning service not found'),
+    );
+
+    BluetoothCharacteristic? ssidChar;
+    BluetoothCharacteristic? passChar;
+    BluetoothCharacteristic? notifyChar;
+
+    for (final c in svc.characteristics) {
+      final uuid = c.uuid.str128.toLowerCase();
+      if (uuid == SmartAirGatt.provSsidCharUuid) ssidChar = c;
+      if (uuid == SmartAirGatt.provPassCharUuid) passChar = c;
+      if (uuid == SmartAirGatt.provNotifyCharUuid) notifyChar = c;
+    }
+
+    if (ssidChar == null || passChar == null || notifyChar == null) {
+      throw const BleException('Provisioning characteristics not found');
+    }
+
+    // Subscribe notify before writing credentials
+    await notifyChar.setNotifyValue(true);
+    notifyChar.onValueReceived.listen((data) {
+      if (!_notifyController.isClosed) {
+        _notifyController.add(utf8.decode(data));
+      }
+    });
+
+    await ssidChar.write(utf8.encode(ssid), withoutResponse: false);
+    await passChar.write(utf8.encode(password), withoutResponse: false);
+  }
 
   // ── Connect + read ─────────────────────────────────────────────────────────
 

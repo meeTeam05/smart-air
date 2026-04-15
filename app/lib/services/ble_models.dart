@@ -4,14 +4,19 @@
 
 // ── GATT UUIDs ────────────────────────────────────────────────────────────────
 
-/// Placeholder UUIDs — replace with actual values from ESP32-S3 firmware.
+/// UUIDs verified against firmware/components/drivers/general/ble_prov/ble_prov.c
 class SmartAirGatt {
   SmartAirGatt._();
 
-  // TODO: Replace with real UUIDs from firmware GATT server
-  static const String serviceUuid = '0000ffe0-0000-1000-8000-00805f9b34fb';
+  // Provisioning service — firmware: BLE_UUID16_INIT(0xFFFE)
+  static const String serviceUuid = '0000fffe-0000-1000-8000-00805f9b34fb';
+  // Sensor read characteristics (test mode — placeholder, not used in provisioning)
   static const String tempCharUuid = '0000ffe1-0000-1000-8000-00805f9b34fb';
   static const String humCharUuid = '0000ffe2-0000-1000-8000-00805f9b34fb';
+  // Provisioning characteristics — firmware: FF01, FF02, FF03
+  static const String provSsidCharUuid = '0000ff01-0000-1000-8000-00805f9b34fb';
+  static const String provPassCharUuid = '0000ff02-0000-1000-8000-00805f9b34fb';
+  static const String provNotifyCharUuid = '0000ff03-0000-1000-8000-00805f9b34fb';
 
   // Firmware advertises as 'SMART_AIR_<last 3 MAC bytes hex>', e.g. 'SMART_AIR_13ED8C'
   static const String deviceNamePrefix = 'SMART_AIR_';
