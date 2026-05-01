@@ -6,8 +6,7 @@
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
-#ifndef _WIFI_H
-#define _WIFI_H
+#pragma once
 
 #include "esp_err.h"
 #include <stdbool.h>
@@ -52,5 +51,3 @@ void wifi_sta_get_ip(char *buf, size_t len);
  * @return ESP_OK on success, or an error code.
  */
 esp_err_t wifi_sta_deinit(void);
-
-#endif /* _WIFI_H */

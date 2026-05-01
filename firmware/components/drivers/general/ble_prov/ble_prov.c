@@ -93,10 +93,10 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
 static void save_credentials(const char *ssid, const char *password)
 {
     nvs_handle_t h;
-    ESP_ERROR_CHECK(nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h));
-    ESP_ERROR_CHECK(nvs_set_str(h, NVS_KEY_SSID, ssid));
-    ESP_ERROR_CHECK(nvs_set_str(h, NVS_KEY_PASS, password));
-    ESP_ERROR_CHECK(nvs_set_u8(h, NVS_KEY_DONE, 1));
+    ESP_ERROR_CHECK(nvs_open(SA_NVS_WIFI_NAMESPACE, NVS_READWRITE, &h));
+    ESP_ERROR_CHECK(nvs_set_str(h, SA_NVS_KEY_SSID, ssid));
+    ESP_ERROR_CHECK(nvs_set_str(h, SA_NVS_KEY_PASS, password));
+    ESP_ERROR_CHECK(nvs_set_u8(h, SA_NVS_KEY_DONE, 1));
     ESP_ERROR_CHECK(nvs_commit(h));
     nvs_close(h);
     ESP_LOGI(TAG, "Credentials saved to NVS");
@@ -149,7 +149,7 @@ static void prov_task(void *arg)
 
     ESP_LOGI(TAG, "Attempting WiFi connect to SSID: %s", s_ssid);
 
-    esp_err_t err = wifi_sta_connect(s_ssid, s_password, 15000);
+    esp_err_t err = wifi_sta_connect(s_ssid, s_password, CONFIG_SA_WIFI_CONNECT_TIMEOUT_MS);
 
     /* Build JSON status payload */
     char json[80];
@@ -275,11 +275,11 @@ static void nimble_host_task(void *param)
 bool ble_prov_is_provisioned(void)
 {
     nvs_handle_t h;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
+    if (nvs_open(SA_NVS_WIFI_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
         return false;
     }
     uint8_t flag = 0;
-    nvs_get_u8(h, NVS_KEY_DONE, &flag);
+    nvs_get_u8(h, SA_NVS_KEY_DONE, &flag);
     nvs_close(h);
     return flag == 1;
 }
@@ -296,7 +296,10 @@ esp_err_t ble_prov_start(void)
 
     /* Provisioning task — waits for credentials then connects WiFi */
     BaseType_t rc = xTaskCreatePinnedToCore(prov_task, "ble_prov_t", 4096, NULL, 5, &s_prov_task_handle, APP_CPU_NUM);
-    configASSERT(rc == pdPASS);
+    if (rc != pdPASS) {
+        ESP_LOGE(TAG, "prov_task create failed — insufficient heap");
+        return ESP_ERR_NO_MEM;
+    }
 
     /* Init NimBLE host + GATT */
     nimble_port_init();
@@ -331,17 +334,17 @@ void ble_prov_stop(void)
 esp_err_t ble_prov_load_credentials(char *ssid_buf, size_t ssid_len, char *pass_buf, size_t pass_len)
 {
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    esp_err_t err = nvs_open(SA_NVS_WIFI_NAMESPACE, NVS_READONLY, &h);
     if (err != ESP_OK)
         return err;
 
-    err = nvs_get_str(h, NVS_KEY_SSID, ssid_buf, &ssid_len);
+    err = nvs_get_str(h, SA_NVS_KEY_SSID, ssid_buf, &ssid_len);
     if (err != ESP_OK) {
         nvs_close(h);
         return err;
     }
 
-    err = nvs_get_str(h, NVS_KEY_PASS, pass_buf, &pass_len);
+    err = nvs_get_str(h, SA_NVS_KEY_PASS, pass_buf, &pass_len);
     nvs_close(h);
     return err;
 }
@@ -349,7 +352,7 @@ esp_err_t ble_prov_load_credentials(char *ssid_buf, size_t ssid_len, char *pass_
 esp_err_t ble_prov_reset(void)
 {
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    esp_err_t err = nvs_open(SA_NVS_WIFI_NAMESPACE, NVS_READWRITE, &h);
     if (err != ESP_OK)
         return err;
 

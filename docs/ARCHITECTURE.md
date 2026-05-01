@@ -97,13 +97,13 @@ CLK / CMD / D0–D3           CLK / MOSI / MISO / CS
 
 ## Layer 2 — Firmware (`firmware/`)
 
-ESP-IDF v5.x + FreeRTOS. Entry point: `firmware/main/main.c` → `void app_main(void)` → `systemLaunch()`.
+ESP-IDF v5.x + FreeRTOS. Entry point: `firmware/main/main.c` → `void app_main(void)` → `sysload_init()`.
 
 ### Boot Sequence
 
 ```
 app_main()
-  └── systemLaunch()
+  └── sysload_init()
         ├── nvs_init()              — init NVS flash
         ├── i2c_bus_init()          — shared I2C master (400 kHz)
         ├── spi_bus_init()          — shared SPI2_HOST
@@ -168,13 +168,13 @@ firmware/
     └── ota/                            ← HTTPS OTA + rollback + validate task
 ```
 
-> **Component status (2026-04-13):** Hầu hết là stub. Chỉ `dns.c` có implementation thực chất. Xem `tasks/knowledge.md` để biết trạng thái từng component.
+> **Component status (2026-04-13):** Hầu hết là stub. Chỉ `dns.c` có implementation thực chất. Xem `TODO.md` để biết trạng thái từng component.
 
 ### FreeRTOS Task Map
 
 | Task           | Core | Priority | Stack (B) | Role                               |
 | -------------- | ---- | -------- | --------- | ---------------------------------- |
-| `prov_task`    | 1    | 7        | 4096      | BLE provisioning (one-shot)        |
+| `prov_task`    | 1    | 5        | 4096      | BLE provisioning (one-shot)        |
 | `mqtt_task`    | 1    | 6        | 6144      | Publish telemetry, handle commands |
 | `sensor_task`  | 1    | 5        | 4096      | Poll SHT3x + DS3231 every 30 s     |
 | `display_task` | 0    | 4        | 8192      | Render UI on ST7789                |
@@ -514,7 +514,7 @@ App               API           Redis/DB            ESP32
  │                │             │←───────online msg──│
  │                │             ├─flush pending cmds→│
  │                │             │                    ├─execute
- │←─notification──│←────────────────────────────────│
+ │←─notification──│←─────────────────────────────────│
 ```
 
 ---
@@ -581,16 +581,16 @@ Flutter (iOS + Android). Adaptive theming qua `AppPalette` — all colors via `c
 
 ## Directory Reference
 
-| Path                    | Contents                                         |
-| ----------------------- | ------------------------------------------------ |
-| `firmware/`             | ESP-IDF v5.x source — components, main           |
-| `app/`                  | Flutter app — iOS + Android                      |
-| `hardware/`             | KiCad v8 schematics + PCB                        |
-| `docs/`                 | ARCHITECTURE, CONSTRAINTS, DECISIONS             |
-| `TODO.md`               | Active tasks and in-progress session notes       |
-| `.claude/agents/`       | Specialized agent definitions (load on demand)   |
-| `.claude/skills/`       | Domain skill files (load on demand)              |
-| `.claude/knowledge/`    | Long-term wiki + raw research + agent output     |
+| Path                 | Contents                                       |
+| -------------------- | ---------------------------------------------- |
+| `firmware/`          | ESP-IDF v5.x source — components, main         |
+| `app/`               | Flutter app — iOS + Android                    |
+| `hardware/`          | KiCad v8 schematics + PCB                      |
+| `docs/`              | ARCHITECTURE, CONSTRAINTS, DECISIONS           |
+| `TODO.md`            | Active tasks and in-progress session notes     |
+| `.claude/agents/`    | Specialized agent definitions (load on demand) |
+| `.claude/skills/`    | Domain skill files (load on demand)            |
+| `.claude/knowledge/` | Long-term wiki + raw research + agent output   |
 
 ---
 

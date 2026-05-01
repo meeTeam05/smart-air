@@ -16,6 +16,7 @@
 
 #include "ota.h"
 
+#include "config.h"
 #include "esp_https_ota.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -25,16 +26,12 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include <strings.h>
 
 /* Forward declaration — resolved at link time from sa_mqtt component (no CMake dep needed) */
 extern int mqtt_publish(const char *topic, const char *payload, int qos, bool retain);
 
 static const char *TAG = "ota";
-
-/* ── Embedded CA certificate ─────────────────────────────────────────────── */
-
-extern const uint8_t ca_cert_pem_start[] asm("_binary_ca_cert_pem_start");
-extern const uint8_t ca_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 
 /* ── Driver state ────────────────────────────────────────────────────────── */
 
@@ -115,6 +112,31 @@ static void ota_task_fn(void *arg)
             esp_https_ota_abort(ota_handle);
             publish_progress(0, "failed");
             continue;
+        }
+
+        /* Validate SHA256 BEFORE finish() — finish() changes the boot pointer,
+         * so a mismatch detected after finish() would leave boot targeting a bad image.
+         * Verify against the next-update partition (where OTA wrote data). */
+        if (msg.sha256[0] != '\0') {
+            const esp_partition_t *target = esp_ota_get_next_update_partition(NULL);
+            uint8_t digest[32];
+            if (target == NULL || esp_partition_get_sha256(target, digest) != ESP_OK) {
+                ESP_LOGE(TAG, "SHA256 read failed — rejecting OTA image");
+                esp_https_ota_abort(ota_handle);
+                publish_progress(0, "failed");
+                continue;
+            }
+            char actual_hex[65];
+            for (int i = 0; i < 32; i++) {
+                sprintf(&actual_hex[i * 2], "%02x", digest[i]);
+            }
+            if (strcasecmp(actual_hex, msg.sha256) != 0) {
+                ESP_LOGE(TAG, "SHA256 mismatch — expected %s, got %s", msg.sha256, actual_hex);
+                esp_https_ota_abort(ota_handle);
+                publish_progress(0, "sha256_mismatch");
+                continue;
+            }
+            ESP_LOGI(TAG, "SHA256 verified: %s", actual_hex);
         }
 
         err = esp_https_ota_finish(ota_handle);

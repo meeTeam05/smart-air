@@ -29,20 +29,31 @@ static EventGroupHandle_t s_wifi_eg;
 static esp_netif_t *s_netif;
 static char s_ip[16];
 static bool s_initialized;
+static int s_reconnect_count;
+
+#define WIFI_MAX_RECONNECT_ATTEMPTS 10
 
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        /* Signal failure — reconnect strategy is the caller's responsibility;
-         * never call esp_wifi_connect() directly inside the event handler. */
+        xEventGroupClearBits(s_wifi_eg, WIFI_CONNECTED_BIT);
         xEventGroupSetBits(s_wifi_eg, WIFI_FAIL_BIT);
-        ESP_LOGW(TAG, "Disconnected from AP");
+
+        if (s_reconnect_count < WIFI_MAX_RECONNECT_ATTEMPTS) {
+            s_reconnect_count++;
+            ESP_LOGW(TAG, "Disconnected — reconnect attempt %d/%d",
+                     s_reconnect_count, WIFI_MAX_RECONNECT_ATTEMPTS);
+            esp_wifi_connect();
+        } else {
+            ESP_LOGE(TAG, "Disconnected — max reconnect attempts reached, giving up");
+        }
 
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-        /* "Connected" only after we actually have an IP */
         ip_event_got_ip_t *ev = (ip_event_got_ip_t *)data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&ev->ip_info.ip));
         ESP_LOGI(TAG, "Got IP: %s", s_ip);
+        s_reconnect_count = 0;
+        xEventGroupClearBits(s_wifi_eg, WIFI_FAIL_BIT);
         xEventGroupSetBits(s_wifi_eg, WIFI_CONNECTED_BIT);
     }
 }

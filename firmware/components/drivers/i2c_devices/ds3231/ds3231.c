@@ -4,14 +4,14 @@
  * @brief DS3231 Real-Time Clock (RTC) Driver Implementation
  */
 
-/* Includes ------------------------------------------------------------------*/
+/* ── Includes ───────────────────────────────────────────────────────────── */
 
 #include "ds3231.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <string.h>
 
-/* Private defines macro -----------------------------------------------------*/
+/* ── Private defines macro ──────────────────────────────────────────────── */
 
 #define CHECK(x)                                                           \
     do {                                                                   \
@@ -30,55 +30,55 @@
         }                                      \
     } while (0)
 
-/* Private defines -----------------------------------------------------------*/
+/* ── Private defines ────────────────────────────────────────────────────── */
 
-// Status register bits
-#define DS3231_STAT_OSCILLATOR 0x80  ///< Oscillator stop flag
-#define DS3231_STAT_32KHZ 0x08       ///< 32kHz output enable
-#define DS3231_STAT_ALARM_2 0x02     ///< Alarm 2 flag
-#define DS3231_STAT_ALARM_1 0x01     ///< Alarm 1 flag
+/* Status register bits */
+#define DS3231_STAT_OSCILLATOR 0x80  /**< Oscillator stop flag */
+#define DS3231_STAT_32KHZ 0x08       /**< 32kHz output enable */
+#define DS3231_STAT_ALARM_2 0x02     /**< Alarm 2 flag */
+#define DS3231_STAT_ALARM_1 0x01     /**< Alarm 1 flag */
 
-// Control register bits
-#define DS3231_CTRL_OSCILLATOR 0x80  ///< Oscillator enable/disable
-#define DS3231_CTRL_TEMPCONV 0x20    ///< Force temperature conversion
-#define DS3231_CTRL_ALARM_INTS 0x04  ///< Alarm interrupt enable
-#define DS3231_CTRL_ALARM2_INT 0x02  ///< Alarm 2 interrupt enable
-#define DS3231_CTRL_ALARM1_INT 0x01  ///< Alarm 1 interrupt enable
+/* Control register bits */
+#define DS3231_CTRL_OSCILLATOR 0x80  /**< Oscillator enable/disable */
+#define DS3231_CTRL_TEMPCONV 0x20    /**< Force temperature conversion */
+#define DS3231_CTRL_ALARM_INTS 0x04  /**< Alarm interrupt enable */
+#define DS3231_CTRL_ALARM2_INT 0x02  /**< Alarm 2 interrupt enable */
+#define DS3231_CTRL_ALARM1_INT 0x01  /**< Alarm 1 interrupt enable */
 
-// Alarm configuration bits
-#define DS3231_ALARM_WDAY 0x40    ///< Use day of week for alarm
-#define DS3231_ALARM_NOTSET 0x80  ///< Alarm field not set
+/* Alarm configuration bits */
+#define DS3231_ALARM_WDAY 0x40    /**< Use day of week for alarm */
+#define DS3231_ALARM_NOTSET 0x80  /**< Alarm field not set */
 
-// Register addresses
-#define DS3231_ADDR_TIME 0x00     ///< Time registers start
-#define DS3231_ADDR_ALARM1 0x07   ///< Alarm 1 registers start
-#define DS3231_ADDR_ALARM2 0x0b   ///< Alarm 2 registers start
-#define DS3231_ADDR_CONTROL 0x0e  ///< Control register
-#define DS3231_ADDR_STATUS 0x0f   ///< Status register
-#define DS3231_ADDR_AGING 0x10    ///< Aging offset register
-#define DS3231_ADDR_TEMP 0x11     ///< Temperature registers start
+/* Register addresses */
+#define DS3231_ADDR_TIME 0x00     /**< Time registers start */
+#define DS3231_ADDR_ALARM1 0x07   /**< Alarm 1 registers start */
+#define DS3231_ADDR_ALARM2 0x0b   /**< Alarm 2 registers start */
+#define DS3231_ADDR_CONTROL 0x0e  /**< Control register */
+#define DS3231_ADDR_STATUS 0x0f   /**< Status register */
+#define DS3231_ADDR_AGING 0x10    /**< Aging offset register */
+#define DS3231_ADDR_TEMP 0x11     /**< Temperature registers start */
 
-// Time format flags
-#define DS3231_12HOUR_FLAG 0x40  ///< 12-hour mode flag
-#define DS3231_12HOUR_MASK 0x1f  ///< 12-hour value mask
-#define DS3231_PM_FLAG 0x20      ///< PM flag in 12-hour mode
-#define DS3231_MONTH_MASK 0x1f   ///< Month value mask
+/* Time format flags */
+#define DS3231_12HOUR_FLAG 0x40  /**< 12-hour mode flag */
+#define DS3231_12HOUR_MASK 0x1f  /**< 12-hour value mask */
+#define DS3231_PM_FLAG 0x20      /**< PM flag in 12-hour mode */
+#define DS3231_MONTH_MASK 0x1f   /**< Month value mask */
 
-// I2C configuration
+/* I2C configuration */
 #define I2C_FREQ_HZ SA_I2C_FREQ_HZ
 
-/* Private types ------------------------------------------------------------- */
+/* ── Private types ──────────────────────────────────────────────────────── */
 
 enum { DS3231_SET = 0, DS3231_CLEAR, DS3231_REPLACE };
 
-/* Private variables --------------------------------------------------------- */
+/* ── Private variables ──────────────────────────────────────────────────── */
 
-static const char *TAG = "DS3231";
+static const char *TAG = "ds3231";
 
 static const int days_per_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 static const int days_per_month_leap_year[] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
-/* Private functions prototypes ---------------------------------------------- */
+/* ── Private function prototypes ────────────────────────────────────────── */
 
 /**
  * @brief Convert BCD to decimal
@@ -133,7 +133,7 @@ static esp_err_t ds3231_get_flag(ds3231_t *dev, uint8_t addr, uint8_t mask, uint
  */
 static esp_err_t ds3231_set_flag(ds3231_t *dev, uint8_t addr, uint8_t bits, uint8_t mode);
 
-/* Exported functions ---------------------------------------------------------*/
+/* ── Exported functions ─────────────────────────────────────────────────── */
 
 /**
  * @brief Initialize device descriptor
@@ -177,7 +177,7 @@ esp_err_t ds3231_set_time(ds3231_t *dev, struct tm *time)
 {
     CHECK_ARG(dev && time);
 
-    // Validate time ranges
+    /* Validate time ranges */
     if (time->tm_sec < 0 || time->tm_sec > 59) {
         ESP_LOGE(TAG, "Invalid seconds: %d (must be 0-59)", time->tm_sec);
         return ESP_ERR_INVALID_ARG;
@@ -250,28 +250,28 @@ esp_err_t ds3231_set_alarm(ds3231_t *dev,
     if (alarms != DS3231_ALARM_2) {
         CHECK_ARG(time1);
 
-        // Set alarm 1 seconds
+        /* Set alarm 1 seconds */
         if (option1 >= DS3231_ALARM1_MATCH_SEC) {
             data[i++] = dec2bcd(time1->tm_sec);
         } else {
             data[i++] = DS3231_ALARM_NOTSET;
         }
 
-        // Set alarm 1 minutes
+        /* Set alarm 1 minutes */
         if (option1 >= DS3231_ALARM1_MATCH_SECMIN) {
             data[i++] = dec2bcd(time1->tm_min);
         } else {
             data[i++] = DS3231_ALARM_NOTSET;
         }
 
-        // Set alarm 1 hours
+        /* Set alarm 1 hours */
         if (option1 >= DS3231_ALARM1_MATCH_SECMINHOUR) {
             data[i++] = dec2bcd(time1->tm_hour);
         } else {
             data[i++] = DS3231_ALARM_NOTSET;
         }
 
-        // Set alarm 1 day/date
+        /* Set alarm 1 day/date */
         if (option1 == DS3231_ALARM1_MATCH_SECMINHOURDAY) {
             data[i++] = dec2bcd(time1->tm_wday + 1) | DS3231_ALARM_WDAY;
         } else if (option1 == DS3231_ALARM1_MATCH_SECMINHOURDATE) {
@@ -287,21 +287,21 @@ esp_err_t ds3231_set_alarm(ds3231_t *dev,
     if (alarms != DS3231_ALARM_1) {
         CHECK_ARG(time2);
 
-        // Set alarm 2 minutes
+        /* Set alarm 2 minutes */
         if (option2 >= DS3231_ALARM2_MATCH_MIN) {
             data[i++] = dec2bcd(time2->tm_min);
         } else {
             data[i++] = DS3231_ALARM_NOTSET;
         }
 
-        // Set alarm 2 hours
+        /* Set alarm 2 hours */
         if (option2 >= DS3231_ALARM2_MATCH_MINHOUR) {
             data[i++] = dec2bcd(time2->tm_hour);
         } else {
             data[i++] = DS3231_ALARM_NOTSET;
         }
 
-        // Set alarm 2 day/date
+        /* Set alarm 2 day/date */
         if (option2 == DS3231_ALARM2_MATCH_MINHOURDAY) {
             data[i++] = dec2bcd(time2->tm_wday + 1) | DS3231_ALARM_WDAY;
         } else if (option2 == DS3231_ALARM2_MATCH_MINHOURDATE) {
@@ -448,7 +448,7 @@ esp_err_t ds3231_set_timestamp(ds3231_t *dev, uint32_t timestamp)
         return ESP_FAIL;
     }
 
-    // Log the converted time
+    /* Log the converted time */
     ESP_LOGD(TAG,
              "Setting timestamp: %lu (%04d-%02d-%02d %02d:%02d:%02d)",
              timestamp,
@@ -482,7 +482,7 @@ esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp)
         return res;
     }
 
-    // Convert tm struct to Unix timestamp
+    /* Convert tm struct to Unix timestamp */
     time_t ts = mktime(&time);
     if (ts == -1) {
         ESP_LOGE(TAG, "Failed to convert time to timestamp");
@@ -503,7 +503,7 @@ esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp)
     return ESP_OK;
 }
 
-/* Private functions --------------------------------------------------------- */
+/* ── Private functions ──────────────────────────────────────────────────── */
 
 /**
  * @brief Convert BCD to decimal
@@ -526,11 +526,11 @@ static inline int days_since_january_1st(int year, int month, int day)
     int days = day - 1;
     const int *ptr = days_per_month;
 
-    // Handle leap year
+    /* Handle leap year */
     if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))
         ptr = days_per_month_leap_year;
 
-    // Add days from previous months
+    /* Add days from previous months */
     for (int i = 0; i < month; i++) {
         days += ptr[i];
     }

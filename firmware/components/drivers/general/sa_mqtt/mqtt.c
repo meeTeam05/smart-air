@@ -17,7 +17,6 @@
 
 #include "config.h"
 #include "esp_log.h"
-#include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mqtt_client.h"
@@ -28,11 +27,6 @@
 #include <string.h>
 
 static const char *TAG = "mqtt";
-
-/* ── Embedded CA certificate (server/emqx/certs/server.crt) ─────────────── */
-
-extern const uint8_t ca_cert_pem_start[] asm("_binary_ca_cert_pem_start");
-extern const uint8_t ca_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 
 /* ── Driver state ────────────────────────────────────────────────────────── */
 
@@ -48,23 +42,6 @@ static char s_cmd_topic[96];       /* device/{id}/command */
 static char s_response_topic[96];  /* device/{id}/response */
 static char s_shadow_topic[128];   /* device/{id}/shadow/get_response */
 static char s_ota_topic[96];       /* device/{id}/ota/update */
-
-/* ── Internal helpers ────────────────────────────────────────────────────── */
-
-/**
- * If device_id is NULL or empty, fall back to the WiFi MAC address.
- */
-static void resolve_device_id(const char *input, char *out, size_t out_len)
-{
-    if (input != NULL && input[0] != '\0') {
-        snprintf(out, out_len, "%s", input);
-    } else {
-        uint8_t mac[6];
-        esp_read_mac(mac, ESP_MAC_WIFI_STA);
-        snprintf(out, out_len, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-        ESP_LOGW(TAG, "device_id empty — using MAC: %s", out);
-    }
-}
 
 /* ── MQTT event handler ──────────────────────────────────────────────────── */
 
@@ -101,29 +78,32 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         if (topic && payload) {
             ESP_LOGI(TAG, "RX [%s]: %s", topic, payload);
 
-            /* Route: command → ack response + dispatch handlers */
+            /* Route: command → dispatch handler → ack with actual result */
             if (strstr(topic, "/command") != NULL) {
                 cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
                 if (root != NULL) {
-                    cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
-                    if (cJSON_IsString(j_cmd_id)) {
-                        char response[128];
-                        snprintf(response, sizeof(response),
-                                 "{\"command_id\":\"%s\",\"status\":\"done\"}",
-                                 j_cmd_id->valuestring);
-                        esp_mqtt_client_publish(s_client, s_response_topic, response, 0, 1, 0);
-                        ESP_LOGI(TAG, "Command ack → %s", s_response_topic);
-                    } else {
-                        ESP_LOGW(TAG, "command message missing command_id");
-                    }
+                    const char *cmd_status = "done";
 
-                    /* set_time: sync DS3231 RTC from phone timestamp */
+                    /* Dispatch command handlers */
                     cJSON *j_type = cJSON_GetObjectItemCaseSensitive(root, "type");
                     cJSON *j_ts   = cJSON_GetObjectItemCaseSensitive(root, "ts");
                     if (cJSON_IsString(j_type) && strcmp(j_type->valuestring, "set_time") == 0
                         && cJSON_IsNumber(j_ts) && s_time_sync_cb != NULL) {
                         s_time_sync_cb((uint32_t)j_ts->valuedouble);
                         ESP_LOGI(TAG, "set_time dispatched: ts=%lu", (unsigned long)(uint32_t)j_ts->valuedouble);
+                    }
+
+                    /* Send ack AFTER execution with actual status */
+                    cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
+                    if (cJSON_IsString(j_cmd_id)) {
+                        char response[128];
+                        snprintf(response, sizeof(response),
+                                 "{\"command_id\":\"%s\",\"status\":\"%s\"}",
+                                 j_cmd_id->valuestring, cmd_status);
+                        esp_mqtt_client_publish(s_client, s_response_topic, response, 0, 1, 0);
+                        ESP_LOGI(TAG, "Command ack → %s", s_response_topic);
+                    } else {
+                        ESP_LOGW(TAG, "command message missing command_id");
                     }
 
                     cJSON_Delete(root);
@@ -230,7 +210,7 @@ esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *
 {
     strlcpy(s_broker_uri, (broker_uri != NULL && broker_uri[0] != '\0') ? broker_uri : CONFIG_SA_MQTT_BROKER_URI,
             sizeof(s_broker_uri));
-    resolve_device_id(device_id, s_device_id, sizeof(s_device_id));
+    config_resolve_device_id(device_id, s_device_id, sizeof(s_device_id));
     strlcpy(s_secret_key, secret_key != NULL ? secret_key : "", sizeof(s_secret_key));
 
     /* Build topic strings from device ID */

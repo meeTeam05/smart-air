@@ -15,6 +15,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 
 #include <string.h>
 
@@ -22,95 +23,11 @@ static const char *TAG = "config";
 
 /* ── Private namespace / key constants ──────────────────────────────────── */
 
-/* WiFi namespace — must match NVS_NAMESPACE in config.h and ble_prov.c usage */
-#define NS_WIFI NVS_NAMESPACE /* "wifi_prov" */
-#define KEY_SSID NVS_KEY_SSID /* "ssid"     */
-#define KEY_PASS NVS_KEY_PASS /* "password" */
-#define KEY_DONE NVS_KEY_DONE /* "done"     */
-
 /* Device / MQTT namespace */
 #define NS_DEVICE "device"          /* 6 chars — within 15-char NVS limit */
 #define KEY_DEVICE_ID "device_id"   /* 9 chars */
 #define KEY_SECRET_KEY "secret_key" /* 10 chars */
 #define KEY_BROKER_URI "broker_uri" /* 10 chars */
-
-/* ── Wi-Fi credential API ────────────────────────────────────────────────── */
-
-esp_err_t config_get_wifi_creds(char *ssid_buf, size_t ssid_len, char *pass_buf, size_t pass_len)
-{
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NS_WIFI, NVS_READONLY, &h);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "nvs_open(%s) failed: %s", NS_WIFI, esp_err_to_name(err));
-        return err;
-    }
-
-    err = nvs_get_str(h, KEY_SSID, ssid_buf, &ssid_len);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "read SSID failed: %s", esp_err_to_name(err));
-        nvs_close(h);
-        return err;
-    }
-
-    err = nvs_get_str(h, KEY_PASS, pass_buf, &pass_len);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "read password failed: %s", esp_err_to_name(err));
-    }
-
-    nvs_close(h);
-    return err;
-}
-
-esp_err_t config_set_wifi_creds(const char *ssid, const char *password)
-{
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NS_WIFI, NVS_READWRITE, &h);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "nvs_open(%s) failed: %s", NS_WIFI, esp_err_to_name(err));
-        return err;
-    }
-
-    err = nvs_set_str(h, KEY_SSID, ssid);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "set SSID failed: %s", esp_err_to_name(err));
-        nvs_close(h);
-        return err;
-    }
-
-    err = nvs_set_str(h, KEY_PASS, password);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "set password failed: %s", esp_err_to_name(err));
-        nvs_close(h);
-        return err;
-    }
-
-    err = nvs_set_u8(h, KEY_DONE, 1);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "set done flag failed: %s", esp_err_to_name(err));
-        nvs_close(h);
-        return err;
-    }
-
-    err = nvs_commit(h);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "nvs_commit failed: %s", esp_err_to_name(err));
-    }
-
-    nvs_close(h);
-    return err;
-}
-
-bool config_is_provisioned(void)
-{
-    nvs_handle_t h;
-    if (nvs_open(NS_WIFI, NVS_READONLY, &h) != ESP_OK) {
-        return false;
-    }
-    uint8_t flag = 0;
-    nvs_get_u8(h, KEY_DONE, &flag);
-    nvs_close(h);
-    return flag == 1;
-}
 
 /* ── MQTT / device credential API ───────────────────────────────────────── */
 
@@ -206,6 +123,19 @@ esp_err_t config_set_mqtt_creds(const char *device_id, const char *secret_key)
 
     nvs_close(h);
     return err;
+}
+
+/* ── Device ID resolution ───────────────────────────────────────────────── */
+
+void config_resolve_device_id(const char *input, char *out, size_t out_len)
+{
+    if (input != NULL && input[0] != '\0') {
+        snprintf(out, out_len, "%s", input);
+    } else {
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_WIFI_STA);
+        snprintf(out, out_len, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    }
 }
 
 /* ── Self-test (enabled only when SA_CONFIG_SELF_TEST=y) ─────────────────── */

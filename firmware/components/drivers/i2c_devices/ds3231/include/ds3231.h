@@ -3,8 +3,7 @@
  *
  * @brief DS3231 Real-Time Clock (RTC) Driver API
  */
-#ifndef DS3231_H
-#define DS3231_H
+#pragma once
 
 /* Includes ------------------------------------------------------------------*/
 
@@ -194,5 +193,3 @@ esp_err_t ds3231_set_timestamp(ds3231_t *dev, uint32_t timestamp);
  * @return ESP_OK on success, error code otherwise
  */
 esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp);
-
-#endif /* DS3231_H */

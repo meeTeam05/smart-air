@@ -23,6 +23,20 @@ OTA firmware updates must use HTTPS with an embedded CA certificate
 Every OTA implementation must include a rollback path and a validation task
 that confirms the new firmware is functional before committing the update.
 
+### SEC-04 — MQTT TLS mandatory
+
+All device-to-broker communication must use TLS. Plaintext MQTT is forbidden.
+
+### SEC-05 — JWT in Authorization header only
+
+JWT tokens must be sent as `Authorization: Bearer <token>`.
+Never include tokens in URL parameters or query strings.
+
+### SEC-06 — JWT token expiration
+
+Access token: 15 minutes (store in memory only).
+Refresh token: 30 days (store in secure storage).
+
 ---
 
 ## Hardware Constraints
@@ -117,7 +131,7 @@ correct behaviour. Marking `[x]` before verification is forbidden.
 
 ### PR-02 — No guessing when stuck
 
-If a root cause is not confirmed: stop, write a hypothesis in `tasks/debug.md`,
+If a root cause is not confirmed: stop, write a hypothesis inline in `TODO.md`,
 run a targeted experiment, confirm root cause, then fix. Random fixes are forbidden.
 
 ### PR-03 — Minimal scope per change

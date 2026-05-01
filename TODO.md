@@ -21,9 +21,17 @@ Checkbox states:
 - [x] Cài Docker + Docker Compose trên Raspberry Pi 4
 - [x] Tạo thư mục `server/` ở root repo với `docker-compose.yml`
 - [x] Viết `docker-compose.yml`: nginx, emqx, api (placeholder), postgres, redis, grafana, pgadmin, portainer
-- [-] Cấu hình Cloudflare Tunnel → trỏ domain về Pi
-  - Hoãn: chưa có domain. Giải pháp tạm: dùng local IP `192.168.1.16`
-  - Khi có VPS/domain: migrate docker-compose.yml lên, bật cloudflared
+- [/] Cấu hình Cloudflare Tunnel → trỏ domain về Pi
+  - Domain mua: `minhnhat05.xyz` (Namecheap) — 2026-05-01
+  - Infrastructure đã chuẩn: `cloudflared` service trong docker-compose.yml, nginx port 80 route đầy đủ
+  - [ ] Bước 1 (người dùng): cloudflare.com → Add site → minhnhat05.xyz → Free plan → ghi lại 2 nameserver
+  - [ ] Bước 2 (người dùng): Namecheap → Domain List → Nameservers → Custom DNS → nhập 2 NS Cloudflare → Save
+  - [ ] Bước 3 (người dùng): Cloudflare Zero Trust → Networks → Tunnels → Create tunnel → tên "smart-air-pi" → Docker → copy token
+  - [ ] Bước 4 (người dùng): SSH Pi → `nano ~/Working_Space/smart-air/server/.env` → set `CLOUDFLARE_TUNNEL_TOKEN=<token>` → `docker compose up -d cloudflared`
+  - [ ] Verify: `curl https://minhnhat05.xyz/api/health` → 200 OK từ máy ngoài LAN
+  - [ ] Verify: Flutter app đổi base URL → `https://minhnhat05.xyz` → test login + dashboard
+  - Ghi chú: ESP32 MQTT vẫn dùng `mqtts://192.168.1.16:8883` (local LAN — không cần thay đổi)
+  - Ghi chú: ESP32 OTA vẫn dùng `https://192.168.1.16/ota/...` (local cert — cần update CA cert firmware để dùng domain)
 - [x] Xác minh: `curl http://192.168.1.16/api/health` → 200 OK ✓ (local)
 
 ### 1.2 EMQX MQTT Broker

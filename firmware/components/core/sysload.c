@@ -1,7 +1,7 @@
 /**
  * @file sysload.c
  * 
- * @brief System load header.
+ * @brief System initialisation and boot orchestration.
  * 
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -12,10 +12,6 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_log.h"
-
-#include <string.h>
-
-#include "esp_mac.h"
 
 #include "ble_prov.h"
 #include "wifi.h"
@@ -37,7 +33,7 @@ static const char *TAG = "sysload";
 static sht3x_t s_sht3x_dev;
 static ds3231_t s_ds3231_dev;
 
-/* ── Time sync callback (app → MQTT → DS3231) ───────────────────────────── */
+/* Time sync callback (app -> MQTT -> DS3231) */
 
 static void on_time_sync(uint32_t ts)
 {
@@ -198,6 +194,9 @@ void sysload_init(void)
             esp_restart();
         }
     }
+    /* 9.1 — Register time sync callback before mqtt_start to avoid race:
+     *        broker may deliver a queued set_time command immediately on connect */
+    mqtt_register_time_sync_cb(on_time_sync);
     {
         esp_err_t err = mqtt_start(broker_uri, device_id, secret_key);
         if (err != ESP_OK) {
@@ -208,20 +207,9 @@ void sysload_init(void)
         }
     }
 
-    /* 9.1 — Register time sync callback (app → MQTT → DS3231) */
-    mqtt_register_time_sync_cb(on_time_sync);
-
     /* Resolve display device_id once: use config value or fall back to MAC */
     char resolved_id[64] = {0};
-    if (device_id[0] != '\0') {
-        strlcpy(resolved_id, device_id, sizeof(resolved_id));
-    } else {
-        uint8_t mac[6];
-        esp_read_mac(mac, ESP_MAC_WIFI_STA);
-        snprintf(resolved_id, sizeof(resolved_id),
-                 "%02x:%02x:%02x:%02x:%02x:%02x",
-                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    }
+    config_resolve_device_id(device_id, resolved_id, sizeof(resolved_id));
 
     /* 9.5 — HTTP server (non-fatal: device operates without it) */
     {
@@ -247,7 +235,7 @@ void sysload_init(void)
 
     /* 10 — Sensor polling task (publishes telemetry every 5 s) */
     if (sht_err == ESP_OK && rtc_err == ESP_OK) {
-        ESP_ERROR_CHECK(sensor_task_start(&s_sht3x_dev, &s_ds3231_dev));
+        ESP_ERROR_CHECK(sensor_task_start(&s_sht3x_dev, &s_ds3231_dev, resolved_id));
     } else {
         ESP_LOGW(TAG, "Sensor(s) unavailable — sensor_task not started");
     }

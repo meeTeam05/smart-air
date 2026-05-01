@@ -6,8 +6,7 @@
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
-#ifndef _BLE_PROV_H
-#define _BLE_PROV_H
+#pragma once
 
 #include "esp_err.h"
 #include <stdbool.h>
@@ -60,5 +59,3 @@ esp_err_t ble_prov_load_credentials(char *ssid_buf, size_t ssid_len, char *pass_
  * @return ESP_OK on success, or an error code.
  */
 esp_err_t ble_prov_reset(void);
-
-#endif /* _BLE_PROV_H */

@@ -20,9 +20,10 @@
  *
  * Must be called after mqtt_start() returns so the MQTT client is ready.
  *
- * @param sht3x Pointer to an initialised SHT3x device descriptor.
- * @param ds3231 Pointer to an initialised DS3231 device descriptor.
+ * @param sht3x     Pointer to an initialised SHT3x device descriptor.
+ * @param ds3231    Pointer to an initialised DS3231 device descriptor.
+ * @param device_id Resolved device identifier (used to build MQTT topics).
  *
  * @return ESP_OK if the task was created, ESP_FAIL otherwise.
  */
-esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231);
+esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231, const char *device_id);

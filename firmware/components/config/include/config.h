@@ -21,15 +21,6 @@
 /** Firmware version string */
 #define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
 
-/** BLE provisioning name prefix */
-#define PROV_NAME_PREFIX CONFIG_SA_PROV_NAME_PREFIX
-
-/** MQTT broker URI — Kconfig default, overridable via NVS */
-#define SA_MQTT_BROKER_URI CONFIG_SA_MQTT_BROKER_URI
-
-/** Wi-Fi connect timeout in milliseconds */
-#define SA_WIFI_CONNECT_TIMEOUT_MS CONFIG_SA_WIFI_CONNECT_TIMEOUT_MS
-
 /** I2C bus pin and timing configuration */
 #define SA_I2C_SDA_PIN CONFIG_SA_I2C_SDA_PIN
 #define SA_I2C_SCL_PIN CONFIG_SA_I2C_SCL_PIN
@@ -40,32 +31,17 @@
 #define SA_LED_PIN CONFIG_SA_LED_PIN
 
 /** NVS namespace + keys for Wi-Fi provisioning (shared with ble_prov.c) */
-#define NVS_NAMESPACE "wifi_prov"
-#define NVS_KEY_SSID "ssid"
-#define NVS_KEY_PASS "password"
-#define NVS_KEY_DONE "done"
+#define SA_NVS_WIFI_NAMESPACE "wifi_prov"
+#define SA_NVS_KEY_SSID "ssid"
+#define SA_NVS_KEY_PASS "password"
+#define SA_NVS_KEY_DONE "done"
+
+/* ── Embedded CA certificate (config/certs/ca_cert.pem) ────────────────── */
+
+extern const uint8_t ca_cert_pem_start[] asm("_binary_ca_cert_pem_start");
+extern const uint8_t ca_cert_pem_end[]   asm("_binary_ca_cert_pem_end");
 
 /* ── NVS credential API ──────────────────────────────────────────────────── */
-
-/**
- * @brief Read Wi-Fi credentials from NVS (namespace "wifi_prov").
- *
- * @param ssid_buf  Output buffer for SSID — must be at least 64 bytes.
- * @param ssid_len  Size of ssid_buf.
- * @param pass_buf  Output buffer for password — must be at least 64 bytes.
- * @param pass_len  Size of pass_buf.
- * @return ESP_OK on success, ESP_ERR_NVS_NOT_FOUND if not provisioned, or an NVS error.
- */
-esp_err_t config_get_wifi_creds(char *ssid_buf, size_t ssid_len, char *pass_buf, size_t pass_len);
-
-/**
- * @brief Write Wi-Fi credentials to NVS (namespace "wifi_prov") and commit.
- *
- * @param ssid      Null-terminated SSID string.
- * @param password  Null-terminated password string.
- * @return ESP_OK on success, or an NVS error.
- */
-esp_err_t config_set_wifi_creds(const char *ssid, const char *password);
 
 /**
  * @brief Read MQTT credentials from NVS (namespace "device").
@@ -98,9 +74,13 @@ esp_err_t config_get_mqtt_creds(char *broker_uri_buf,
 esp_err_t config_set_mqtt_creds(const char *device_id, const char *secret_key);
 
 /**
- * @brief Return true if Wi-Fi credentials are stored in NVS (provisioning complete).
+ * @brief Resolve device ID: use input if non-empty, fall back to WiFi MAC address.
+ *
+ * @param input  Device ID string from config/NVS (may be NULL or empty).
+ * @param out    Output buffer for resolved ID.
+ * @param out_len Size of output buffer (at least 18 bytes for MAC format).
  */
-bool config_is_provisioned(void);
+void config_resolve_device_id(const char *input, char *out, size_t out_len);
 
 #ifdef CONFIG_SA_CONFIG_SELF_TEST
 /**
