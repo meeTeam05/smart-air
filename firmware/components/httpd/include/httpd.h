@@ -1,9 +1,9 @@
 /**
  * @file httpd.h
  *
- * @brief HTTP API server for device monitoring and configuration.
+ * @brief HTTP API server for device monitoring.
  *
- * Registers GET /api/info and POST /api/config.
+ * Registers GET /api/info.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -18,8 +18,7 @@
  * Must be called after Wi-Fi is connected (IP obtained).
  *
  * Endpoints registered:
- *   GET  /api/info    → {"device_id":"…","firmware":"1.0.0","ip":"…"}
- *   POST /api/config  → accepts {"device_id":"…","secret_key":"…"}, writes to NVS
+ *   GET /api/info → {"device_id":"…","firmware":"1.0.0","ip":"…"}
  *
  * @param device_id  Device identifier (displayed in responses).
  * @param ip         Current IP address string (for /api/info response).

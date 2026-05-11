@@ -11,4 +11,6 @@ idf_component_register(
     freertos
     wifi
     config
+    PRIV_REQUIRES
+    mbedtls
 )

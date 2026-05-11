@@ -1,23 +1,29 @@
 idf_component_register(
     SRCS
-    "sysload.c"
-    "sensor_task.c"
+        "sysload.c"
+        "sensor_task.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    nvs_flash
-    esp_netif
-    esp_event
-    freertos
-    ble_prov
-    wifi
-    sa_mqtt
-    config
-    i2c_bus
-    sht3x
-    ds3231
-    led
-    factory_reset
-    httpd
-    ota
+        config
+        nvs_flash
+        esp_netif
+        esp_event
+        freertos
+        ble_prov
+        wifi
+        sa_mqtt
+        config
+        i2c_bus
+        sht3x
+        ds3231
+        adc_bus
+        gm702b
+        gm102b
+        led
+        factory_reset
+        httpd
+        ota
+    PRIV_REQUIRES
+        json
 )

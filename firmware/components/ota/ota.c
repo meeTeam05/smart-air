@@ -201,9 +201,11 @@ esp_err_t ota_trigger(const char *url, const char *sha256)
     /* Non-blocking: drop trigger if a download is already queued */
     if (xQueueSend(s_ota_queue, &msg, 0) != pdTRUE) {
         ESP_LOGW(TAG, "OTA trigger dropped — queue full (download already pending)");
-    } else {
-        ESP_LOGI(TAG, "OTA queued: %s", url);
+        publish_progress(0, "busy");
+        return ESP_FAIL;
     }
+
+    ESP_LOGI(TAG, "OTA queued: %s", url);
     return ESP_OK;
 }
 

@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+    "adc_bus.c"
+    INCLUDE_DIRS
+    "include"
+    REQUIRES
+    esp_adc
+    log
+    freertos
+)

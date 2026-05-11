@@ -3,10 +3,6 @@
  *
  * @brief NVS credential read/write API for Wi-Fi and MQTT configuration.
  *
- * NVS namespaces used:
- *   "wifi_prov" — Wi-Fi SSID, password, provisioning flag (shared with ble_prov.c)
- *   "device"    — device ID, MQTT secret key, broker URI
- *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
@@ -28,6 +24,10 @@ static const char *TAG = "config";
 #define KEY_DEVICE_ID "device_id"   /* 9 chars */
 #define KEY_SECRET_KEY "secret_key" /* 10 chars */
 #define KEY_BROKER_URI "broker_uri" /* 10 chars */
+
+/* Gas sensor R0 NVS keys (namespace NS_DEVICE) */
+#define KEY_R0_CO "r0_co"
+#define KEY_R0_NO2 "r0_no2"
 
 /* ── MQTT / device credential API ───────────────────────────────────────── */
 
@@ -136,6 +136,67 @@ void config_resolve_device_id(const char *input, char *out, size_t out_len)
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
         snprintf(out, out_len, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
+}
+
+/* ── Gas sensor R0 persistence ──────────────────────────────────────────── */
+
+esp_err_t config_load_gas_r0(const char *sensor_name, float *r0, bool *calibrated)
+{
+    *r0 = 0.0f;
+    *calibrated = false;
+
+    const char *key = (sensor_name[0] == 'c') ? KEY_R0_CO : KEY_R0_NO2;
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS_DEVICE, NVS_READONLY, &h);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_OK; /* namespace not yet created — not calibrated */
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "load_gas_r0(%s): nvs_open failed: %s", sensor_name, esp_err_to_name(err));
+        return err;
+    }
+
+    size_t len = sizeof(float);
+    err = nvs_get_blob(h, key, r0, &len);
+    nvs_close(h);
+
+    if (err == ESP_OK && len == sizeof(float) && *r0 > 0.0f) {
+        *calibrated = true;
+        ESP_LOGI(TAG, "load_gas_r0(%s): R0 = %.0f ohm", sensor_name, *r0);
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_OK; /* not calibrated yet — not an error */
+    } else if (err != ESP_OK) {
+        ESP_LOGE(TAG, "load_gas_r0(%s): nvs_get_blob failed: %s", sensor_name, esp_err_to_name(err));
+        return err;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t config_save_gas_r0(const char *sensor_name, float r0)
+{
+    const char *key = (sensor_name[0] == 'c') ? KEY_R0_CO : KEY_R0_NO2;
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS_DEVICE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "save_gas_r0(%s): nvs_open failed: %s", sensor_name, esp_err_to_name(err));
+        return err;
+    }
+
+    err = nvs_set_blob(h, key, &r0, sizeof(float));
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "save_gas_r0(%s): R0 = %.0f ohm saved", sensor_name, r0);
+    } else {
+        ESP_LOGE(TAG, "save_gas_r0(%s): write failed: %s", sensor_name, esp_err_to_name(err));
+    }
+    return err;
 }
 
 /* ── Self-test (enabled only when SA_CONFIG_SELF_TEST=y) ─────────────────── */

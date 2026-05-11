@@ -30,6 +30,7 @@
 #include <stdio.h>
 
 #include "config.h"
+#include "mbedtls/platform_util.h"
 
 static const char *TAG = "ble_prov";
 
@@ -145,7 +146,15 @@ static int prov_chr_access(uint16_t conn_handle, uint16_t attr_handle, struct bl
 static void prov_task(void *arg)
 {
     /* Block until GATT access_cb has both credentials */
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CONFIG_SA_PROV_TIMEOUT_MS));
+    if (notified == 0) {
+        ESP_LOGW(TAG, "Provisioning timed out — no credentials received");
+        xEventGroupSetBits(s_prov_eg, PROV_FAIL_BIT);
+        mbedtls_platform_zeroize(s_ssid, sizeof(s_ssid));
+        mbedtls_platform_zeroize(s_password, sizeof(s_password));
+        vTaskDelete(NULL);
+        return;
+    }
 
     ESP_LOGI(TAG, "Attempting WiFi connect to SSID: %s", s_ssid);
 
@@ -184,6 +193,8 @@ static void prov_task(void *arg)
 
     /* Signal ble_prov_start() to unblock */
     xEventGroupSetBits(s_prov_eg, err == ESP_OK ? PROV_DONE_BIT : PROV_FAIL_BIT);
+    mbedtls_platform_zeroize(s_ssid, sizeof(s_ssid));
+    mbedtls_platform_zeroize(s_password, sizeof(s_password));
     vTaskDelete(NULL);
 }
 

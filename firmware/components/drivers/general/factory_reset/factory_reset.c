@@ -30,6 +30,8 @@
 
 static const char *TAG = "factory_reset";
 
+#if CONFIG_SA_ENABLE_FACTORY_RESET
+
 /* Hold duration after which LED feedback begins (1 s) */
 #define FEEDBACK_THRESHOLD_MS 1000
 
@@ -70,7 +72,7 @@ static void factory_reset_task(void *arg)
 {
     uint32_t     hold_ms     = 0;
     bool         was_holding = false;
-    led_state_t  saved_state = LED_STATE_ONLINE; /* restored on cancel */
+    led_state_t  saved_state = LED_STATE_ONLINE;
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(POLL_MS));
@@ -96,9 +98,7 @@ static void factory_reset_task(void *arg)
         /* Start giving visible feedback after FEEDBACK_THRESHOLD_MS */
         if (hold_ms >= FEEDBACK_THRESHOLD_MS && !was_holding) {
             /* Snapshot current LED state so we can restore it on cancel */
-            /* led_get_state() not exposed — use ONLINE as safe default.
-               In practice the LED is ONLINE during normal operation. */
-            saved_state = LED_STATE_ONLINE;
+            saved_state = led_get_state();
             was_holding = true;
             led_set_state(LED_STATE_FACTORY_RESET);
             ESP_LOGI(TAG, "Hold detected — keep holding for factory reset (%d ms total)",
@@ -111,10 +111,13 @@ static void factory_reset_task(void *arg)
     }
 }
 
+#endif /* CONFIG_SA_ENABLE_FACTORY_RESET */
+
 /* ── Public API ──────────────────────────────────────────────────────────── */
 
 esp_err_t factory_reset_init(gpio_num_t gpio)
 {
+#if CONFIG_SA_ENABLE_FACTORY_RESET
     s_gpio = gpio;
 
     gpio_config_t cfg = {
@@ -140,4 +143,8 @@ esp_err_t factory_reset_init(gpio_num_t gpio)
 
     ESP_LOGI(TAG, "init OK (GPIO%d, hold=%d ms)", gpio, CONFIG_SA_FACTORY_RESET_HOLD_MS);
     return ESP_OK;
+#else
+    (void)gpio;
+    return ESP_OK;
+#endif
 }

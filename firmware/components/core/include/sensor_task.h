@@ -1,29 +1,45 @@
 /**
  * @file sensor_task.h
  *
- * @brief Sensor polling task — reads SHT3x + DS3231 and publishes telemetry via MQTT.
+ * @brief Sensor polling task — SHT3x + DS3231 + GM-702B CO + GM-102B NO2.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
+ *
+ * Architecture:
+ *   - sensor_task_start() spawns sensor_task_fn (Core 1, Priority 5, 4096 B).
+ *   - The device_id is passed in by the caller and used to build MQTT topics.
+ *   - Every SA_SENSOR_POLLING_INTERVAL ms: read all sensors → publish JSON to MQTT.
+ *   - Any sensor pointer may be NULL (disabled/failed) — that field reports null in JSON.
  */
 
 #pragma once
 
 #include "ds3231.h"
 #include "esp_err.h"
+#include "gm102b.h"
+#include "gm702b.h"
 #include "sht3x.h"
+
+#include "config.h"
 
 /**
  * @brief Spawn sensor_task (Core 1, Priority 5, 4096 B stack).
  *
- * Polls SHT3x temperature/humidity and DS3231 Unix timestamp every 5 s,
- * then publishes to device/{id}/telemetry via mqtt_publish().
+ * Polls all passed sensors every SA_SENSOR_POLLING_INTERVAL ms and publishes
+ * telemetry JSON to device/{id}/telemetry via mqtt_publish().
+ * NULL pointers produce JSON null for that field.
+ * Timestamps fall back to time(NULL) when DS3231 is unavailable.
  *
- * Must be called after mqtt_start() returns so the MQTT client is ready.
+ * Must be called after mqtt_start() returns.
  *
- * @param sht3x     Pointer to an initialised SHT3x device descriptor.
- * @param ds3231    Pointer to an initialised DS3231 device descriptor.
+ * @param sht3x     Initialised SHT3x descriptor, or NULL.
+ * @param ds3231    Initialised DS3231 descriptor, or NULL.
+ * @param co        Initialised GM-702B CO descriptor, or NULL.
+ * @param no2       Initialised GM-102B NO2 descriptor, or NULL.
  * @param device_id Resolved device identifier (used to build MQTT topics).
  *
- * @return ESP_OK if the task was created, ESP_FAIL otherwise.
+ * @return ESP_OK if task created, ESP_FAIL otherwise.
  */
-esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231, const char *device_id);
+esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231,
+                            gm702b_t *co, gm102b_t *no2,
+                            const char *device_id);

@@ -36,3 +36,8 @@ esp_err_t led_init(void);
  * Safe to call from any task or ISR context.
  */
 void led_set_state(led_state_t state);
+
+/**
+ * @brief Get the current LED state (thread-safe).
+ */
+led_state_t led_get_state(void);

@@ -13,6 +13,9 @@ set(EXTRA_COMPONENT_DIRS
     components/drivers/i2c_bus
     components/drivers/i2c_devices/sht3x
     components/drivers/i2c_devices/ds3231
+    components/drivers/adc_bus
+    components/drivers/adc_devices/gm702b
+    components/drivers/adc_devices/gm102b
     components/drivers/spi_bus
     components/drivers/spi_devices/st7789
     components/drivers/spi_devices/xpt2046

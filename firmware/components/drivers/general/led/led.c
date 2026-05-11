@@ -25,7 +25,9 @@
 
 static const char *TAG = "led";
 
-/* ── Color table ─────────────────────────────────────────────────────────── */
+/* ── Color table + driver state + helpers (only when LED enabled) ─────────── */
+
+#if CONFIG_SA_ENABLE_LED
 
 typedef struct {
     uint8_t r, g, b;
@@ -43,8 +45,6 @@ static const led_color_t s_color_table[] = {
     [LED_STATE_OFF]           = {0,   0,   0,   false},
 };
 
-/* ── Driver state ────────────────────────────────────────────────────────── */
-
 static rmt_channel_handle_t s_chan    = NULL;
 static rmt_encoder_handle_t s_encoder = NULL;
 static esp_timer_handle_t   s_timer   = NULL;
@@ -52,8 +52,6 @@ static esp_timer_handle_t   s_timer   = NULL;
 static portMUX_TYPE      s_spinlock = portMUX_INITIALIZER_UNLOCKED;
 static volatile led_state_t s_state  = LED_STATE_OFF;
 static volatile bool        s_led_on = false;
-
-/* ── Internal helpers ────────────────────────────────────────────────────── */
 
 static void write_color(uint8_t r, uint8_t g, uint8_t b)
 {
@@ -89,10 +87,13 @@ static void blink_timer_cb(void *arg)
     }
 }
 
+#endif /* CONFIG_SA_ENABLE_LED */
+
 /* ── Public API ──────────────────────────────────────────────────────────── */
 
 esp_err_t led_init(void)
 {
+#if CONFIG_SA_ENABLE_LED
     /* RMT TX channel — 10 MHz clock → 100 ns per tick */
     rmt_tx_channel_config_t chan_cfg = {
         .gpio_num         = SA_LED_PIN,
@@ -151,12 +152,31 @@ esp_err_t led_init(void)
 
     ESP_LOGI(TAG, "init OK (GPIO%d)", SA_LED_PIN);
     return ESP_OK;
+#else
+    return ESP_OK;
+#endif
 }
 
 void led_set_state(led_state_t state)
 {
+#if CONFIG_SA_ENABLE_LED
     portENTER_CRITICAL(&s_spinlock);
     s_state  = state;
     s_led_on = true; /* start each new state with LED on */
     portEXIT_CRITICAL(&s_spinlock);
+#else
+    (void)state;
+#endif
+}
+
+led_state_t led_get_state(void)
+{
+#if CONFIG_SA_ENABLE_LED
+    portENTER_CRITICAL(&s_spinlock);
+    led_state_t state = s_state;
+    portEXIT_CRITICAL(&s_spinlock);
+    return state;
+#else
+    return LED_STATE_OFF;
+#endif
 }

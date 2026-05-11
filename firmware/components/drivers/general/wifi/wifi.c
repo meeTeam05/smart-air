@@ -37,7 +37,6 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         xEventGroupClearBits(s_wifi_eg, WIFI_CONNECTED_BIT);
-        xEventGroupSetBits(s_wifi_eg, WIFI_FAIL_BIT);
 
         if (s_reconnect_count < WIFI_MAX_RECONNECT_ATTEMPTS) {
             s_reconnect_count++;
@@ -46,6 +45,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
             esp_wifi_connect();
         } else {
             ESP_LOGE(TAG, "Disconnected — max reconnect attempts reached, giving up");
+            xEventGroupSetBits(s_wifi_eg, WIFI_FAIL_BIT);
         }
 
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
@@ -99,7 +99,8 @@ esp_err_t wifi_sta_connect(const char *ssid, const char *password, uint32_t time
     if (ssid == NULL || password == NULL)
         return ESP_ERR_INVALID_ARG;
 
-    /* Clear bits from any previous attempt */
+    /* Fresh connection attempt starts with a clean retry budget and event state */
+    s_reconnect_count = 0;
     xEventGroupClearBits(s_wifi_eg, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
 
     wifi_config_t cfg = {0};

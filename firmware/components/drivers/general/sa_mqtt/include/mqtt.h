@@ -29,6 +29,27 @@ typedef void (*mqtt_time_sync_cb_t)(uint32_t ts);
 void mqtt_register_time_sync_cb(mqtt_time_sync_cb_t cb);
 
 /**
+ * @brief Callback invoked when a command of a registered type arrives.
+ *
+ * @param type         The "type" field value from the command JSON.
+ * @param json_payload Full command JSON string (FW-04: already copied, valid for call duration).
+ * @return ESP_OK on success → MQTT ack reports "done". Any other value → ack reports "error".
+ */
+typedef esp_err_t (*mqtt_command_cb_t)(const char *type, const char *json_payload);
+
+/**
+ * @brief Register a handler for a specific command type.
+ *
+ * Up to 8 handlers may be registered. Call from sysload_init() before mqtt_start().
+ * The handler is invoked synchronously inside the MQTT event callback — keep it short
+ * (write to queue or set a flag; do not block).
+ *
+ * @param type  Command type string to match against the "type" JSON field.
+ * @param cb    Handler function.
+ */
+void mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb);
+
+/**
  * @brief Start the MQTT client and connect to the broker asynchronously.
  *
  * Spawns mqtt_task (Core 1, Priority 6, 6144 B stack).
