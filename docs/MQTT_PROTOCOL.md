@@ -73,22 +73,26 @@ Direction: Broker → ESP32   ký hiệu: ←
 
 ```json
 {
-  "device_id": "550e8400-e29b-41d4-a716-446655440000",
+  "device_id": "dc:b4:d9:13:ed:8c",
   "ts": 1712345678,
   "temperature": 28.5,
-  "humidity": 65.2
+  "humidity": 65.2,
+  "co_ppm": 12.3,
+  "no2_ppm": 0.4
 }
 ```
 
-| Field        | Type    | Unit | Ghi chú                              |
-| ------------ | ------- | ---- | ------------------------------------ |
-| `device_id`  | string  | —    | UUID, trùng với topic                |
-| `ts`         | integer | —    | Unix timestamp, giây (không phải ms) |
-| `temperature`| float   | °C   | 1 chữ số thập phân, ví dụ: 28.5     |
-| `humidity`   | float   | %RH  | 1 chữ số thập phân, ví dụ: 65.2     |
+| Field        | Type           | Unit | Ghi chú                                                  |
+| ------------ | -------------- | ---- | -------------------------------------------------------- |
+| `device_id`  | string         | —    | MAC string, trùng với topic                              |
+| `ts`         | integer        | —    | Unix timestamp, giây (không phải ms)                     |
+| `temperature`| float \| null  | °C   | null khi SA_ENABLE_SHT3X=n hoặc đọc lỗi                 |
+| `humidity`   | float \| null  | %RH  | null khi SA_ENABLE_SHT3X=n hoặc đọc lỗi                 |
+| `co_ppm`     | float \| null  | ppm  | null khi SA_ENABLE_CO_SENSOR=n hoặc chưa calibrate       |
+| `no2_ppm`    | float \| null  | ppm  | null khi SA_ENABLE_NO2_SENSOR=n hoặc chưa calibrate      |
 
-> Publish mỗi 30 giây từ `mqtt_task`.
-> Server INSERT vào TimescaleDB hypertable `telemetry`.
+> Publish mỗi SA_SENSOR_POLLING_INTERVAL s từ `sensor_task`.
+> Server INSERT vào TimescaleDB hypertable `telemetry` (JSON blob — field mới tự xuất hiện).
 
 ---
 

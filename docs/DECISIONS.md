@@ -151,6 +151,43 @@ Replace entirely with a Google-base config tuned for ESP-IDF:
 
 ---
 
+## ADR-005 — BLE provisioning: unencrypted GATT accepted for v1
+
+**Date:** 2026-05-04
+**Status:** Accepted
+
+### Context
+
+BLE provisioning writes WiFi SSID and password over GATT characteristics
+(0xFF01, 0xFF02) with no BLE link-layer encryption. A nearby BLE scanner
+can observe the credentials in plaintext during the provisioning window.
+
+### Decision
+
+Accept unencrypted BLE provisioning for v1. Threat model: trusted home
+environment, short provisioning window (~30s), one-time operation (first boot
+only after factory reset).
+
+Mitigations in place:
+- Provisioning only occurs on first boot or after factory reset — not continuously.
+- Advertising stops immediately after prov_task completes (ble_prov_stop()).
+- Credentials are zeroed from RAM after provisioning (ble_prov.c, Fix D).
+
+### Alternatives Rejected
+
+- **NimBLE Security Manager (Just Works pairing)**: Requires BLE SM changes in
+  firmware and pairing flow changes in the Flutter app. ADR-required scope for v2.
+- **Application-layer encryption**: Needs a key-agreement protocol between app
+  and device — equivalent complexity to BLE SM, without standard guarantees.
+
+### Consequences
+
+- WiFi credentials are theoretically observable during provisioning on untrusted
+  networks. Document in user-facing security notes.
+- v2 should add NimBLE SM pairing before shipping to untrusted environments.
+
+---
+
 ## See also
 
 - [[review]] — Task reviews that triggered new ADRs

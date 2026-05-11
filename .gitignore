@@ -18,7 +18,6 @@ hardware/**/*-backups/
 
 # Editor / workspace
 .vscode/
-.obsidian/
 
 # Private notes
 TODO.md
@@ -29,3 +28,7 @@ server/api/.env
 
 # Others
 .env
+.gitnexus
+
+hardware/**
+tmp/**

@@ -21,15 +21,12 @@ Checkbox states:
 - [x] Cài Docker + Docker Compose trên Raspberry Pi 4
 - [x] Tạo thư mục `server/` ở root repo với `docker-compose.yml`
 - [x] Viết `docker-compose.yml`: nginx, emqx, api (placeholder), postgres, redis, grafana, pgadmin, portainer
-- [/] Cấu hình Cloudflare Tunnel → trỏ domain về Pi
-  - Domain mua: `minhnhat05.xyz` (Namecheap) — 2026-05-01
-  - Infrastructure đã chuẩn: `cloudflared` service trong docker-compose.yml, nginx port 80 route đầy đủ
-  - [ ] Bước 1 (người dùng): cloudflare.com → Add site → minhnhat05.xyz → Free plan → ghi lại 2 nameserver
-  - [ ] Bước 2 (người dùng): Namecheap → Domain List → Nameservers → Custom DNS → nhập 2 NS Cloudflare → Save
-  - [ ] Bước 3 (người dùng): Cloudflare Zero Trust → Networks → Tunnels → Create tunnel → tên "smart-air-pi" → Docker → copy token
-  - [ ] Bước 4 (người dùng): SSH Pi → `nano ~/Working_Space/smart-air/server/.env` → set `CLOUDFLARE_TUNNEL_TOKEN=<token>` → `docker compose up -d cloudflared`
-  - [ ] Verify: `curl https://minhnhat05.xyz/api/health` → 200 OK từ máy ngoài LAN
-  - [ ] Verify: Flutter app đổi base URL → `https://minhnhat05.xyz` → test login + dashboard
+- [x] Cấu hình Cloudflare Tunnel → trỏ domain về Pi
+  - Domain: `minhnhat05.xyz` (Namecheap → Cloudflare NS) — 2026-05-01
+  - Tunnel: `smart-air-pi` (ID: ffbb8202-09e8-4a3e-89cf-29fdf1daea98) → `http://sa-nginx:80`
+  - DNS: CNAME `@` → tunnel (Type: Tunnel, Proxied) — xóa A record parking page Namecheap
+  - Verify: `https://minhnhat05.xyz/api/health` → `{"status":"ok"}` ✓ (2026-05-01)
+  - [x] Flutter app đổi base URL → `https://minhnhat05.xyz` (env.dart defaultValue updated 2026-05-01)
   - Ghi chú: ESP32 MQTT vẫn dùng `mqtts://192.168.1.16:8883` (local LAN — không cần thay đổi)
   - Ghi chú: ESP32 OTA vẫn dùng `https://192.168.1.16/ota/...` (local cert — cần update CA cert firmware để dùng domain)
 - [x] Xác minh: `curl http://192.168.1.16/api/health` → 200 OK ✓ (local)
@@ -120,6 +117,24 @@ Checkbox states:
 - [x] Implement `mqtt_task` (Core 1, Priority 6, 6144B): nhận data từ queue, publish `telemetry`
 - [x] Telemetry payload: `{"device_id":"…","ts":1234567890,"temperature":28.5,"humidity":65.2}`
 - [-] Test: thấy telemetry message liên tục trên EMQX, interval ~5 s
+
+### 2.10 CO + NO2 Gas Sensors (GM-702B + GM-102B via ADC1)
+
+> Plan: `.claude/plans/wire-co-no2-sensors.md`
+
+- [x] Add SA_CO_ANALOG_PIN / SA_NO2_ANALOG_PIN / SA_GAS_SENSOR_RL_OHM / SA_GAS_SENSOR_VC_V macros to config.h
+- [x] Add config_load_gas_r0 / config_save_gas_r0 NVS API (config.c/h)
+- [x] Add adc_bus + gm702b + gm102b to firmware/CMakeLists.txt EXTRA_COMPONENT_DIRS
+- [x] Add adc_bus + gm702b + gm102b to core/CMakeLists.txt REQUIRES
+- [x] Extend sensor_task_start() signature with co + no2 params
+- [x] Extend sensor_task.c loop — read co_ppm/no2_ppm, add to telemetry + shadow JSON
+- [x] sysload.c: init adc_bus + gm702b + gm102b, load R0 from NVS, register calibrate_co/calibrate_no2 MQTT handlers
+- [x] mqtt.h + mqtt.c: add mqtt_register_command_handler() + dispatch table (MAX=8)
+- [x] Update docs/MQTT_PROTOCOL.md — add co_ppm/no2_ppm to telemetry sample + field table
+- [x] Update docs/ARCHITECTURE.md — add co_ppm/no2_ppm to device_types spec + telemetry topic desc
+- [x] Build verify: idf.py build passes (0x12c360 bytes, 41% free) ✓
+- [ ] Hardware test: enable SA_ENABLE_CO_SENSOR + SA_ENABLE_NO2_SENSOR via menuconfig, flash, confirm init logs
+- [ ] Calibrate: send type:calibrate_co + type:calibrate_no2 via MQTT after ≥24h preheat, confirm NVS write + ppm values
 
 ### 2.7 SD Card Logging
 

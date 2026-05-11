@@ -199,7 +199,7 @@ SPI2_HOST — Shared bus
 
 ```
 device/{deviceId}/status          → broker  : LWT online/offline + firmware ver
-device/{deviceId}/telemetry       → broker  : sensor data (temperature, humidity, time)
+device/{deviceId}/telemetry       → broker  : sensor data (temperature, humidity, co_ppm, no2_ppm, ts)
 device/{deviceId}/command         ← broker  : control command from app
 device/{deviceId}/response        → broker  : command execution result
 device/{deviceId}/shadow/report   → broker  : current state on boot/change
@@ -303,8 +303,10 @@ CREATE TABLE device_types (
     display_name    VARCHAR,
     icon            VARCHAR,
     spec            JSONB NOT NULL
-    -- {"properties":[{"key":"temperature","type":"float","unit":"°C"},
-    --                {"key":"humidity","type":"float","unit":"%"}]}
+    -- {"properties":[{"key":"temperature","type":"float","unit":"°C",  "label":"Nhiệt độ"},
+    --                {"key":"humidity",   "type":"float","unit":"%RH", "label":"Độ ẩm"},
+    --                {"key":"co_ppm",     "type":"float","unit":"ppm", "label":"CO"},
+    --                {"key":"no2_ppm",    "type":"float","unit":"ppm", "label":"NO2"}]}
 );
 
 -- ══════════════════════════════
