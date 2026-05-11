@@ -1,12 +1,14 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createDeviceUser, deleteDeviceUser } from '../services/emqx.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
+import { checkDeviceAccess, checkMembership, requireRole } from '../utils/check-access.js';
+import { RATE_LIMIT_DEVICE } from '../constants.js';
 
 export default async function devicesRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
 
     // POST /api/devices — called after BLE provisioning
-    fastify.post('/devices', auth, async (request, reply) => {
+    fastify.post('/devices', { preHandler: fastify.authenticate, config: { rateLimit: RATE_LIMIT_DEVICE } }, async (request, reply) => {
         const userId = request.user.sub;
         const { device_id, name, home_id, room_id } = request.body || {};
         const normalizedDeviceId = normalizeDeviceId(device_id);
@@ -19,11 +21,8 @@ export default async function devicesRoutes(fastify) {
         }
 
         // Verify caller is a member of the home
-        const { rows: memberRows } = await fastify.db.query(
-            'SELECT 1 FROM home_members WHERE home_id = $1 AND user_id = $2',
-            [home_id, userId]
-        );
-        if (memberRows.length === 0) return reply.code(403).send({ error: 'Forbidden' });
+        const allowed = await checkMembership(fastify, home_id, userId);
+        if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
 
         // Get default device type
         const { rows: typeRows } = await fastify.db.query(
@@ -83,16 +82,9 @@ export default async function devicesRoutes(fastify) {
     fastify.put('/devices/:id', auth, async (request, reply) => {
         const userId = request.user.sub;
         const deviceId = normalizeDeviceId(request.params.id);
-        const { rows: devRows } = await fastify.db.query(
-            'SELECT home_id FROM devices WHERE id = $1',
-            [deviceId]
-        );
-        if (devRows.length === 0) return reply.code(404).send({ error: 'Not found' });
-        const { rows: m } = await fastify.db.query(
-            'SELECT 1 FROM home_members WHERE home_id = $1 AND user_id = $2',
-            [devRows[0].home_id, userId]
-        );
-        if (m.length === 0) return reply.code(403).send({ error: 'Forbidden' });
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
+        const allowed = await checkDeviceAccess(fastify, deviceId, userId);
+        if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
 
         const { name, room_id } = request.body || {};
         const { rows } = await fastify.db.query(
@@ -102,6 +94,7 @@ export default async function devicesRoutes(fastify) {
              WHERE id = $3 RETURNING id, name, home_id, room_id, online, last_seen, firmware_ver`,
             [name || null, room_id || null, deviceId]
         );
+        if (rows.length === 0) return reply.code(404).send({ error: 'Not found' });
         return rows[0];
     });
 
@@ -109,23 +102,22 @@ export default async function devicesRoutes(fastify) {
     fastify.delete('/devices/:id', auth, async (request, reply) => {
         const userId = request.user.sub;
         const deviceId = normalizeDeviceId(request.params.id);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
         const { rows: devRows } = await fastify.db.query(
-            'SELECT home_id, owner_id FROM devices WHERE id = $1',
+            'SELECT home_id FROM devices WHERE id = $1',
             [deviceId]
         );
         if (devRows.length === 0) return reply.code(404).send({ error: 'Not found' });
 
-        const { rows: m } = await fastify.db.query(
-            "SELECT role FROM home_members WHERE home_id = $1 AND user_id = $2",
-            [devRows[0].home_id, userId]
-        );
-        if (m.length === 0 || !['owner', 'admin'].includes(m[0].role)) {
-            return reply.code(403).send({ error: 'Forbidden' });
-        }
+        await requireRole(fastify, devRows[0].home_id, userId, 'owner', 'admin');
 
         await fastify.db.query('DELETE FROM devices WHERE id = $1', [deviceId]);
-        await fastify.redis.del(`shadow:${deviceId}`);
-        await fastify.redis.del(`pending_cmds:${deviceId}`);
+        await fastify.redis.del(
+            `shadow:${deviceId}`,
+            `pending_cmds:${deviceId}`,
+            `announce:${deviceId}`,
+            `ota_progress:${deviceId}`
+        );
 
         try {
             await deleteDeviceUser(deviceId);

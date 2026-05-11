@@ -1,21 +1,14 @@
 import { sendCommand } from '../services/commands.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
+import { checkDeviceAccess } from '../utils/check-access.js';
+import { COMMANDS_MAX_LIMIT, RATE_LIMIT_COMMAND } from '../constants.js';
 
 export default async function commandsRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
 
-    async function checkDeviceAccess(fastify, deviceId, userId) {
-        const { rows } = await fastify.db.query(
-            `SELECT 1 FROM devices d
-             JOIN home_members hm ON hm.home_id = d.home_id
-             WHERE d.id = $1 AND hm.user_id = $2`,
-            [deviceId, userId]
-        );
-        return rows.length > 0;
-    }
-
-    fastify.post('/devices/:id/command', auth, async (request, reply) => {
+    fastify.post('/devices/:id/command', { preHandler: fastify.authenticate, config: { rateLimit: RATE_LIMIT_COMMAND } }, async (request, reply) => {
         const deviceId = normalizeDeviceId(request.params.id);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
         const userId = request.user.sub;
         const allowed = await checkDeviceAccess(fastify, deviceId, userId);
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
@@ -29,11 +22,12 @@ export default async function commandsRoutes(fastify) {
 
     fastify.get('/devices/:id/commands', auth, async (request, reply) => {
         const deviceId = normalizeDeviceId(request.params.id);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
         const userId = request.user.sub;
         const allowed = await checkDeviceAccess(fastify, deviceId, userId);
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
 
-        const limit = Math.min(parseInt(request.query.limit || '50'), 200);
+        const limit = Math.min(parseInt(request.query.limit || '50'), COMMANDS_MAX_LIMIT);
         const offset = parseInt(request.query.offset || '0');
 
         const { rows } = await fastify.db.query(

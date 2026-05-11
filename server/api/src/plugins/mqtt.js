@@ -1,7 +1,7 @@
 import fp from 'fastify-plugin';
 import mqtt from 'mqtt';
-import { updateReported, getShadow } from '../services/shadow.js';
-import { flushPending } from '../services/commands.js';
+import { updateReported } from '../services/shadow.js';
+import { handleStatus, handleTelemetry, handleResponse, handleOtaProgress } from '../services/mqtt-handlers.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
 
 async function mqttPlugin(fastify) {
@@ -26,6 +26,7 @@ async function mqttPlugin(fastify) {
     client.on('message', async (topic, buf) => {
         const parts = topic.split('/');
         const deviceId = normalizeDeviceId(parts[1]);
+        if (!deviceId) return;
         let payload;
         try {
             payload = JSON.parse(buf.toString());
@@ -35,43 +36,15 @@ async function mqttPlugin(fastify) {
 
         try {
             if (parts[2] === 'status') {
-                await fastify.db.query(
-                    'UPDATE devices SET online = $1, last_seen = NOW() WHERE id = $2',
-                    [payload.online === true, deviceId]
-                );
-                // Store announcement for provisioning poll (works for new and re-provisioned devices)
-                if (payload.online === true) {
-                    await fastify.redis.set(`announce:${deviceId}`, '1', 'EX', 300);
-                }
-                if (payload.online === true) {
-                    await flushPending(fastify, deviceId);
-                    // Push current desired state to device
-                    const shadow = await getShadow(fastify, deviceId);
-                    if (Object.keys(shadow.desired).length > 0) {
-                        client.publish(
-                            `device/${deviceId}/shadow/get_response`,
-                            JSON.stringify({ desired: shadow.desired }),
-                            { qos: 1 }
-                        );
-                    }
-                }
+                await handleStatus(fastify, deviceId, payload);
             } else if (parts[2] === 'telemetry') {
-                const ts = payload.ts ? new Date(payload.ts * 1000).toISOString() : new Date().toISOString();
-                await fastify.db.query(
-                    'INSERT INTO telemetry (device_id, ts, payload) VALUES ($1, $2, $3)',
-                    [deviceId, ts, JSON.stringify(payload)]
-                );
+                await handleTelemetry(fastify, deviceId, payload);
             } else if (parts[2] === 'response') {
-                if (payload.command_id) {
-                    await fastify.db.query(
-                        'UPDATE commands SET status = $1, executed_at = NOW() WHERE id = $2',
-                        [payload.status || 'done', payload.command_id]
-                    );
-                }
+                await handleResponse(fastify, deviceId, payload);
             } else if (parts[2] === 'shadow' && parts[3] === 'report') {
                 await updateReported(fastify, deviceId, payload);
             } else if (parts[2] === 'ota' && parts[3] === 'progress') {
-                await fastify.redis.set(`ota_progress:${deviceId}`, JSON.stringify(payload), 'EX', 600);
+                await handleOtaProgress(fastify, deviceId, payload);
             }
         } catch (err) {
             fastify.log.error({ err, topic }, 'MQTT message handler error');

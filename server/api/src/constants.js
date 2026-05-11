@@ -1,0 +1,27 @@
+// ── Redis TTLs (seconds) ────────────────────────────────────────
+export const REDIS_TTL_ANNOUNCE = 300;   // device online announcement (5 min)
+export const REDIS_TTL_OTA     = 600;    // OTA progress cache (10 min)
+export const REDIS_TTL_SHADOW  = 3600;   // device shadow cache (1 hr)
+
+// ── Auth ────────────────────────────────────────────────────────
+export const BCRYPT_ROUNDS       = 12;
+export const REFRESH_COOKIE_PATH = '/api/auth/refresh';
+export const SECONDS_PER_DAY     = 86_400;
+
+// ── CORS ────────────────────────────────────────────────────────
+export const ALLOWED_ORIGINS = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
+    : ['https://minhnhat05.xyz'];
+
+// ── Rate limits ─────────────────────────────────────────────────
+export const RATE_LIMIT_COMMAND = { max: 30, timeWindow: '1 minute' };
+export const RATE_LIMIT_DEVICE  = { max: 20, timeWindow: '1 minute' };
+
+// ── Telemetry aggregation whitelist ─────────────────────────────
+export const AGG_ALLOWED = new Set(['1m', '5m', '15m', '30m', '1h', '6h', '1d']);
+
+// ── Query limits ────────────────────────────────────────────────
+export const COMMANDS_MAX_LIMIT      = 200;
+export const TELEMETRY_DEFAULT_LIMIT = 1000;
+export const TELEMETRY_MAX_LIMIT     = 5000;
+export const MS_PER_DAY              = 86_400_000;

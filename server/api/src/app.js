@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
 
+import { ALLOWED_ORIGINS } from './constants.js';
 import dbPlugin from './plugins/db.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -16,10 +17,16 @@ import shadowRoutes from './routes/shadow.js';
 import commandsRoutes from './routes/commands.js';
 import telemetryRoutes from './routes/telemetry.js';
 
+// ── Startup guards ──────────────────────────────────────────────
+if (!process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is not set');
+    process.exit(1);
+}
+
 const fastify = Fastify({ logger: true });
 
 // ── Core plugins ────────────────────────────────────────────────
-await fastify.register(cors, { origin: true });
+await fastify.register(cors, { origin: ALLOWED_ORIGINS, credentials: true });
 await fastify.register(cookie);
 await fastify.register(dbPlugin);
 await fastify.register(redisPlugin);
@@ -47,4 +54,13 @@ try {
 } catch (err) {
     fastify.log.error(err);
     process.exit(1);
+}
+
+// ── Graceful shutdown ────────────────────────────────────────────
+for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.on(signal, async () => {
+        fastify.log.info({ signal }, 'Shutting down gracefully');
+        await fastify.close();
+        process.exit(0);
+    });
 }

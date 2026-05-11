@@ -1,7 +1,22 @@
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { BCRYPT_ROUNDS, REFRESH_COOKIE_PATH, SECONDS_PER_DAY } from '../constants.js';
 
 const REFRESH_EXPIRES_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '30');
+
+async function issueRefreshToken(fastify, reply, userId) {
+    const token = uuidv4();
+    const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * SECONDS_PER_DAY * 1000);
+    await fastify.db.query(
+        'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+        [userId, token, expiresAt]
+    );
+    await fastify.redis.set(`session:${userId}`, token, 'EX', REFRESH_EXPIRES_DAYS * SECONDS_PER_DAY);
+    reply.setCookie('refreshToken', token, {
+        httpOnly: true, sameSite: 'Strict', path: REFRESH_COOKIE_PATH, maxAge: REFRESH_EXPIRES_DAYS * SECONDS_PER_DAY
+    });
+    return token;
+}
 
 export default async function authRoutes(fastify) {
     const rl = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
@@ -11,7 +26,7 @@ export default async function authRoutes(fastify) {
         const { email, password, full_name } = request.body || {};
         if (!email || !password) return reply.code(400).send({ error: 'email and password required' });
 
-        const hash = await bcrypt.hash(password, 12);
+        const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
         try {
             const { rows } = await fastify.db.query(
                 `INSERT INTO users (email, password_hash, full_name)
@@ -41,18 +56,7 @@ export default async function authRoutes(fastify) {
         if (!valid) return reply.code(401).send({ error: 'Invalid credentials' });
 
         const accessToken = fastify.jwt.sign({ sub: user.id, email: user.email });
-        const refreshToken = uuidv4();
-        const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 86400 * 1000);
-
-        await fastify.db.query(
-            'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-            [user.id, refreshToken, expiresAt]
-        );
-        await fastify.redis.set(`session:${user.id}`, refreshToken, 'EX', REFRESH_EXPIRES_DAYS * 86400);
-
-        reply.setCookie('refreshToken', refreshToken, {
-            httpOnly: true, sameSite: 'Strict', path: '/api/auth/refresh', maxAge: REFRESH_EXPIRES_DAYS * 86400
-        });
+        const refreshToken = await issueRefreshToken(fastify, reply, user.id);
         // refreshToken also in body for mobile clients (no cookie jar)
         return { accessToken, refreshToken, user: { id: user.id, email: user.email, full_name: user.full_name } };
     });
@@ -72,20 +76,11 @@ export default async function authRoutes(fastify) {
         if (rows.length === 0) return reply.code(401).send({ error: 'Invalid or expired refresh token' });
 
         const { id: rtId, user_id, email } = rows[0];
-        const newRefreshToken = uuidv4();
-        const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 86400 * 1000);
-
+        // Revoke old token before issuing new one (token rotation)
         await fastify.db.query('DELETE FROM refresh_tokens WHERE id = $1', [rtId]);
-        await fastify.db.query(
-            'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-            [user_id, newRefreshToken, expiresAt]
-        );
-        await fastify.redis.set(`session:${user_id}`, newRefreshToken, 'EX', REFRESH_EXPIRES_DAYS * 86400);
 
         const accessToken = fastify.jwt.sign({ sub: user_id, email });
-        reply.setCookie('refreshToken', newRefreshToken, {
-            httpOnly: true, sameSite: 'Strict', path: '/api/auth/refresh', maxAge: REFRESH_EXPIRES_DAYS * 86400
-        });
+        const newRefreshToken = await issueRefreshToken(fastify, reply, user_id);
         return { accessToken, refreshToken: newRefreshToken };
     });
 
@@ -94,7 +89,7 @@ export default async function authRoutes(fastify) {
         const userId = request.user.sub;
         await fastify.db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
         await fastify.redis.del(`session:${userId}`);
-        reply.clearCookie('refreshToken', { path: '/api/auth/refresh' });
+        reply.clearCookie('refreshToken', { path: REFRESH_COOKIE_PATH });
         return { success: true };
     });
 }

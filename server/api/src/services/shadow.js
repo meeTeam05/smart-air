@@ -1,3 +1,5 @@
+import { REDIS_TTL_SHADOW } from '../constants.js';
+
 export async function getShadow(fastify, deviceId) {
     const cached = await fastify.redis.get(`shadow:${deviceId}`);
     if (cached) return JSON.parse(cached);
@@ -9,32 +11,22 @@ export async function getShadow(fastify, deviceId) {
     if (rows.length === 0) return { reported: {}, desired: {}, updatedAt: null };
     const row = rows[0];
     const shadow = { reported: row.reported, desired: row.desired, updatedAt: row.updated_at };
-    await fastify.redis.set(`shadow:${deviceId}`, JSON.stringify(shadow), 'EX', 3600);
+    await fastify.redis.set(`shadow:${deviceId}`, JSON.stringify(shadow), 'EX', REDIS_TTL_SHADOW);
     return shadow;
 }
 
-export async function updateReported(fastify, deviceId, reported) {
-    const shadow = await getShadow(fastify, deviceId);
-    shadow.reported = reported;
-    shadow.updatedAt = new Date().toISOString();
-    await fastify.redis.set(`shadow:${deviceId}`, JSON.stringify(shadow), 'EX', 3600);
+async function _updateField(fastify, deviceId, field, value) {
+    if (field !== 'reported' && field !== 'desired') throw new Error(`Invalid shadow field: ${field}`);
+    // Write DB first (atomic UPSERT), then invalidate cache.
+    // Eliminates read-modify-write race — next getShadow() repopulates from DB.
     await fastify.db.query(
-        `INSERT INTO device_shadows (device_id, reported, updated_at)
+        `INSERT INTO device_shadows (device_id, ${field}, updated_at)
          VALUES ($1, $2, NOW())
-         ON CONFLICT (device_id) DO UPDATE SET reported = $2, updated_at = NOW()`,
-        [deviceId, JSON.stringify(reported)]
+         ON CONFLICT (device_id) DO UPDATE SET ${field} = $2, updated_at = NOW()`,
+        [deviceId, JSON.stringify(value)]
     );
+    await fastify.redis.del(`shadow:${deviceId}`);
 }
 
-export async function setDesired(fastify, deviceId, desired) {
-    const shadow = await getShadow(fastify, deviceId);
-    shadow.desired = desired;
-    shadow.updatedAt = new Date().toISOString();
-    await fastify.redis.set(`shadow:${deviceId}`, JSON.stringify(shadow), 'EX', 3600);
-    await fastify.db.query(
-        `INSERT INTO device_shadows (device_id, desired, updated_at)
-         VALUES ($1, $2, NOW())
-         ON CONFLICT (device_id) DO UPDATE SET desired = $2, updated_at = NOW()`,
-        [deviceId, JSON.stringify(desired)]
-    );
-}
+export const updateReported = (f, id, data) => _updateField(f, id, 'reported', data);
+export const setDesired     = (f, id, data) => _updateField(f, id, 'desired', data);

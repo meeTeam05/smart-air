@@ -1,21 +1,13 @@
 import { getShadow, setDesired } from '../services/shadow.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
+import { checkDeviceAccess } from '../utils/check-access.js';
 
 export default async function shadowRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
 
-    async function checkDeviceAccess(fastify, deviceId, userId) {
-        const { rows } = await fastify.db.query(
-            `SELECT 1 FROM devices d
-             JOIN home_members hm ON hm.home_id = d.home_id
-             WHERE d.id = $1 AND hm.user_id = $2`,
-            [deviceId, userId]
-        );
-        return rows.length > 0;
-    }
-
     fastify.get('/devices/:id/shadow', auth, async (request, reply) => {
         const deviceId = normalizeDeviceId(request.params.id);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
         const allowed = await checkDeviceAccess(fastify, deviceId, request.user.sub);
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
         return getShadow(fastify, deviceId);
@@ -23,6 +15,7 @@ export default async function shadowRoutes(fastify) {
 
     fastify.put('/devices/:id/shadow/desired', auth, async (request, reply) => {
         const deviceId = normalizeDeviceId(request.params.id);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
         const allowed = await checkDeviceAccess(fastify, deviceId, request.user.sub);
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
 

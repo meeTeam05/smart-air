@@ -1,14 +1,4 @@
-async function requireRole(fastify, homeId, userId, ...roles) {
-    const { rows } = await fastify.db.query(
-        'SELECT role FROM home_members WHERE home_id = $1 AND user_id = $2',
-        [homeId, userId]
-    );
-    if (rows.length === 0 || !roles.includes(rows[0].role)) {
-        const err = new Error('Forbidden');
-        err.statusCode = 403;
-        throw err;
-    }
-}
+import { requireRole, checkMembership } from '../utils/check-access.js';
 
 export default async function homesRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
@@ -31,16 +21,19 @@ export default async function homesRoutes(fastify) {
         const { name, address, timezone } = request.body || {};
         if (!name) return reply.code(400).send({ error: 'name required' });
 
-        const { rows } = await fastify.db.query(
-            `INSERT INTO homes (owner_id, name, address, timezone)
-             VALUES ($1, $2, $3, $4) RETURNING *`,
-            [userId, name, address || null, timezone || 'Asia/Ho_Chi_Minh']
-        );
-        const home = rows[0];
-        await fastify.db.query(
-            'INSERT INTO home_members (home_id, user_id, role) VALUES ($1, $2, $3)',
-            [home.id, userId, 'owner']
-        );
+        const home = await fastify.withTransaction(async (client) => {
+            const { rows } = await client.query(
+                `INSERT INTO homes (owner_id, name, address, timezone)
+                 VALUES ($1, $2, $3, $4) RETURNING *`,
+                [userId, name, address || null, timezone || 'Asia/Ho_Chi_Minh']
+            );
+            const home = rows[0];
+            await client.query(
+                'INSERT INTO home_members (home_id, user_id, role) VALUES ($1, $2, $3)',
+                [home.id, userId, 'owner']
+            );
+            return home;
+        });
         return reply.code(201).send(home);
     });
 
@@ -94,12 +87,8 @@ export default async function homesRoutes(fastify) {
     // ── Rooms ────────────────────────────────────────────────────
     fastify.get('/homes/:homeId/rooms', auth, async (request, reply) => {
         const userId = request.user.sub;
-        // verify membership
-        const { rows: m } = await fastify.db.query(
-            'SELECT 1 FROM home_members WHERE home_id = $1 AND user_id = $2',
-            [request.params.homeId, userId]
-        );
-        if (m.length === 0) return reply.code(403).send({ error: 'Forbidden' });
+        const allowed = await checkMembership(fastify, request.params.homeId, userId);
+        if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
         const { rows } = await fastify.db.query(
             'SELECT * FROM rooms WHERE home_id = $1 ORDER BY name',
             [request.params.homeId]

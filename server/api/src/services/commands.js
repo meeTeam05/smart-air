@@ -28,9 +28,20 @@ export async function sendCommand(fastify, deviceId, payload, userId) {
 }
 
 export async function flushPending(fastify, deviceId) {
-    const items = await fastify.redis.lrange(`pending_cmds:${deviceId}`, 0, -1);
-    if (items.length === 0) return;
-    await fastify.redis.del(`pending_cmds:${deviceId}`);
+    const key = `pending_cmds:${deviceId}`;
+    const tempKey = `${key}:flushing`;
+
+    // Atomically rename the list — new RPUSHes go to a fresh key
+    try {
+        await fastify.redis.rename(key, tempKey);
+    } catch (err) {
+        if (err.message.includes('no such key')) return;
+        throw err;
+    }
+
+    const items = await fastify.redis.lrange(tempKey, 0, -1);
+    await fastify.redis.del(tempKey);
+
     for (const item of items) {
         const { command_id, payload } = JSON.parse(item);
         const msg = JSON.stringify({ command_id, ...payload });
