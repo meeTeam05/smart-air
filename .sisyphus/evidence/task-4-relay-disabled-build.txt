@@ -1,0 +1,10 @@
+TASK1 METHOD REUSE (blocked by environment)
+Planned method: set CONFIG_SA_ENABLE_RELAYS=n in firmware/sdkconfig, run idf.py -C firmware build, then restore sdkconfig.
+
+COMMAND: grep "CONFIG_SA_ENABLE_RELAYS=" firmware/sdkconfig
+0 matches for 'CONFIG_SA_ENABLE_RELAYS='
+
+COMMAND: idf.py -C firmware build
+zsh:1: command not found: idf.py
+
+ENVIRONMENT BLOCKER: ESP-IDF CLI unavailable in this session (`idf.py` not found in PATH). Relay-disabled build step is blocked before compile verification.

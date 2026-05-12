@@ -1,0 +1,23 @@
+# Task 1: Reversible Relay-Disabled Verification Method
+
+To verify the relay-disabled build without permanently clobbering `sdkconfig`:
+
+## Method: Manual sdkconfig override (Temporary)
+1. Ensure a baseline build exists:
+   `idf.py build`
+2. Modify `sdkconfig` directly (or via `menuconfig`):
+   Set `CONFIG_SA_ENABLE_RELAYS=n`
+3. Rebuild and check for compilation errors or linker failures:
+   `idf.py build`
+4. Revert `sdkconfig`:
+   `git checkout sdkconfig` (or restore from backup if not tracked)
+
+## Baseline Evidence of Current Config
+File: firmware/main/Kconfig.projbuild:156
+Default: `config SA_ENABLE_RELAYS default n`
+
+Verification Command:
+`grep "CONFIG_SA_ENABLE_RELAYS=" sdkconfig`
+
+Expected Outcome for Relay-Disabled:
+`CONFIG_SA_ENABLE_RELAYS=n` (or not present if default is n and it's not overridden)

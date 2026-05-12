@@ -1,0 +1,5 @@
+COMMAND: idf.py -C firmware build
+
+zsh:1: command not found: idf.py
+
+ENVIRONMENT BLOCKER: ESP-IDF CLI unavailable in this session (`idf.py` not found in PATH). Build matrix execution cannot proceed until ESP-IDF environment is sourced.
