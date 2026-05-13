@@ -1,8 +1,19 @@
 import { v4 as uuidv4 } from 'uuid';
-import { createDeviceUser, deleteDeviceUser } from '../services/emqx.js';
+import { createHash } from 'node:crypto';
+import { createDeviceUser } from '../services/emqx.js';
+import { cleanupDeletedDevice } from '../services/device-cleanup.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
-import { checkDeviceAccess, checkMembership, requireRole } from '../utils/check-access.js';
-import { RATE_LIMIT_DEVICE } from '../constants.js';
+import { checkDeviceAccess, requireRole } from '../utils/check-access.js';
+import { RATE_LIMIT_DEVICE, MAX_DEVICES_PER_HOME } from '../constants.js';
+import { cleanRequiredString, parsePositiveInt, parseUuid } from '../utils/parse.js';
+
+function hashDeviceSecret(secret) {
+    return createHash('sha256').update(secret).digest('hex');
+}
+
+async function lockQuota(client, key) {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
+}
 
 export default async function devicesRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
@@ -12,43 +23,100 @@ export default async function devicesRoutes(fastify) {
         const userId = request.user.sub;
         const { device_id, name, home_id, room_id } = request.body || {};
         const normalizedDeviceId = normalizeDeviceId(device_id);
-        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!normalizedDeviceId || !name || !home_id) {
+        const homeId = parseUuid(home_id);
+        const roomId = room_id == null ? null : parseUuid(room_id);
+        const cleanName = cleanRequiredString(name);
+        if (!normalizedDeviceId || !cleanName || !homeId) {
             return reply.code(400).send({ error: 'device_id, name, home_id required' });
         }
-        if (!uuidRe.test(home_id)) {
-            return reply.code(400).send({ error: 'home_id must be a valid UUID' });
+        if (room_id != null && !roomId) {
+            return reply.code(400).send({ error: 'room_id must be a valid UUID' });
         }
 
-        // Verify caller is a member of the home
-        const allowed = await checkMembership(fastify, home_id, userId);
-        if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
-
-        // Get default device type
-        const { rows: typeRows } = await fastify.db.query(
-            "SELECT id FROM device_types WHERE name = 'smart_air_v1' LIMIT 1"
-        );
-        const typeId = typeRows[0]?.id || null;
+        await requireRole(fastify, homeId, userId, 'owner', 'admin');
 
         const secretKey = uuidv4();
+        const secretKeyHash = hashDeviceSecret(secretKey);
+        let emqxUserCreated = false;
+
         let device;
         try {
-            const { rows } = await fastify.db.query(
-                `INSERT INTO devices (id, home_id, room_id, type_id, owner_id, name, secret_key)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-                [normalizedDeviceId, home_id, room_id || null, typeId, userId, name, secretKey]
-            );
-            device = rows[0];
-        } catch (err) {
-            if (err.code === '23505') return reply.code(409).send({ error: 'Device already registered' });
-            throw err;
-        }
+            device = await fastify.withTransaction(async (client) => {
+                await lockQuota(client, `quota:devices:${homeId}`);
 
-        // Create EMQX user + ACL
-        try {
-            await createDeviceUser(normalizedDeviceId, secretKey);
+                const { rows: existingRows } = await client.query(
+                    'SELECT 1 FROM devices WHERE id = $1',
+                    [normalizedDeviceId]
+                );
+                if (existingRows.length > 0) {
+                    const err = new Error('Device already registered');
+                    err.statusCode = 409;
+                    throw err;
+                }
+
+                const { rows: devCountRows } = await client.query(
+                    'SELECT COUNT(*)::int AS n FROM devices WHERE home_id = $1',
+                    [homeId]
+                );
+                if (devCountRows[0].n >= MAX_DEVICES_PER_HOME) {
+                    const err = new Error('device limit reached for this home');
+                    err.statusCode = 429;
+                    throw err;
+                }
+
+                if (roomId) {
+                    const { rows: roomRows } = await client.query(
+                        'SELECT 1 FROM rooms WHERE id = $1 AND home_id = $2',
+                        [roomId, homeId]
+                    );
+                    if (roomRows.length === 0) {
+                        const err = new Error('room_id does not belong to home');
+                        err.statusCode = 400;
+                        throw err;
+                    }
+                }
+
+                const { rows: typeRows } = await client.query(
+                    "SELECT id FROM device_types WHERE name = 'smart_air_v1' LIMIT 1"
+                );
+                const typeId = typeRows[0]?.id || null;
+
+                let emqxResult;
+                try {
+                    emqxResult = await createDeviceUser(normalizedDeviceId, secretKey);
+                } catch (err) {
+                    fastify.log.warn({ err }, 'EMQX user creation failed — device not saved');
+                    err.statusCode = 502;
+                    err.clientMessage = 'Device provisioning failed';
+                    throw err;
+                }
+
+                emqxUserCreated = !!emqxResult?.userCreated;
+                if (!emqxUserCreated) {
+                    const err = new Error('Device provisioning conflict');
+                    err.statusCode = 409;
+                    throw err;
+                }
+
+                const { rows } = await client.query(
+                    `INSERT INTO devices (id, home_id, room_id, type_id, owner_id, name, secret_key_hash)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     RETURNING id, home_id, room_id, type_id, owner_id, name, firmware_ver, online, last_seen, created_at`,
+                    [normalizedDeviceId, homeId, roomId, typeId, userId, cleanName, secretKeyHash]
+                );
+                return rows[0];
+            });
         } catch (err) {
-            fastify.log.warn({ err }, 'EMQX user creation failed — device still saved');
+            if (emqxUserCreated) {
+                try {
+                    await cleanupDeletedDevice(fastify, normalizedDeviceId);
+                } catch (cleanupErr) {
+                    fastify.log.warn({ err: cleanupErr }, 'EMQX compensation delete failed after DB error');
+                }
+            }
+            if (err.code === '23505') return reply.code(409).send({ error: 'Device already registered' });
+            if (err.statusCode) return reply.code(err.statusCode).send({ error: err.clientMessage || err.message });
+            throw err;
         }
 
         return reply.code(201).send({ ...device, secret_key: secretKey });
@@ -65,15 +133,25 @@ export default async function devicesRoutes(fastify) {
     });
 
     // GET /api/devices
-    fastify.get('/devices', auth, async (request) => {
+    fastify.get('/devices', auth, async (request, reply) => {
         const userId = request.user.sub;
+        const limit = parsePositiveInt(request.query.limit, 100, 500);
+        const offset = parsePositiveInt(request.query.offset, 0);
+        if (limit === null || offset === null) {
+            return reply.code(400).send({ error: 'limit and offset must be non-negative integers' });
+        }
         const { rows } = await fastify.db.query(
-            `SELECT d.id, d.name, d.home_id, d.room_id, d.online, d.last_seen, d.firmware_ver, d.created_at
+            `SELECT d.id, d.name, d.home_id, d.room_id, d.online, d.last_seen, d.firmware_ver, d.created_at,
+                    s.reported->>'mode' AS mode,
+                    (s.reported->>'relay_1')::bool AS relay_1,
+                    (s.reported->>'relay_2')::bool AS relay_2,
+                    (s.reported->>'relay_3')::bool AS relay_3
              FROM devices d
              JOIN home_members hm ON hm.home_id = d.home_id
+             LEFT JOIN device_shadows s ON s.device_id = d.id
              WHERE hm.user_id = $1
-             ORDER BY d.created_at`,
-            [userId]
+             ORDER BY d.created_at LIMIT $2 OFFSET $3`,
+            [userId, limit, offset]
         );
         return rows;
     });
@@ -87,12 +165,28 @@ export default async function devicesRoutes(fastify) {
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
 
         const { name, room_id } = request.body || {};
+        const cleanName = name === undefined ? undefined : cleanRequiredString(name);
+        if (name !== undefined && !cleanName) return reply.code(400).send({ error: 'name must be non-empty' });
+        const roomProvided = room_id !== undefined;
+        const roomId = room_id === null || room_id === undefined ? null : parseUuid(room_id);
+        if (roomProvided && room_id !== null && !roomId) {
+            return reply.code(400).send({ error: 'room_id must be a valid UUID or null' });
+        }
+        if (roomId) {
+            const { rows: roomRows } = await fastify.db.query(
+                `SELECT 1 FROM rooms r
+                 JOIN devices d ON d.home_id = r.home_id
+                 WHERE r.id = $1 AND d.id = $2`,
+                [roomId, deviceId]
+            );
+            if (roomRows.length === 0) return reply.code(400).send({ error: 'room_id does not belong to device home' });
+        }
         const { rows } = await fastify.db.query(
             `UPDATE devices SET
-               name = COALESCE($1, name),
-               room_id = COALESCE($2, room_id)
-             WHERE id = $3 RETURNING id, name, home_id, room_id, online, last_seen, firmware_ver`,
-            [name || null, room_id || null, deviceId]
+               name = CASE WHEN $1 THEN $2 ELSE name END,
+               room_id = CASE WHEN $3 THEN $4 ELSE room_id END
+             WHERE id = $5 RETURNING id, name, home_id, room_id, online, last_seen, firmware_ver`,
+            [name !== undefined, cleanName ?? null, roomProvided, roomId, deviceId]
         );
         if (rows.length === 0) return reply.code(404).send({ error: 'Not found' });
         return rows[0];
@@ -103,27 +197,33 @@ export default async function devicesRoutes(fastify) {
         const userId = request.user.sub;
         const deviceId = normalizeDeviceId(request.params.id);
         if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
-        const { rows: devRows } = await fastify.db.query(
-            'SELECT home_id FROM devices WHERE id = $1',
-            [deviceId]
-        );
-        if (devRows.length === 0) return reply.code(404).send({ error: 'Not found' });
 
-        await requireRole(fastify, devRows[0].home_id, userId, 'owner', 'admin');
+        const deletedDeviceId = await fastify.withTransaction(async (client) => {
+            const { rows: devRows } = await client.query(
+                'SELECT id, home_id FROM devices WHERE id = $1 FOR UPDATE',
+                [deviceId]
+            );
+            if (devRows.length === 0) return null;
 
-        await fastify.db.query('DELETE FROM devices WHERE id = $1', [deviceId]);
-        await fastify.redis.del(
-            `shadow:${deviceId}`,
-            `pending_cmds:${deviceId}`,
-            `announce:${deviceId}`,
-            `ota_progress:${deviceId}`
-        );
+            const { rows: roleRows } = await client.query(
+                `SELECT hm.role
+                 FROM home_members hm
+                 JOIN users u ON u.id = hm.user_id
+                 WHERE hm.home_id = $1 AND hm.user_id = $2 AND u.is_active = TRUE`,
+                [devRows[0].home_id, userId]
+            );
+            if (roleRows.length === 0 || !['owner', 'admin'].includes(roleRows[0].role)) {
+                const err = new Error('Forbidden');
+                err.statusCode = 403;
+                throw err;
+            }
 
-        try {
-            await deleteDeviceUser(deviceId);
-        } catch (err) {
-            fastify.log.warn({ err }, 'EMQX user deletion failed');
-        }
+            await client.query('DELETE FROM devices WHERE id = $1', [deviceId]);
+            return devRows[0].id;
+        });
+        if (!deletedDeviceId) return reply.code(404).send({ error: 'Not found' });
+
+        await cleanupDeletedDevice(fastify, deletedDeviceId);
 
         return reply.code(204).send();
     });

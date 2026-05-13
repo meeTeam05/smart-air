@@ -1,46 +1,301 @@
-import { updateReported, getShadow } from './shadow.js';
+import { getShadow, computeDelta, updateReported } from './shadow.js';
 import { flushPending } from './commands.js';
 import { REDIS_TTL_ANNOUNCE, REDIS_TTL_OTA } from '../constants.js';
 
+const SENSOR_FIELDS = Object.freeze(['temperature', 'humidity', 'co_ppm', 'no2_ppm']);
+const RELAY_FIELDS = Object.freeze(['relay_1', 'relay_2', 'relay_3']);
+const MAX_SHADOW_REPORT_BYTES = 16_384;
+const MAX_TELEMETRY_PAYLOAD_BYTES = 4_096;
+const MAX_UNIX_SECONDS = 4_294_967_295;
+
+function isPlainObject(value) {
+    return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteUnixSeconds(value) {
+    return typeof value === 'number'
+        && Number.isFinite(value)
+        && value > 0
+        && value <= MAX_UNIX_SECONDS;
+}
+
+function validSensorValue(value) {
+    return value === null || (typeof value === 'number' && Number.isFinite(value));
+}
+
+export function payloadByteLength(payload) {
+    return Buffer.byteLength(JSON.stringify(payload), 'utf8');
+}
+
+function validateTelemetryPayload(deviceId, payload) {
+    if (!isPlainObject(payload)) return 'payload must be a plain JSON object';
+    if (payloadByteLength(payload) > MAX_TELEMETRY_PAYLOAD_BYTES) {
+        return 'payload exceeds telemetry size limit';
+    }
+    if (typeof payload.device_id === 'string' && payload.device_id !== deviceId) {
+        return 'device_id does not match topic';
+    }
+    if (payload.mode !== 'on' && payload.mode !== 'off') {
+        return 'mode must be on or off';
+    }
+    if (!isFiniteUnixSeconds(payload.ts)) {
+        return 'ts must be a finite Unix timestamp in seconds';
+    }
+
+    for (const field of SENSOR_FIELDS) {
+        if (Object.hasOwn(payload, field) && !validSensorValue(payload[field])) {
+            return `${field} must be number or null`;
+        }
+    }
+
+    return null;
+}
+
+function validateShadowReportPayload(payload) {
+    if (!isPlainObject(payload)) return 'payload must be a plain JSON object';
+    if (payloadByteLength(payload) > MAX_SHADOW_REPORT_BYTES) {
+        return 'payload exceeds shadow report size limit';
+    }
+    if (Object.hasOwn(payload, 'mode') && payload.mode !== 'on' && payload.mode !== 'off') {
+        return 'mode must be on or off';
+    }
+    if (Object.hasOwn(payload, 'ts') && !isFiniteUnixSeconds(payload.ts)) {
+        return 'ts must be a finite Unix timestamp in seconds';
+    }
+
+    for (const field of RELAY_FIELDS) {
+        if (Object.hasOwn(payload, field) && typeof payload[field] !== 'boolean') {
+            return `${field} must be boolean`;
+        }
+    }
+
+    for (const field of SENSOR_FIELDS) {
+        if (Object.hasOwn(payload, field) && !validSensorValue(payload[field])) {
+            return `${field} must be number or null`;
+        }
+    }
+
+    return null;
+}
+
+async function ensureDeviceExists(fastify, deviceId, handler) {
+    const { rows } = await fastify.db.query('SELECT 1 FROM devices WHERE id = $1', [deviceId]);
+    if (rows.length === 0) {
+        fastify.log.warn({ deviceId, handler }, 'unknown device input ignored');
+        return false;
+    }
+
+    return true;
+}
+
+function normalizeTelemetryTimestamp(fastify, deviceId, payload) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const minSec = 946684800;
+    const maxSec = nowSec + 300;
+    const candidateTs = payload?.ts;
+
+    if (typeof candidateTs !== 'number' || !Number.isFinite(candidateTs)) {
+        fastify.log.warn({ deviceId, ts: candidateTs }, 'invalid telemetry ts normalized');
+        return new Date(nowSec * 1000).toISOString();
+    }
+
+    if (candidateTs < minSec) {
+        fastify.log.warn({ deviceId, ts: candidateTs, normalizedTs: minSec }, 'old telemetry ts clamped');
+        return new Date(minSec * 1000).toISOString();
+    }
+
+    if (candidateTs > maxSec) {
+        fastify.log.warn({ deviceId, ts: candidateTs, normalizedTs: nowSec }, 'future telemetry ts clamped');
+        return new Date(nowSec * 1000).toISOString();
+    }
+
+    return new Date(candidateTs * 1000).toISOString();
+}
+
+export async function publishShadowGetResponse(fastify, deviceId, shadow, logMessage = 'shadow get_response publish failed') {
+    try {
+        await fastify.mqttPublish(
+            `device/${deviceId}/shadow/get_response`,
+            JSON.stringify({
+                desired: shadow.desired ?? {},
+                delta: computeDelta(shadow.reported ?? {}, shadow.desired ?? {}),
+                ts: Math.floor(Date.now() / 1000),
+            }),
+            { qos: 1 }
+        );
+    } catch (err) {
+        fastify.log.warn({ err, deviceId }, logMessage);
+        throw err;
+    }
+}
+
 export async function handleStatus(fastify, deviceId, payload) {
+    if (!isPlainObject(payload) || typeof payload.online !== 'boolean') {
+        fastify.log.warn({ deviceId, payload }, 'invalid status payload ignored');
+        return;
+    }
+
+    if (!await ensureDeviceExists(fastify, deviceId, 'status')) {
+        return;
+    }
+
     await fastify.db.query(
         'UPDATE devices SET online = $1, last_seen = NOW() WHERE id = $2',
-        [payload.online === true, deviceId]
+        [payload.online, deviceId]
     );
-    if (payload.online === true) {
+    if (payload.online) {
         await fastify.redis.set(`announce:${deviceId}`, '1', 'EX', REDIS_TTL_ANNOUNCE);
-        await flushPending(fastify, deviceId);
+        try {
+            await flushPending(fastify, deviceId);
+        } catch (e) {
+            fastify.log.error({ err: e, deviceId }, 'flushPending failed on device online');
+        }
         const shadow = await getShadow(fastify, deviceId);
         if (Object.keys(shadow.desired).length > 0) {
-            fastify.mqttClient.publish(
-                `device/${deviceId}/shadow/get_response`,
-                JSON.stringify({ desired: shadow.desired }),
-                { qos: 1 }
-            );
+            try {
+                await publishShadowGetResponse(fastify, deviceId, shadow, 'shadow sync publish failed after status online');
+            } catch {
+                // Status handling should still ACK; the device can request shadow/get again.
+            }
         }
     }
 }
 
 export async function handleTelemetry(fastify, deviceId, payload) {
-    const ts = payload.ts ? new Date(payload.ts * 1000).toISOString() : new Date().toISOString();
-    await fastify.db.query(
-        'INSERT INTO telemetry (device_id, ts, payload) VALUES ($1, $2, $3)',
-        [deviceId, ts, JSON.stringify(payload)]
-    );
-}
+    if (!await ensureDeviceExists(fastify, deviceId, 'telemetry')) {
+        return;
+    }
 
-const VALID_COMMAND_STATUS = new Set(['done', 'failed']);
-
-export async function handleResponse(fastify, deviceId, payload) {
-    if (payload.command_id) {
-        const status = VALID_COMMAND_STATUS.has(payload.status) ? payload.status : 'done';
-        await fastify.db.query(
-            'UPDATE commands SET status = $1, executed_at = NOW() WHERE id = $2',
-            [status, payload.command_id]
+    const invalidReason = validateTelemetryPayload(deviceId, payload);
+    if (invalidReason) {
+        fastify.log.warn(
+            { deviceId, invalidReason, payloadBytes: isPlainObject(payload) ? payloadByteLength(payload) : null },
+            'invalid telemetry payload ignored'
         );
+        return;
+    }
+
+    const ts = normalizeTelemetryTimestamp(fastify, deviceId, payload);
+    try {
+        await fastify.db.query(
+            'INSERT INTO telemetry (device_id, ts, payload) VALUES ($1, $2, $3)',
+            [deviceId, ts, JSON.stringify(payload)]
+        );
+    } catch (err) {
+        if (err.code === '23514' && err.constraint === 'telemetry_payload_size_check') {
+            fastify.log.warn({ deviceId, err, payloadBytes: payloadByteLength(payload) }, 'telemetry payload rejected by size constraint');
+            return;
+        }
+        throw err;
     }
 }
 
+export async function handleShadowReport(fastify, deviceId, payload) {
+    if (!await ensureDeviceExists(fastify, deviceId, 'shadow/report')) {
+        return;
+    }
+
+    const invalidReason = validateShadowReportPayload(payload);
+    if (invalidReason) {
+        fastify.log.warn({ deviceId, invalidReason, payload }, 'invalid shadow report ignored');
+        return;
+    }
+
+    await updateReported(fastify, deviceId, payload);
+}
+
+export async function handleShadowGet(fastify, deviceId, payload) {
+    if (!await ensureDeviceExists(fastify, deviceId, 'shadow/get')) {
+        return;
+    }
+
+    if (!isPlainObject(payload)) {
+        fastify.log.warn({ deviceId }, 'invalid shadow get payload ignored');
+        return;
+    }
+
+    const shadow = await getShadow(fastify, deviceId);
+    await publishShadowGetResponse(fastify, deviceId, shadow, 'shadow get_response publish failed after shadow/get');
+}
+
+const VALID_COMMAND_STATUS = new Set(['done', 'error']);
+const TERMINAL_COMMAND_STATUS = new Set(['done', 'error', 'timeout']);
+const MAX_ERROR_MESSAGE_LENGTH = 512;
+
+function cleanCommandErrorMessage(payload) {
+    if (typeof payload?.reason !== 'string') return null;
+    const trimmed = payload.reason.trim();
+    if (!trimmed) return null;
+    return trimmed.slice(0, MAX_ERROR_MESSAGE_LENGTH);
+}
+
+export async function handleResponse(fastify, deviceId, payload) {
+    const isObjectPayload = payload && typeof payload === 'object' && !Array.isArray(payload);
+    const commandId = isObjectPayload ? payload.command_id : undefined;
+    const status = isObjectPayload ? payload.status : undefined;
+    if (!commandId || typeof commandId !== 'string' || !VALID_COMMAND_STATUS.has(status)) {
+        fastify.log.warn({ deviceId, payload }, 'malformed command response');
+        return;
+    }
+
+    if (typeof payload.device_id === 'string' && payload.device_id !== deviceId) {
+        fastify.log.warn(
+            { deviceId, payloadDeviceId: payload.device_id, commandId },
+            'command response device mismatch ignored'
+        );
+        return;
+    }
+
+    await fastify.db.query(
+        "UPDATE commands SET status = 'sent' WHERE id = $1 AND device_id = $2 AND status = 'pending'",
+        [commandId, deviceId]
+    );
+
+    const updateResult = await fastify.db.query(
+        `UPDATE commands
+         SET status = $1, executed_at = NOW(), error_message = $4
+         WHERE id = $2 AND device_id = $3 AND status = 'sent'`,
+        [status, commandId, deviceId, status === 'error' ? cleanCommandErrorMessage(payload) : null]
+    );
+
+    if (updateResult.rowCount > 0) {
+        return;
+    }
+
+    const { rows } = await fastify.db.query(
+        'SELECT status FROM commands WHERE id = $1 AND device_id = $2',
+        [commandId, deviceId]
+    );
+
+    if (rows.length === 0) {
+        fastify.log.warn({ deviceId, commandId }, 'command response for unknown command/device pair');
+        return;
+    }
+
+    const currentStatus = rows[0].status;
+    if (currentStatus === status) {
+        fastify.log.info({ deviceId, commandId, status }, 'duplicate command response ignored');
+        return;
+    }
+
+    if (TERMINAL_COMMAND_STATUS.has(currentStatus)) {
+        fastify.log.warn(
+            { deviceId, commandId, currentStatus, incomingStatus: status },
+            'stale or conflicting terminal command response ignored'
+        );
+        return;
+    }
+
+    fastify.log.warn(
+        { deviceId, commandId, currentStatus, incomingStatus: status },
+        'command response ignored due to non-sent command state'
+    );
+}
+
 export async function handleOtaProgress(fastify, deviceId, payload) {
+    if (!await ensureDeviceExists(fastify, deviceId, 'ota')) {
+        return;
+    }
+
     await fastify.redis.set(`ota_progress:${deviceId}`, JSON.stringify(payload), 'EX', REDIS_TTL_OTA);
 }
