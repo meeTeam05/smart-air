@@ -1,8 +1,84 @@
 import { REDIS_TTL_SHADOW } from '../constants.js';
 
+function deepEqual(left, right) {
+    if (Object.is(left, right)) return true;
+    if (left == null || right == null) return false;
+    if (typeof left !== typeof right) return false;
+
+    if (Array.isArray(left) || Array.isArray(right)) {
+        if (!Array.isArray(left) || !Array.isArray(right)) return false;
+        if (left.length !== right.length) return false;
+        for (let i = 0; i < left.length; i += 1) {
+            if (!deepEqual(left[i], right[i])) return false;
+        }
+        return true;
+    }
+
+    if (typeof left === 'object') {
+        const leftKeys = Object.keys(left);
+        const rightKeys = Object.keys(right);
+        if (leftKeys.length !== rightKeys.length) return false;
+
+        for (const key of leftKeys) {
+            if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+            if (!deepEqual(left[key], right[key])) return false;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+export function computeDelta(current, desired) {
+    const delta = {};
+    for (const [key, value] of Object.entries(desired || {})) {
+        if (!deepEqual(current?.[key], value)) {
+            delta[key] = value;
+        }
+    }
+    return delta;
+}
+
+function shadowKey(deviceId) {
+    return `shadow:${deviceId}`;
+}
+
+async function readCachedShadow(fastify, deviceId) {
+    const key = shadowKey(deviceId);
+    let cached;
+    try {
+        cached = await fastify.redis.get(key);
+    } catch (err) {
+        fastify.log.warn({ err, deviceId }, 'Redis shadow cache read failed; falling back to DB');
+        return null;
+    }
+
+    if (!cached) return null;
+
+    try {
+        return JSON.parse(cached);
+    } catch (err) {
+        fastify.log.warn({ err, deviceId }, 'malformed Redis shadow cache ignored');
+        try {
+            await fastify.redis.del(key);
+        } catch (delErr) {
+            fastify.log.warn({ err: delErr, deviceId }, 'failed to delete malformed Redis shadow cache');
+        }
+        return null;
+    }
+}
+
+async function writeCachedShadow(fastify, deviceId, shadow) {
+    try {
+        await fastify.redis.set(shadowKey(deviceId), JSON.stringify(shadow), 'EX', REDIS_TTL_SHADOW);
+    } catch (err) {
+        fastify.log.warn({ err, deviceId }, 'Redis shadow cache write failed; DB remains source of truth');
+    }
+}
+
 export async function getShadow(fastify, deviceId) {
-    const cached = await fastify.redis.get(`shadow:${deviceId}`);
-    if (cached) return JSON.parse(cached);
+    const cached = await readCachedShadow(fastify, deviceId);
+    if (cached) return cached;
 
     const { rows } = await fastify.db.query(
         'SELECT reported, desired, updated_at FROM device_shadows WHERE device_id = $1',
@@ -11,21 +87,33 @@ export async function getShadow(fastify, deviceId) {
     if (rows.length === 0) return { reported: {}, desired: {}, updatedAt: null };
     const row = rows[0];
     const shadow = { reported: row.reported, desired: row.desired, updatedAt: row.updated_at };
-    await fastify.redis.set(`shadow:${deviceId}`, JSON.stringify(shadow), 'EX', REDIS_TTL_SHADOW);
+    await writeCachedShadow(fastify, deviceId, shadow);
     return shadow;
 }
 
 async function _updateField(fastify, deviceId, field, value) {
     if (field !== 'reported' && field !== 'desired') throw new Error(`Invalid shadow field: ${field}`);
-    // Write DB first (atomic UPSERT), then invalidate cache.
-    // Eliminates read-modify-write race — next getShadow() repopulates from DB.
-    await fastify.db.query(
+    // Write DB first (atomic UPSERT), then write-through Redis cache
+    // using the same canonical object returned by DB.
+    const { rows } = await fastify.db.query(
         `INSERT INTO device_shadows (device_id, ${field}, updated_at)
          VALUES ($1, $2, NOW())
-         ON CONFLICT (device_id) DO UPDATE SET ${field} = $2, updated_at = NOW()`,
+         ON CONFLICT (device_id) DO UPDATE
+            SET ${field} = device_shadows.${field} || EXCLUDED.${field},
+                updated_at = NOW()
+         RETURNING reported, desired, updated_at`,
         [deviceId, JSON.stringify(value)]
     );
-    await fastify.redis.del(`shadow:${deviceId}`);
+
+    const row = rows[0] || { reported: {}, desired: {}, updated_at: null };
+    const shadow = {
+        reported: row.reported ?? {},
+        desired: row.desired ?? {},
+        updatedAt: row.updated_at,
+    };
+
+    await writeCachedShadow(fastify, deviceId, shadow);
+    return shadow;
 }
 
 export const updateReported = (f, id, data) => _updateField(f, id, 'reported', data);
