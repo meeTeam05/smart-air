@@ -1,6 +1,9 @@
 /**
  * @file adc_bus.c
+ * 
  * @brief Shared ADC1 oneshot bus implementation.
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
 #include "adc_bus.h"
@@ -13,30 +16,29 @@
 static const char *TAG = "adc_bus";
 
 static adc_oneshot_unit_handle_t s_adc_handle = NULL;
-static adc_cali_handle_t         s_cali_handle = NULL;
-static SemaphoreHandle_t         s_mutex = NULL;
+static adc_cali_handle_t s_cali_handle = NULL;
+static SemaphoreHandle_t s_mutex = NULL;
 
-/* ── Error-handling macros (same pattern as i2c_bus) ───────────────────── */
+/* Error-handling macros (same pattern as i2c_bus) */
 
-#define CHECK(x)                                                           \
-    do {                                                                   \
-        esp_err_t __err = (x);                                             \
-        if (__err != ESP_OK) {                                             \
-            ESP_LOGE(TAG, "%s:%d (%s)", __FILE__, __LINE__,                \
-                     esp_err_to_name(__err));                               \
-            return __err;                                                  \
-        }                                                                  \
+#define CHECK(x)                                                                     \
+    do {                                                                             \
+        esp_err_t __err = (x);                                                       \
+        if (__err != ESP_OK) {                                                       \
+            ESP_LOGE(TAG, "%s:%d (%s)", __FILE__, __LINE__, esp_err_to_name(__err)); \
+            return __err;                                                            \
+        }                                                                            \
     } while (0)
 
-#define CHECK_ARG(VAL)                                                     \
-    do {                                                                   \
-        if (!(VAL)) {                                                      \
-            ESP_LOGE(TAG, "%s:%d invalid argument", __FILE__, __LINE__);   \
-            return ESP_ERR_INVALID_ARG;                                    \
-        }                                                                  \
+#define CHECK_ARG(VAL)                                                   \
+    do {                                                                 \
+        if (!(VAL)) {                                                    \
+            ESP_LOGE(TAG, "%s:%d invalid argument", __FILE__, __LINE__); \
+            return ESP_ERR_INVALID_ARG;                                  \
+        }                                                                \
     } while (0)
 
-/* ── Public API ────────────────────────────────────────────────────────── */
+/* Public API */
 
 esp_err_t adc_bus_init(void)
 {
@@ -54,26 +56,24 @@ esp_err_t adc_bus_init(void)
 
     /* Initialize ADC1 oneshot unit */
     adc_oneshot_unit_init_cfg_t unit_cfg = {
-        .unit_id  = ADC_UNIT_1,
+        .unit_id = ADC_UNIT_1,
         .ulp_mode = ADC_ULP_MODE_DISABLE,
     };
     CHECK(adc_oneshot_new_unit(&unit_cfg, &s_adc_handle));
 
     /* Initialize calibration (curve fitting for ESP32-S3) */
     adc_cali_curve_fitting_config_t cali_cfg = {
-        .unit_id  = ADC_UNIT_1,
-        .atten    = ADC_ATTEN_DB_12,
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_12,
         .bitwidth = ADC_BITWIDTH_12,
     };
     esp_err_t cali_err = adc_cali_create_scheme_curve_fitting(&cali_cfg, &s_cali_handle);
     if (cali_err != ESP_OK) {
-        ESP_LOGW(TAG, "ADC calibration not available (%s) — raw values only",
-                 esp_err_to_name(cali_err));
+        ESP_LOGW(TAG, "ADC calibration not available (%s) — raw values only", esp_err_to_name(cali_err));
         s_cali_handle = NULL;
     }
 
-    ESP_LOGI(TAG, "ADC1 initialized (12-bit, curve-fitting calibration %s)",
-             s_cali_handle ? "enabled" : "disabled");
+    ESP_LOGI(TAG, "ADC1 initialized (12-bit, curve-fitting calibration %s)", s_cali_handle ? "enabled" : "disabled");
     return ESP_OK;
 }
 
@@ -82,7 +82,7 @@ esp_err_t adc_bus_config_channel(adc_channel_t channel, adc_atten_t atten)
     CHECK_ARG(s_adc_handle);
 
     adc_oneshot_chan_cfg_t chan_cfg = {
-        .atten    = atten,
+        .atten = atten,
         .bitwidth = ADC_BITWIDTH_12,
     };
     CHECK(adc_oneshot_config_channel(s_adc_handle, channel, &chan_cfg));

@@ -1,6 +1,9 @@
 /**
  * @file gm102b.h
+ * 
  * @brief Winsen GM-102B MEMS NO2 Gas Sensor driver (analog ADC).
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  *
  * DFRobot SEN0574 breakout board. Heater circuit managed by board.
  * ESP32 reads analog output via ADC1 → converts voltage to NO2 ppm.
@@ -14,15 +17,15 @@
 #include <esp_err.h>
 #include <esp_adc/adc_oneshot.h>
 
-#define GM102B_NO2_PPM_MIN   0.1f
-#define GM102B_NO2_PPM_MAX   10.0f
+#define GM102B_NO2_PPM_MIN 0.1f
+#define GM102B_NO2_PPM_MAX 10.0f
 
 typedef struct {
-    adc_channel_t channel;    /**< ADC1 channel */
-    float r0;                 /**< Baseline resistance in clean air (ohm) */
-    float rl;                 /**< Load resistor on breakout board (ohm) */
-    float vc;                 /**< Circuit voltage (V) */
-    bool  calibrated;         /**< true after successful calibration */
+    adc_channel_t channel; /**< ADC1 channel */
+    float r0;              /**< Baseline resistance in clean air (ohm) */
+    float rl;              /**< Load resistor on breakout board (ohm) */
+    float vc;              /**< Circuit voltage (V) */
+    bool calibrated;       /**< true after successful calibration */
 } gm102b_t;
 
 /**
@@ -32,14 +35,20 @@ typedef struct {
  * @param channel ADC1 channel (e.g. ADC_CHANNEL_1 for GPIO 2)
  * @param rl      Load resistor value in ohm (typically 10000)
  * @param vc      Circuit voltage in V (typically 3.3)
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t gm102b_init(gm102b_t *dev, adc_channel_t channel, float rl, float vc);
 
 /**
  * @brief Calibrate R0 baseline in clean air.
+ * 
+ * @param dev Device descriptor (must be initialized)
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  *
- * Call after preheat (≥24h). Takes multiple samples and averages.
- * Must be called in clean air environment.
+ * @note Call after preheat (≥24h). Takes multiple samples and averages.
+ *       Must be called in clean air environment.
  */
 esp_err_t gm102b_calibrate(gm102b_t *dev);
 

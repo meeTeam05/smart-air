@@ -14,9 +14,13 @@ menu "Smart Air Configuration"
 
     config SA_MQTT_BROKER_URI
         string "MQTT broker URI"
-        default "mqtts://192.168.1.16:8883"
+        default "mqtts://mqtt.minhnhat05.xyz:8883"
         help
-            Full URI of the MQTT broker. Use mqtts:// for TLS (SEC-04 required).
+            Full URI of the EMQX broker reachable from the ESP32.
+            Use the public raw MQTT hostname that resolves to the server and
+            forwards TCP 8883 to EMQX. This is separate from the Cloudflare
+            HTTP/WSS ingress used by the API and mobile app.
+            Runtime override source: NVS namespace "device", key "broker_uri".
 
     config SA_WIFI_CONNECT_TIMEOUT_MS
         int "Wi-Fi connection timeout (ms)"
@@ -34,18 +38,14 @@ menu "Smart Air Configuration"
             If the app disconnects mid-flow and never reconnects, provisioning
             fails after this timeout instead of hanging indefinitely.
 
-    config SA_DEVICE_ID
-        string "Device ID"
-        default ""
-        help
-            Unique device identifier (MAC format). Sensitive — do not commit.
-            Override at runtime via NVS namespace "device", key "device_id".
-
     config SA_MQTT_SECRET_KEY
         string "MQTT secret key"
         default ""
         help
             Per-device secret for MQTT authentication. Sensitive — do not commit.
+            Leave empty in repository builds; the current server returns the
+            real secret_key once from POST /api/devices and provisioning writes
+            it to NVS before the device can login to MQTT.
             Override at runtime via NVS namespace "device", key "secret_key".
 
     config SA_CONFIG_SELF_TEST
@@ -62,12 +62,25 @@ menu "Smart Air Configuration"
         help
             TCP port for the device's built-in HTTP API server.
 
-    config SENSOR_POLLING_INTERVAL
-        int "SENSOR POLLING INTERVAL SECONDS"
+    config SA_DEMO_NO_PERIPHERALS
+        bool "Demo no peripherals"
+        default n
+        help
+            Enable demo mode when no physical peripheral is connected.
+            In this mode, firmware feeds telemetry from an internal virtual
+            sample array while preserving the normal MQTT/TLS/auth flow,
+            topics, command handling, and telemetry/shadow JSON schema.
+            This mode is intended for ESP32-S3-DevKit-C-6R8 demos without
+            sensors, display, relay, buzzer, LED, SD card, or RTC hardware.
+
+    config SA_SENSOR_POLLING_INTERVAL
+        int "Sensor Polling Interval Seconds"
         default 5
         range 1 60
         help
-            Sensor polling interval in seconds
+            Telemetry/shadow polling interval in seconds for normal and demo
+            modes. The current server API and app dashboards expect frequent
+            demo telemetry; 5 seconds is the recommended local/demo value.
 
     menu "Peripheral Enable/Disable"
 
@@ -83,11 +96,12 @@ menu "Smart Air Configuration"
             default y
             help
                 When disabled, DS3231 is not initialized. Telemetry timestamps
-                fall back to system time (SNTP or epoch 0).
-                The MQTT set_time command is acknowledged but has no effect.
+                fall back to system time. The MQTT set_time command still
+                updates the ESP32 system clock, but it is not persisted through
+                power loss without RTC hardware.
 
-        config SA_ENABLE_ST7789
-            bool "Enable ST7789 display"
+        config SA_ENABLE_ILI9225
+            bool "Enable ILI9225 display"
             default n
             help
                 When disabled, display initialization and drawing are skipped.
@@ -167,7 +181,7 @@ menu "Smart Air Configuration"
             int "I2C FREQ HZ"
             default 400000
             range 400000 400000
-            help 
+            help
                 HW-01: fixed 400 kHz — do not change
 
         config SA_I2C_TIMEOUT_MS

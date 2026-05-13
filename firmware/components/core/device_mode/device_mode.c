@@ -13,7 +13,7 @@
 #include "nvs.h"
 
 #include "mqtt.h"
-#if CONFIG_SA_ENABLE_RELAYS
+#if SA_ENABLE_RELAYS
 #include "relay.h"
 #endif
 
@@ -85,7 +85,7 @@ static esp_err_t publish_mode_off_shadow(void)
     }
 
     cJSON_AddStringToObject(root, "mode", "off");
-#if CONFIG_SA_ENABLE_RELAYS
+#if SA_ENABLE_RELAYS
     cJSON_AddBoolToObject(root, "relay_1", false);
     cJSON_AddBoolToObject(root, "relay_2", false);
     cJSON_AddBoolToObject(root, "relay_3", false);
@@ -103,7 +103,7 @@ static esp_err_t publish_mode_off_shadow(void)
 
 static esp_err_t publish_mode_on_shadow(void)
 {
-#if CONFIG_SA_ENABLE_RELAYS
+#if SA_ENABLE_RELAYS
     bool relay_states[RELAY_CHANNEL_COUNT] = {false, false, false};
     esp_err_t relay_err = relay_get_all(relay_states);
     if (relay_err != ESP_OK) {
@@ -118,7 +118,7 @@ static esp_err_t publish_mode_on_shadow(void)
     }
 
     cJSON_AddStringToObject(root, "mode", "on");
-#if CONFIG_SA_ENABLE_RELAYS
+#if SA_ENABLE_RELAYS
     cJSON_AddBoolToObject(root, "relay_1", relay_states[0]);
     cJSON_AddBoolToObject(root, "relay_2", relay_states[1]);
     cJSON_AddBoolToObject(root, "relay_3", relay_states[2]);
@@ -232,7 +232,7 @@ esp_err_t device_mode_set(bool on)
             first_err = err;
         }
 
-#if CONFIG_SA_ENABLE_RELAYS
+#if SA_ENABLE_RELAYS
         err = relay_force_all_off();
         if (err != ESP_OK && first_err == ESP_OK) {
             first_err = err;

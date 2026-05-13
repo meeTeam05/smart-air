@@ -17,6 +17,7 @@
 #include "ota.h"
 
 #include "config.h"
+#include "esp_crt_bundle.h"
 #include "esp_https_ota.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -72,7 +73,7 @@ static void ota_task_fn(void *arg)
         /* Configure HTTPS OTA */
         esp_http_client_config_t http_cfg = {
             .url = msg.url,
-            .cert_pem = (const char *)ca_cert_pem_start,
+            .crt_bundle_attach = esp_crt_bundle_attach,
             .keep_alive_enable = true,
         };
         esp_https_ota_config_t ota_cfg = {

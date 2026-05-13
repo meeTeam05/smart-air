@@ -19,6 +19,8 @@
 
 /**
  * @brief Initialize ADC1 unit. Call once at boot before any sensor init.
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t adc_bus_init(void);
 
@@ -27,6 +29,8 @@ esp_err_t adc_bus_init(void);
  *
  * @param channel ADC1 channel (ADC_CHANNEL_0 .. ADC_CHANNEL_9)
  * @param atten   Attenuation (ADC_ATTEN_DB_12 for 0–3.3V range)
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t adc_bus_config_channel(adc_channel_t channel, adc_atten_t atten);
 
@@ -37,10 +41,14 @@ esp_err_t adc_bus_read_raw(adc_channel_t channel, int *raw);
 
 /**
  * @brief Read calibrated voltage in millivolts.
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t adc_bus_read_voltage(adc_channel_t channel, int *voltage_mv);
 
 /**
  * @brief Deinitialize ADC1 unit.
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t adc_bus_deinit(void);
