@@ -2,14 +2,18 @@ cmake_minimum_required(VERSION 3.16)
 
 set(EXTRA_COMPONENT_DIRS
     components/config
-    components/core
-    components/drivers/general/ble_prov
-    components/drivers/general/wifi
-    components/drivers/general/sa_mqtt
-    components/drivers/general/led
-    components/drivers/general/factory_reset
-    components/drivers/general/buzzer
-    components/drivers/general/dns
+    components/core/device_mode
+    components/core/sensor_task
+    components/core/sysload
+    components/general/ble_prov
+    components/general/wifi
+    components/general/sa_mqtt
+    components/general/led
+    components/general/factory_reset
+    components/general/buzzer
+    components/general/relay
+    components/general/dns
+    components/general/httpd
     components/drivers/i2c_bus
     components/drivers/i2c_devices/sht3x
     components/drivers/i2c_devices/ds3231

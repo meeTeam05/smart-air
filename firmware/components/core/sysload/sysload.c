@@ -1,8 +1,8 @@
 /**
  * @file sysload.c
- * 
+ *
  * @brief System initialisation and boot orchestration.
- * 
+ *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
@@ -33,23 +33,107 @@
 
 #include "cJSON.h"
 
+#include <errno.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "sysload.h"
 
 static const char *TAG = "sysload";
+static const uint32_t MIN_VALID_UNIX_TS = 946684800UL;
+
+static int build_month_index(const char *month)
+{
+    static const char *months[] = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    };
+
+    for (int i = 0; i < 12; i++) {
+        if (strncmp(month, months[i], 3) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static uint32_t build_time_fallback_ts(void)
+{
+    char month[4] = {0};
+    int day = 0;
+    int year = 0;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+
+    if (sscanf(__DATE__, "%3s %d %d", month, &day, &year) != 3) {
+        return MIN_VALID_UNIX_TS;
+    }
+    if (sscanf(__TIME__, "%d:%d:%d", &hour, &minute, &second) != 3) {
+        return MIN_VALID_UNIX_TS;
+    }
+
+    int month_index = build_month_index(month);
+    if (month_index < 0) {
+        return MIN_VALID_UNIX_TS;
+    }
+
+    struct tm build_tm = {
+        .tm_sec = second,
+        .tm_min = minute,
+        .tm_hour = hour,
+        .tm_mday = day,
+        .tm_mon = month_index,
+        .tm_year = year - 1900,
+        .tm_isdst = -1,
+    };
+
+    time_t build_time = mktime(&build_tm);
+    if (build_time <= 0) {
+        return MIN_VALID_UNIX_TS;
+    }
+
+    return (uint32_t)build_time;
+}
+
+static void sync_system_clock(uint32_t ts, const char *reason)
+{
+    struct timeval tv = {
+        .tv_sec = (time_t)ts,
+        .tv_usec = 0,
+    };
+
+    if (settimeofday(&tv, NULL) == 0) {
+        ESP_LOGI(TAG, "System clock updated from %s: %lu", reason, (unsigned long)ts);
+    } else {
+        ESP_LOGW(TAG, "settimeofday failed for %s (errno=%d)", reason, errno);
+    }
+}
+
+static void ensure_system_clock_seeded(void)
+{
+    time_t now = time(NULL);
+    if (now >= (time_t)MIN_VALID_UNIX_TS) {
+        return;
+    }
+
+    sync_system_clock(build_time_fallback_ts(), "build time");
+}
 
 /* File-scope sensor handles — kept alive after sysload_init task exits */
-#if CONFIG_SA_ENABLE_SHT3X
+#if SA_ENABLE_SHT3X
 static sht3x_t s_sht3x_dev;
 #endif
-#if CONFIG_SA_ENABLE_DS3231
+#if SA_ENABLE_DS3231
 static ds3231_t s_ds3231_dev;
 #endif
-#if CONFIG_SA_ENABLE_CO_SENSOR
+#if SA_ENABLE_CO_SENSOR
 static gm702b_t s_co_dev;
 #endif
-#if CONFIG_SA_ENABLE_NO2_SENSOR
+#if SA_ENABLE_NO2_SENSOR
 static gm102b_t s_no2_dev;
 #endif
 
@@ -58,7 +142,7 @@ static gm102b_t s_no2_dev;
  * Acceptable because calibration is rare, manual, user-initiated.
  * Future refactor: post to queue -> dedicated calibrate task. */
 
-#if CONFIG_SA_ENABLE_CO_SENSOR
+#if SA_ENABLE_CO_SENSOR
 static esp_err_t handle_calibrate_co(const char *type, const char *json_payload)
 {
     (void)type;
@@ -72,7 +156,7 @@ static esp_err_t handle_calibrate_co(const char *type, const char *json_payload)
 }
 #endif
 
-#if CONFIG_SA_ENABLE_NO2_SENSOR
+#if SA_ENABLE_NO2_SENSOR
 static esp_err_t handle_calibrate_no2(const char *type, const char *json_payload)
 {
     (void)type;
@@ -86,7 +170,7 @@ static esp_err_t handle_calibrate_no2(const char *type, const char *json_payload
 }
 #endif
 
-#if CONFIG_SA_ENABLE_RELAYS
+#if SA_ENABLE_RELAYS
 static esp_err_t handle_relay_set(const char *type, const char *json_payload)
 {
     (void)type;
@@ -175,9 +259,11 @@ static esp_err_t handle_device_mode(const char *type, const char *json_payload)
 
 /* Time sync callback (app -> MQTT -> DS3231) */
 
-#if CONFIG_SA_ENABLE_DS3231
+#if SA_ENABLE_DS3231
 static void on_time_sync(uint32_t ts)
 {
+    sync_system_clock(ts, "set_time");
+
     esp_err_t err = ds3231_set_timestamp(&s_ds3231_dev, ts);
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "DS3231 time updated: %lu", (unsigned long)ts);
@@ -188,7 +274,8 @@ static void on_time_sync(uint32_t ts)
 #else
 static void on_time_sync(uint32_t ts)
 {
-    ESP_LOGI(TAG, "DS3231 disabled — set_time(%lu) acknowledged, no RTC write", (unsigned long)ts);
+    sync_system_clock(ts, "set_time");
+    ESP_LOGI(TAG, "DS3231 disabled — set_time(%lu) acknowledged, system clock updated", (unsigned long)ts);
 }
 #endif
 
@@ -199,7 +286,7 @@ void sysload_init(void)
     led_set_state(LED_STATE_BOOT);
 
     /* 0.5 — Factory reset button (early so it works in every boot phase) */
-#if CONFIG_SA_ENABLE_FACTORY_RESET
+#if SA_ENABLE_FACTORY_RESET
     {
         esp_err_t err = factory_reset_init((gpio_num_t)CONFIG_SA_FACTORY_RESET_PIN);
         if (err != ESP_OK) {
@@ -247,7 +334,7 @@ void sysload_init(void)
     /* 3 — I2C bus (shared by SHT3x and DS3231, HW-01: 400 kHz) */
     /* Only init bus if at least one I2C device is enabled. Add to this guard
      * when new I2C devices are added. */
-#if CONFIG_SA_ENABLE_SHT3X || CONFIG_SA_ENABLE_DS3231
+#if SA_ENABLE_SHT3X || SA_ENABLE_DS3231
     {
         esp_err_t err = i2c_bus_init(I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN, SA_I2C_FREQ_HZ);
         if (err != ESP_OK) {
@@ -260,7 +347,7 @@ void sysload_init(void)
 #endif
 
     /* 4 — SHT3x temperature/humidity sensor (addr 0x44, ADDR pin low — HW-04) */
-#if CONFIG_SA_ENABLE_SHT3X
+#if SA_ENABLE_SHT3X
     esp_err_t sht_err = sht3x_init_desc(
         &s_sht3x_dev, SHT3X_I2C_ADDR_GND, I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN);
     if (sht_err == ESP_OK)
@@ -273,7 +360,7 @@ void sysload_init(void)
 #endif
 
     /* 5 — DS3231 RTC (addr 0x68 — HW-04) */
-#if CONFIG_SA_ENABLE_DS3231
+#if SA_ENABLE_DS3231
     esp_err_t rtc_err =
         ds3231_init_desc(&s_ds3231_dev, I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN);
     if (rtc_err == ESP_OK)
@@ -284,7 +371,7 @@ void sysload_init(void)
 #endif
 
     /* 5.5 — ADC bus + gas sensors (analog, WiFi-safe ADC1 only) */
-#if CONFIG_SA_ENABLE_CO_SENSOR || CONFIG_SA_ENABLE_NO2_SENSOR
+#if SA_ENABLE_CO_SENSOR || SA_ENABLE_NO2_SENSOR
     {
         esp_err_t err = adc_bus_init();
         if (err != ESP_OK) {
@@ -293,7 +380,7 @@ void sysload_init(void)
     }
 #endif
 
-#if CONFIG_SA_ENABLE_CO_SENSOR
+#if SA_ENABLE_CO_SENSOR
     esp_err_t co_err =
         gm702b_init(&s_co_dev, (adc_channel_t)SA_CO_ADC_CHANNEL, SA_GAS_SENSOR_RL_OHM, SA_GAS_SENSOR_VC_V);
     if (co_err == ESP_OK) {
@@ -307,7 +394,7 @@ void sysload_init(void)
     }
 #endif
 
-#if CONFIG_SA_ENABLE_NO2_SENSOR
+#if SA_ENABLE_NO2_SENSOR
     esp_err_t no2_err =
         gm102b_init(&s_no2_dev, (adc_channel_t)SA_NO2_ADC_CHANNEL, SA_GAS_SENSOR_RL_OHM, SA_GAS_SENSOR_VC_V);
     if (no2_err == ESP_OK) {
@@ -373,15 +460,22 @@ void sysload_init(void)
         }
     }
 
-    led_set_state(LED_STATE_ONLINE);
+    led_set_state(LED_STATE_WIFI);
 
-    /* 9 — MQTT client (TLS, connects async in background task) */
+    /* 9 — Resolve immutable device ID and runtime config */
     char broker_uri[128] = {0};
-    char device_id[64] = {0};
+    char resolved_id[18] = {0};
     char secret_key[64] = {0};
     {
-        esp_err_t err = config_get_mqtt_creds(
-            broker_uri, sizeof(broker_uri), device_id, sizeof(device_id), secret_key, sizeof(secret_key));
+        esp_err_t err = config_get_device_id(resolved_id, sizeof(resolved_id));
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "config_get_device_id failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+
+        err = config_get_mqtt_creds(broker_uri, sizeof(broker_uri), secret_key, sizeof(secret_key));
         if (err != ESP_OK) {
             led_set_state(LED_STATE_ERROR);
             ESP_LOGE(TAG, "config_get_mqtt_creds failed (%s) — rebooting", esp_err_to_name(err));
@@ -389,11 +483,28 @@ void sysload_init(void)
             esp_restart();
         }
     }
-    /* Resolve display/control device_id once: use config value or fall back to MAC */
-    char resolved_id[64] = {0};
-    config_resolve_device_id(device_id, resolved_id, sizeof(resolved_id));
+    ensure_system_clock_seeded();
 
-    /* 9.1 — Runtime control bootstrap (buzzer -> relay -> mode -> MQTT handlers) */
+    /* 9.1 — Local provisioning HTTP API (must exist before first MQTT login) */
+    {
+        char ip_str[16] = {0};
+        wifi_sta_get_ip(ip_str, sizeof(ip_str));
+
+        esp_err_t err = httpd_server_start(resolved_id, ip_str);
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "httpd_server_start failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
+    }
+
+    if (secret_key[0] == '\0') {
+        ESP_LOGW(TAG, "MQTT secret_key not provisioned yet — waiting for local POST /api/config");
+        vTaskDelete(NULL);
+    }
+
+    /* 9.2 — Runtime control bootstrap (buzzer -> relay -> mode -> MQTT handlers) */
     {
         esp_err_t err = buzzer_init();
         if (err != ESP_OK) {
@@ -403,7 +514,7 @@ void sysload_init(void)
             esp_restart();
         }
 
-#if CONFIG_SA_ENABLE_RELAYS
+#if SA_ENABLE_RELAYS
         err = relay_init(resolved_id);
         if (err != ESP_OK) {
             led_set_state(LED_STATE_ERROR);
@@ -421,17 +532,19 @@ void sysload_init(void)
             esp_restart();
         }
 
-#if CONFIG_SA_ENABLE_RELAYS
+#if SA_ENABLE_RELAYS
         mqtt_register_command_handler("relay_set", handle_relay_set);
 #endif
         mqtt_register_command_handler("device_mode", handle_device_mode);
     }
 
-    /* 9.2 — Register time sync callback before mqtt_start to avoid race:
+    /* 9.3 — Register time sync callback before mqtt_start to avoid race:
      *        broker may deliver a queued set_time command immediately on connect */
     mqtt_register_time_sync_cb(on_time_sync);
+
+    /* 9.4 — Start MQTT */
     {
-        esp_err_t err = mqtt_start(broker_uri, device_id, secret_key);
+        esp_err_t err = mqtt_start(broker_uri, resolved_id, secret_key);
         if (err != ESP_OK) {
             led_set_state(LED_STATE_ERROR);
             ESP_LOGE(TAG, "mqtt_start failed (%s) — rebooting", esp_err_to_name(err));
@@ -440,55 +553,46 @@ void sysload_init(void)
         }
     }
 
-    /* 9.5 — HTTP server (non-fatal: device operates without it) */
-    {
-        char ip_str[16] = {0};
-        esp_netif_ip_info_t ip_info = {0};
-        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-        if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-            snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
-        }
-        esp_err_t err = httpd_server_start(resolved_id, ip_str);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "httpd_server_start failed (%s) — continuing without HTTP server", esp_err_to_name(err));
-        }
-    }
-
-    /* 9.6 — OTA task (non-fatal: device operates without OTA capability) */
+    /* 9.5 — OTA task */
     {
         esp_err_t err = ota_task_start(resolved_id);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "ota_task_start failed (%s) — OTA unavailable", esp_err_to_name(err));
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "ota_task_start failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
         }
     }
 
     /* 10 — Sensor polling task (publishes telemetry every SA_SENSOR_POLLING_INTERVAL ms) */
-#if CONFIG_SA_ENABLE_SHT3X || CONFIG_SA_ENABLE_DS3231 || CONFIG_SA_ENABLE_CO_SENSOR || CONFIG_SA_ENABLE_NO2_SENSOR
+#if SA_DEMO_NO_PERIPHERALS
+    ESP_ERROR_CHECK(sensor_task_start(NULL, NULL, NULL, NULL, resolved_id));
+#elif SA_ENABLE_SHT3X || SA_ENABLE_DS3231 || SA_ENABLE_CO_SENSOR || SA_ENABLE_NO2_SENSOR
     {
         bool any_ok = false;
         sht3x_t *sht_ptr = NULL;
         ds3231_t *rtc_ptr = NULL;
         gm702b_t *co_ptr = NULL;
         gm102b_t *no2_ptr = NULL;
-#if CONFIG_SA_ENABLE_SHT3X
+#if SA_ENABLE_SHT3X
         if (sht_err == ESP_OK) {
             any_ok = true;
             sht_ptr = &s_sht3x_dev;
         }
 #endif
-#if CONFIG_SA_ENABLE_DS3231
+#if SA_ENABLE_DS3231
         if (rtc_err == ESP_OK) {
             any_ok = true;
             rtc_ptr = &s_ds3231_dev;
         }
 #endif
-#if CONFIG_SA_ENABLE_CO_SENSOR
+#if SA_ENABLE_CO_SENSOR
         if (co_err == ESP_OK) {
             any_ok = true;
             co_ptr = &s_co_dev;
         }
 #endif
-#if CONFIG_SA_ENABLE_NO2_SENSOR
+#if SA_ENABLE_NO2_SENSOR
         if (no2_err == ESP_OK) {
             any_ok = true;
             no2_ptr = &s_no2_dev;

@@ -1,0 +1,31 @@
+idf_component_register(
+    SRCS 
+        "sysload.c"
+    INCLUDE_DIRS 
+        "include"
+    REQUIRES
+        config
+    PRIV_REQUIRES
+        adc_bus
+        ble_prov
+        buzzer
+        device_mode
+        ds3231
+        esp_event
+        esp_netif
+        factory_reset
+        freertos
+        gm102b
+        gm702b
+        httpd
+        i2c_bus
+        json
+        led
+        nvs_flash
+        ota
+        relay
+        sa_mqtt
+        sensor_task
+        sht3x
+        wifi
+)

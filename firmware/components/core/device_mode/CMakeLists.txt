@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "device_mode.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_REQUIRES
+        config
+        json
+        nvs_flash
+        relay
+        sa_mqtt
+)
