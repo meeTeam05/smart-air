@@ -11,7 +11,8 @@ export async function checkDeviceAccess(fastify, deviceId, userId) {
     const { rows } = await fastify.db.query(
         `SELECT 1 FROM devices d
          JOIN home_members hm ON hm.home_id = d.home_id
-         WHERE d.id = $1 AND hm.user_id = $2`,
+         JOIN users u ON u.id = hm.user_id
+         WHERE d.id = $1 AND hm.user_id = $2 AND u.is_active = TRUE`,
         [deviceId, userId]
     );
     return rows.length > 0;
@@ -19,7 +20,9 @@ export async function checkDeviceAccess(fastify, deviceId, userId) {
 
 export async function checkMembership(fastify, homeId, userId) {
     const { rows } = await fastify.db.query(
-        'SELECT 1 FROM home_members WHERE home_id = $1 AND user_id = $2',
+        `SELECT 1 FROM home_members hm
+         JOIN users u ON u.id = hm.user_id
+         WHERE hm.home_id = $1 AND hm.user_id = $2 AND u.is_active = TRUE`,
         [homeId, userId]
     );
     return rows.length > 0;
@@ -27,7 +30,9 @@ export async function checkMembership(fastify, homeId, userId) {
 
 export async function requireRole(fastify, homeId, userId, ...roles) {
     const { rows } = await fastify.db.query(
-        'SELECT role FROM home_members WHERE home_id = $1 AND user_id = $2',
+        `SELECT hm.role FROM home_members hm
+         JOIN users u ON u.id = hm.user_id
+         WHERE hm.home_id = $1 AND hm.user_id = $2 AND u.is_active = TRUE`,
         [homeId, userId]
     );
     if (rows.length === 0 || !roles.includes(rows[0].role)) {

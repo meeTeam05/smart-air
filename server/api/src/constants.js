@@ -25,3 +25,17 @@ export const COMMANDS_MAX_LIMIT      = 200;
 export const TELEMETRY_DEFAULT_LIMIT = 1000;
 export const TELEMETRY_MAX_LIMIT     = 5000;
 export const MS_PER_DAY              = 86_400_000;
+
+// ── Per-user resource caps ───────────────────────────────────────
+export const MAX_HOMES_PER_USER   = 10;
+export const MAX_DEVICES_PER_HOME = 50;
+export const MAX_ROOMS_PER_HOME   = 30;
+
+// ── Command type whitelist ───────────────────────────────────────
+export const COMMAND_TYPES = Object.freeze([
+    'relay_set',
+    'device_mode',
+    'calibrate_co',
+    'calibrate_no2',
+    'set_time',
+]);
