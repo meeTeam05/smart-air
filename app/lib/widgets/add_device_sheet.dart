@@ -265,7 +265,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
             label: const Text('Bắt đầu quét'),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
+              foregroundColor: AtmosphereTokens.paper,
               minimumSize: const Size(200, 46),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
@@ -445,7 +445,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
               onPressed: () => Navigator.pop(context, true),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: AtmosphereTokens.paper,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(vertical: 14),

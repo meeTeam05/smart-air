@@ -4,16 +4,16 @@
  * @brief SHT3x Temperature and Humidity Sensor Driver Implementation
  */
 
-/* Includes ------------------------------------------------------------------*/
+/* ── Includes ───────────────────────────────────────────────────────────── */
 
 #include "sht3x.h"
-#include <esp_log.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <esp_timer.h>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_timer.h"
 #include <string.h>
 
-/*Private defines macro ------------------------------------------------------*/
+/* ── Private defines macro ──────────────────────────────────────────────── */
 
 #define TIME_TO_TICKS(ms) (1 + ((ms) + (portTICK_PERIOD_MS - 1) + portTICK_PERIOD_MS / 2) / portTICK_PERIOD_MS)
 
@@ -34,9 +34,9 @@
         }                                      \
     } while (0)
 
-/* Private defines -----------------------------------------------------------*/
+/* ── Private defines ────────────────────────────────────────────────────── */
 
-// SHT3x command codes
+/* SHT3x command codes */
 #define SHT3X_STATUS_CMD 0xF32D              //!< Read status register
 #define SHT3X_CLEAR_STATUS_CMD 0x3041        //!< Clear status register
 #define SHT3X_RESET_CMD 0x30A2               //!< Soft reset
@@ -45,22 +45,22 @@
 #define SHT3X_HEATER_ON_CMD 0x306D           //!< Turn heater on
 #define SHT3X_HEATER_OFF_CMD 0x3066          //!< Turn heater off
 
-// Measurement durations in milliseconds
+/* Measurement durations in milliseconds */
 #define SHT3X_MEAS_DURATION_REP_HIGH 15   //!< High repeatability
 #define SHT3X_MEAS_DURATION_REP_MEDIUM 6  //!< Medium repeatability
 #define SHT3X_MEAS_DURATION_REP_LOW 4     //!< Low repeatability
 
-// CRC-8 polynomial
+/* CRC-8 polynomial */
 #define G_POLYNOM 0x31
 
-// I2C configuration
+/* I2C configuration */
 #define I2C_FREQ_HZ SA_I2C_FREQ_HZ
 
-/* Private variables  ---------------------------------------------------------*/
+/* ── Private variables ──────────────────────────────────────────────────── */
 
-static const char *TAG = "SHT3X";
+static const char *TAG = "sht3x";
 
-// Measurement commands: [mode][repeatability (H/M/L)]
+/* Measurement commands: [mode][repeatability (H/M/L)] */
 static const uint16_t SHT3X_MEASURE_CMD[6][3] = {
     {0x2400, 0x240b, 0x2416},  //!< [SINGLE_SHOT][H,M,L] without clock stretching
     {0x2032, 0x2024, 0x202f},  //!< [PERIODIC_05][H,M,L] 0.5 measurements per second
@@ -70,16 +70,16 @@ static const uint16_t SHT3X_MEASURE_CMD[6][3] = {
     {0x2737, 0x2721, 0x272a}   //!< [PERIODIC_10][H,M,L] 10 measurements per second
 };
 
-// measurement durations in us
+/* measurement durations in us */
 static const uint16_t SHT3X_MEAS_DURATION_US[3] = {
     SHT3X_MEAS_DURATION_REP_HIGH * 1000, SHT3X_MEAS_DURATION_REP_MEDIUM * 1000, SHT3X_MEAS_DURATION_REP_LOW * 1000};
 
-// measurement durations in RTOS ticks
+/* measurement durations in RTOS ticks */
 static const uint8_t SHT3X_MEAS_DURATION_TICKS[3] = {TIME_TO_TICKS(SHT3X_MEAS_DURATION_REP_HIGH),
                                                      TIME_TO_TICKS(SHT3X_MEAS_DURATION_REP_MEDIUM),
                                                      TIME_TO_TICKS(SHT3X_MEAS_DURATION_REP_LOW)};
 
-/* Private functions Prototypes ---------------------------------------------*/
+/* ── Private function prototypes ────────────────────────────────────────── */
 
 /**
  * @brief Shuffle bytes in a 16-bit value
@@ -150,7 +150,7 @@ static inline bool is_measuring(sht3x_t *dev);
  */
 static esp_err_t get_raw_data_nolock(sht3x_t *dev, sht3x_raw_data_t raw_data);
 
-/* External functions --------------------------------------------------------*/
+/* ── External functions ─────────────────────────────────────────────────── */
 
 /**
  * @brief Initialize SHT3x device descriptor
@@ -289,7 +289,7 @@ esp_err_t sht3x_measure(sht3x_t *dev, float *temperature, float *humidity)
  */
 uint8_t sht3x_get_measurement_duration(sht3x_repeat_t repeat)
 {
-    return SHT3X_MEAS_DURATION_TICKS[repeat];  // in RTOS ticks
+    return SHT3X_MEAS_DURATION_TICKS[repeat];  /* in RTOS ticks */
 }
 
 /**
@@ -299,13 +299,13 @@ esp_err_t sht3x_start_measurement(sht3x_t *dev, sht3x_mode_t mode, sht3x_repeat_
 {
     CHECK_ARG(dev);
 
-    // Validate mode
+    /* Validate mode */
     if (mode < SHT3X_SINGLE_SHOT || mode > SHT3X_PERIODIC_10MPS) {
         ESP_LOGE(TAG, "Invalid mode: %d (must be 0-5)", mode);
         return ESP_ERR_INVALID_ARG;
     }
 
-    // Validate repeatability
+    /* Validate repeatability */
     if (repeat < SHT3X_HIGH || repeat > SHT3X_LOW) {
         ESP_LOGE(TAG, "Invalid repeatability: %d (must be 0-2)", repeat);
         return ESP_ERR_INVALID_ARG;
@@ -367,7 +367,7 @@ esp_err_t sht3x_get_results(sht3x_t *dev, float *temperature, float *humidity)
     return sht3x_compute_values(raw_data, temperature, humidity);
 }
 
-/* Private functions --------------------------------------------------------*/
+/* ── Private functions ──────────────────────────────────────────────────── */
 
 static inline uint16_t shuffle(uint16_t val)
 {
@@ -376,16 +376,16 @@ static inline uint16_t shuffle(uint16_t val)
 
 static uint8_t crc8(uint8_t data[], int len)
 {
-    // initialization value
+    /* initialization value */
     uint8_t crc = 0xff;
 
-    // iterate over all bytes
+    /* iterate over all bytes */
     for (int i = 0; i < len; i++) {
         crc ^= data[i];
-        for (int i = 0; i < 8; i++) {
-            bool xor = crc & 0x80;
+        for (int j = 0; j < 8; j++) {
+            bool do_xor = crc & 0x80;
             crc = crc << 1;
-            crc = xor? crc ^ G_POLYNOM : crc;
+            crc = do_xor ? crc ^ G_POLYNOM : crc;
         }
     }
     return crc;
@@ -417,12 +417,12 @@ static esp_err_t start_nolock(sht3x_t *dev, sht3x_mode_t mode, sht3x_repeat_t re
 
 static inline bool is_measuring(sht3x_t *dev)
 {
-    // not running if measurement is not started at all or
-    // it is not the first measurement in periodic mode
+    /* not running if measurement is not started at all or */
+    /* it is not the first measurement in periodic mode */
     if (!dev->meas_started || !dev->meas_first)
         return false;
 
-    // not running if time elapsed is greater than duration
+    /* not running if time elapsed is greater than duration */
     uint64_t elapsed = esp_timer_get_time() - dev->meas_start_time;
 
     return elapsed < SHT3X_MEAS_DURATION_US[dev->repeatability];
@@ -439,27 +439,27 @@ static esp_err_t get_raw_data_nolock(sht3x_t *dev, sht3x_raw_data_t raw_data)
         return ESP_ERR_INVALID_STATE;
     }
 
-    // send fetch data command first
+    /* send fetch data command first */
     uint16_t cmd = shuffle(SHT3X_FETCH_DATA_CMD);
     CHECK(i2c_dev_write(&dev->i2c_dev, &cmd, 2));
 
-    // then read raw data
+    /* then read raw data */
     CHECK(i2c_dev_read(&dev->i2c_dev, raw_data, sizeof(sht3x_raw_data_t)));
 
-    // reset first measurement flag
+    /* reset first measurement flag */
     dev->meas_first = false;
 
-    // reset measurement started flag in single shot mode
+    /* reset measurement started flag in single shot mode */
     if (dev->mode == SHT3X_SINGLE_SHOT)
         dev->meas_started = false;
 
-    // check temperature crc
+    /* check temperature crc */
     if (crc8(raw_data, 2) != raw_data[2]) {
         ESP_LOGE(TAG, "CRC check for temperature data failed");
         return ESP_ERR_INVALID_CRC;
     }
 
-    // check humidity crc
+    /* check humidity crc */
     if (crc8(raw_data + 3, 2) != raw_data[5]) {
         ESP_LOGE(TAG, "CRC check for humidity data failed");
         return ESP_ERR_INVALID_CRC;

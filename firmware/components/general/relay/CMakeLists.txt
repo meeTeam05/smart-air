@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS 
+        "relay.c"
+    INCLUDE_DIRS 
+        "include"
+    REQUIRES 
+        driver 
+        freertos 
+        log 
+        config 
+        sa_mqtt 
+        buzzer 
+        nvs_flash 
+        json
+)

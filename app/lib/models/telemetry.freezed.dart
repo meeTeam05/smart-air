@@ -21,8 +21,13 @@ TelemetryPoint _$TelemetryPointFromJson(Map<String, dynamic> json) {
 /// @nodoc
 mixin _$TelemetryPoint {
   DateTime get ts => throw _privateConstructorUsedError;
-  double get temperature => throw _privateConstructorUsedError;
-  double get humidity => throw _privateConstructorUsedError;
+  double? get temperature => throw _privateConstructorUsedError;
+  double? get humidity => throw _privateConstructorUsedError;
+  @JsonKey(name: 'co_ppm')
+  double? get coPpm => throw _privateConstructorUsedError;
+  @JsonKey(name: 'no2_ppm')
+  double? get no2Ppm => throw _privateConstructorUsedError;
+  String? get mode => throw _privateConstructorUsedError;
 
   /// Serializes this TelemetryPoint to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -40,7 +45,13 @@ abstract class $TelemetryPointCopyWith<$Res> {
           TelemetryPoint value, $Res Function(TelemetryPoint) then) =
       _$TelemetryPointCopyWithImpl<$Res, TelemetryPoint>;
   @useResult
-  $Res call({DateTime ts, double temperature, double humidity});
+  $Res call(
+      {DateTime ts,
+      double? temperature,
+      double? humidity,
+      @JsonKey(name: 'co_ppm') double? coPpm,
+      @JsonKey(name: 'no2_ppm') double? no2Ppm,
+      String? mode});
 }
 
 /// @nodoc
@@ -59,22 +70,37 @@ class _$TelemetryPointCopyWithImpl<$Res, $Val extends TelemetryPoint>
   @override
   $Res call({
     Object? ts = null,
-    Object? temperature = null,
-    Object? humidity = null,
+    Object? temperature = freezed,
+    Object? humidity = freezed,
+    Object? coPpm = freezed,
+    Object? no2Ppm = freezed,
+    Object? mode = freezed,
   }) {
     return _then(_value.copyWith(
       ts: null == ts
           ? _value.ts
           : ts // ignore: cast_nullable_to_non_nullable
               as DateTime,
-      temperature: null == temperature
+      temperature: freezed == temperature
           ? _value.temperature
           : temperature // ignore: cast_nullable_to_non_nullable
-              as double,
-      humidity: null == humidity
+              as double?,
+      humidity: freezed == humidity
           ? _value.humidity
           : humidity // ignore: cast_nullable_to_non_nullable
-              as double,
+              as double?,
+      coPpm: freezed == coPpm
+          ? _value.coPpm
+          : coPpm // ignore: cast_nullable_to_non_nullable
+              as double?,
+      no2Ppm: freezed == no2Ppm
+          ? _value.no2Ppm
+          : no2Ppm // ignore: cast_nullable_to_non_nullable
+              as double?,
+      mode: freezed == mode
+          ? _value.mode
+          : mode // ignore: cast_nullable_to_non_nullable
+              as String?,
     ) as $Val);
   }
 }
@@ -87,7 +113,13 @@ abstract class _$$TelemetryPointImplCopyWith<$Res>
       __$$TelemetryPointImplCopyWithImpl<$Res>;
   @override
   @useResult
-  $Res call({DateTime ts, double temperature, double humidity});
+  $Res call(
+      {DateTime ts,
+      double? temperature,
+      double? humidity,
+      @JsonKey(name: 'co_ppm') double? coPpm,
+      @JsonKey(name: 'no2_ppm') double? no2Ppm,
+      String? mode});
 }
 
 /// @nodoc
@@ -104,22 +136,37 @@ class __$$TelemetryPointImplCopyWithImpl<$Res>
   @override
   $Res call({
     Object? ts = null,
-    Object? temperature = null,
-    Object? humidity = null,
+    Object? temperature = freezed,
+    Object? humidity = freezed,
+    Object? coPpm = freezed,
+    Object? no2Ppm = freezed,
+    Object? mode = freezed,
   }) {
     return _then(_$TelemetryPointImpl(
       ts: null == ts
           ? _value.ts
           : ts // ignore: cast_nullable_to_non_nullable
               as DateTime,
-      temperature: null == temperature
+      temperature: freezed == temperature
           ? _value.temperature
           : temperature // ignore: cast_nullable_to_non_nullable
-              as double,
-      humidity: null == humidity
+              as double?,
+      humidity: freezed == humidity
           ? _value.humidity
           : humidity // ignore: cast_nullable_to_non_nullable
-              as double,
+              as double?,
+      coPpm: freezed == coPpm
+          ? _value.coPpm
+          : coPpm // ignore: cast_nullable_to_non_nullable
+              as double?,
+      no2Ppm: freezed == no2Ppm
+          ? _value.no2Ppm
+          : no2Ppm // ignore: cast_nullable_to_non_nullable
+              as double?,
+      mode: freezed == mode
+          ? _value.mode
+          : mode // ignore: cast_nullable_to_non_nullable
+              as String?,
     ));
   }
 }
@@ -128,7 +175,12 @@ class __$$TelemetryPointImplCopyWithImpl<$Res>
 @JsonSerializable()
 class _$TelemetryPointImpl implements _TelemetryPoint {
   const _$TelemetryPointImpl(
-      {required this.ts, required this.temperature, required this.humidity});
+      {required this.ts,
+      this.temperature,
+      this.humidity,
+      @JsonKey(name: 'co_ppm') this.coPpm,
+      @JsonKey(name: 'no2_ppm') this.no2Ppm,
+      this.mode});
 
   factory _$TelemetryPointImpl.fromJson(Map<String, dynamic> json) =>
       _$$TelemetryPointImplFromJson(json);
@@ -136,13 +188,21 @@ class _$TelemetryPointImpl implements _TelemetryPoint {
   @override
   final DateTime ts;
   @override
-  final double temperature;
+  final double? temperature;
   @override
-  final double humidity;
+  final double? humidity;
+  @override
+  @JsonKey(name: 'co_ppm')
+  final double? coPpm;
+  @override
+  @JsonKey(name: 'no2_ppm')
+  final double? no2Ppm;
+  @override
+  final String? mode;
 
   @override
   String toString() {
-    return 'TelemetryPoint(ts: $ts, temperature: $temperature, humidity: $humidity)';
+    return 'TelemetryPoint(ts: $ts, temperature: $temperature, humidity: $humidity, coPpm: $coPpm, no2Ppm: $no2Ppm, mode: $mode)';
   }
 
   @override
@@ -154,12 +214,16 @@ class _$TelemetryPointImpl implements _TelemetryPoint {
             (identical(other.temperature, temperature) ||
                 other.temperature == temperature) &&
             (identical(other.humidity, humidity) ||
-                other.humidity == humidity));
+                other.humidity == humidity) &&
+            (identical(other.coPpm, coPpm) || other.coPpm == coPpm) &&
+            (identical(other.no2Ppm, no2Ppm) || other.no2Ppm == no2Ppm) &&
+            (identical(other.mode, mode) || other.mode == mode));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(runtimeType, ts, temperature, humidity);
+  int get hashCode =>
+      Object.hash(runtimeType, ts, temperature, humidity, coPpm, no2Ppm, mode);
 
   /// Create a copy of TelemetryPoint
   /// with the given fields replaced by the non-null parameter values.
@@ -181,8 +245,11 @@ class _$TelemetryPointImpl implements _TelemetryPoint {
 abstract class _TelemetryPoint implements TelemetryPoint {
   const factory _TelemetryPoint(
       {required final DateTime ts,
-      required final double temperature,
-      required final double humidity}) = _$TelemetryPointImpl;
+      final double? temperature,
+      final double? humidity,
+      @JsonKey(name: 'co_ppm') final double? coPpm,
+      @JsonKey(name: 'no2_ppm') final double? no2Ppm,
+      final String? mode}) = _$TelemetryPointImpl;
 
   factory _TelemetryPoint.fromJson(Map<String, dynamic> json) =
       _$TelemetryPointImpl.fromJson;
@@ -190,9 +257,17 @@ abstract class _TelemetryPoint implements TelemetryPoint {
   @override
   DateTime get ts;
   @override
-  double get temperature;
+  double? get temperature;
   @override
-  double get humidity;
+  double? get humidity;
+  @override
+  @JsonKey(name: 'co_ppm')
+  double? get coPpm;
+  @override
+  @JsonKey(name: 'no2_ppm')
+  double? get no2Ppm;
+  @override
+  String? get mode;
 
   /// Create a copy of TelemetryPoint
   /// with the given fields replaced by the non-null parameter values.

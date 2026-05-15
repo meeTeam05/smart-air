@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "sensor_task.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        config
+        ds3231
+        gm102b
+        gm702b
+        sht3x
+    PRIV_REQUIRES
+        freertos
+        json
+        sa_mqtt
+)

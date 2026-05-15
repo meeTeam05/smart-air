@@ -20,10 +20,14 @@ class AuthInterceptor extends Interceptor {
   final Dio _dio;
   final SecureStorage _storage;
   final Ref _ref;
-  bool _isRefreshing = false;
+  Future<String>? _refreshFuture;
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    if (options.extra['skipInterceptor'] == true) {
+      handler.next(options);
+      return;
+    }
     if (_accessToken != null) {
       options.headers['Authorization'] = 'Bearer $_accessToken';
     }
@@ -39,45 +43,81 @@ class AuthInterceptor extends Interceptor {
     // Auth endpoints (login, register, refresh) must propagate 401 as-is.
     final path = err.requestOptions.path;
     final isAuthPath = path.contains('/auth/');
-    if (statusCode != 401 || _isRefreshing || isAuthPath) {
+    final alreadyRetried = err.requestOptions.extra['authRetried'] == true;
+    if (statusCode != 401 || isAuthPath) {
       handler.next(_classified(err));
       return;
     }
+    if (alreadyRetried) {
+      handler.reject(_authError(err));
+      return;
+    }
 
-    _isRefreshing = true;
     try {
-      final refreshToken = await _storage.getRefreshToken();
-      if (refreshToken == null) {
-        await _forceLogout();
+      final newAccess = await _refreshAccessToken();
+      final retryResponse = await _dio.fetch(
+        err.requestOptions.copyWith(
+          headers: {
+            ...err.requestOptions.headers,
+            'Authorization': 'Bearer $newAccess',
+          },
+          extra: {
+            ...err.requestOptions.extra,
+            'authRetried': true,
+          },
+        ),
+      );
+      handler.resolve(retryResponse);
+    } on AuthException {
+      handler.reject(_authError(err));
+    } on DioException catch (retryErr) {
+      if (retryErr.response?.statusCode == 401) {
         handler.reject(_authError(err));
         return;
       }
+      handler.reject(_classified(retryErr));
+    }
+  }
 
-      // POST /auth/refresh — bypass interceptor to avoid re-entry
+  Future<String> _refreshAccessToken() {
+    final inFlight = _refreshFuture;
+    if (inFlight != null) return inFlight;
+
+    final future = _performRefresh();
+    _refreshFuture = future;
+    future.whenComplete(() => _refreshFuture = null);
+    return future;
+  }
+
+  Future<String> _performRefresh() async {
+    final refreshToken = await _storage.getRefreshToken();
+    if (refreshToken == null) {
+      await _forceLogout();
+      throw const AuthException();
+    }
+
+    try {
       final res = await _dio.post(
         '/auth/refresh',
         data: {'refreshToken': refreshToken},
-        options: Options(
-          headers: {'Authorization': null},
-          extra: {'skipInterceptor': true},
-        ),
+        options: Options(extra: {'skipInterceptor': true}),
       );
 
-      final newAccess = res.data['accessToken'] as String;
+      final newAccess = res.data['accessToken'] as String?;
+      if (newAccess == null || newAccess.isEmpty) {
+        await _forceLogout();
+        throw const AuthException();
+      }
+
       final newRefresh = res.data['refreshToken'] as String?;
       setAccessToken(newAccess);
-      if (newRefresh != null) await _storage.saveRefreshToken(newRefresh);
-
-      // Retry original request with new token
-      final retryOptions = err.requestOptions
-        ..headers['Authorization'] = 'Bearer $newAccess';
-      final retryResponse = await _dio.fetch(retryOptions);
-      handler.resolve(retryResponse);
+      if (newRefresh != null) {
+        await _storage.saveRefreshToken(newRefresh);
+      }
+      return newAccess;
     } on DioException {
       await _forceLogout();
-      handler.reject(_authError(err));
-    } finally {
-      _isRefreshing = false;
+      throw const AuthException();
     }
   }
 

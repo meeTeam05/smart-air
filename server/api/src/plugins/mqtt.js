@@ -1,85 +1,184 @@
 import fp from 'fastify-plugin';
 import mqtt from 'mqtt';
-import { updateReported, getShadow } from '../services/shadow.js';
-import { flushPending } from '../services/commands.js';
+import { handleStatus, handleTelemetry, handleResponse, handleShadowReport, handleShadowGet, handleOtaProgress } from '../services/mqtt-handlers.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
+import { ensureBridgeUser } from '../services/emqx.js';
+
+const DEFAULT_PUBLISH_TIMEOUT_MS = 5_000;
+const DEFAULT_PROVISION_RETRY_MS = 5_000;
+const SUBSCRIPTIONS = Object.freeze([
+    'device/+/status',
+    'device/+/telemetry',
+    'device/+/response',
+    'device/+/shadow/report',
+    'device/+/shadow/get',
+    'device/+/ota/progress',
+]);
+
+function parsePositiveIntEnv(name, fallback) {
+    const value = Number.parseInt(process.env[name] || '', 10);
+    return Number.isInteger(value) && value > 0 ? value : fallback;
+}
 
 async function mqttPlugin(fastify) {
+    const clientId = process.env.EMQX_MQTT_CLIENT_ID || 'sa-api-bridge';
+    const publishTimeoutMs = parsePositiveIntEnv('MQTT_PUBLISH_TIMEOUT_MS', DEFAULT_PUBLISH_TIMEOUT_MS);
+    const provisionRetryMs = parsePositiveIntEnv('MQTT_PROVISION_RETRY_MS', DEFAULT_PROVISION_RETRY_MS);
     const client = mqtt.connect(process.env.EMQX_MQTT_URL || 'mqtt://emqx:1883', {
         username: process.env.EMQX_MQTT_USER || 'sa-server',
         password: process.env.EMQX_MQTT_PASSWORD || '',
-        clientId: 'sa-api-bridge',
-        clean: true,
+        clientId,
+        clean: false,
+        manualAcks: true,
+        manualConnect: true,
+        reconnectPeriod: 2000,
+        connectTimeout: 30_000,
+    });
+    let closed = false;
+    let connectingStarted = false;
+    let subscriptionGeneration = 0;
+
+    fastify.decorate('mqttReadyAt', null);
+    fastify.decorate('mqttIsReady', () => client.connected && fastify.mqttReadyAt !== null);
+    fastify.decorate('mqttPublish', (topic, payload, options = {}) => {
+        const publishOptions = { qos: 1, ...options };
+        if (!client.connected || fastify.mqttReadyAt === null) {
+            return Promise.reject(new Error('MQTT bridge is not ready'));
+        }
+
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error(`MQTT publish timed out after ${publishTimeoutMs}ms`));
+            }, publishTimeoutMs);
+
+            client.publish(topic, payload, publishOptions, (err) => {
+                clearTimeout(timeoutId);
+                if (err) {
+                    reject(err);
+                    return;
+                }
+
+                resolve();
+            });
+        });
     });
 
-    client.on('connect', () => {
-        fastify.log.info('MQTT bridge connected');
-        client.subscribe('device/+/status', { qos: 1 });
-        client.subscribe('device/+/telemetry', { qos: 1 });
-        client.subscribe('device/+/response', { qos: 1 });
-        client.subscribe('device/+/shadow/report', { qos: 1 });
-        client.subscribe('device/+/ota/progress', { qos: 1 });
+    const setNotReady = () => {
+        fastify.mqttReadyAt = null;
+    };
+
+    const subscribeWithCheck = (topic) => {
+        return new Promise((resolve, reject) => {
+            client.subscribe(topic, { qos: 1 }, (err, granted = []) => {
+                const denied = granted.some((g) => g?.qos === 128);
+                if (err || denied) {
+                    reject(Object.assign(err || new Error('MQTT subscription denied'), { topic, granted }));
+                    return;
+                }
+                resolve(granted);
+            });
+        });
+    };
+
+    const provisionAndConnect = async () => {
+        while (!closed) {
+            try {
+                await ensureBridgeUser();
+                if (!closed && !connectingStarted) {
+                    connectingStarted = true;
+                    client.connect();
+                }
+                return;
+            } catch (err) {
+                fastify.log.error({ err, retryMs: provisionRetryMs }, 'MQTT bridge provisioning failed; retrying');
+                await new Promise((resolve) => {
+                    setTimeout(resolve, provisionRetryMs);
+                });
+            }
+        }
+    };
+
+    client.on('connect', async () => {
+        setNotReady();
+        const generation = subscriptionGeneration + 1;
+        subscriptionGeneration = generation;
+
+        try {
+            await Promise.all(SUBSCRIPTIONS.map((topic) => subscribeWithCheck(topic)));
+            if (generation === subscriptionGeneration && client.connected) {
+                fastify.mqttReadyAt = Date.now();
+                fastify.log.info(
+                    { mqttReadyAt: fastify.mqttReadyAt, subscriptions: SUBSCRIPTIONS },
+                    'MQTT bridge connected and subscribed'
+                );
+            }
+        } catch (err) {
+            setNotReady();
+            fastify.log.error({ err }, 'MQTT bridge subscription setup failed');
+        }
     });
 
+    client.on('close', setNotReady);
+    client.on('offline', setNotReady);
+    client.on('end', setNotReady);
+    client.on('disconnect', setNotReady);
     client.on('error', (err) => fastify.log.error({ err }, 'MQTT bridge error'));
 
-    client.on('message', async (topic, buf) => {
+    async function handleInboundMessage(topic, buf) {
         const parts = topic.split('/');
         const deviceId = normalizeDeviceId(parts[1]);
+        if (!deviceId) {
+            return;
+        }
+
         let payload;
         try {
             payload = JSON.parse(buf.toString());
         } catch {
+            fastify.log.warn({ topic }, 'MQTT payload is not valid JSON');
             return;
         }
 
-        try {
-            if (parts[2] === 'status') {
-                await fastify.db.query(
-                    'UPDATE devices SET online = $1, last_seen = NOW() WHERE id = $2',
-                    [payload.online === true, deviceId]
-                );
-                // Store announcement for provisioning poll (works for new and re-provisioned devices)
-                if (payload.online === true) {
-                    await fastify.redis.set(`announce:${deviceId}`, '1', 'EX', 300);
-                }
-                if (payload.online === true) {
-                    await flushPending(fastify, deviceId);
-                    // Push current desired state to device
-                    const shadow = await getShadow(fastify, deviceId);
-                    if (Object.keys(shadow.desired).length > 0) {
-                        client.publish(
-                            `device/${deviceId}/shadow/get_response`,
-                            JSON.stringify({ desired: shadow.desired }),
-                            { qos: 1 }
-                        );
-                    }
-                }
-            } else if (parts[2] === 'telemetry') {
-                const ts = payload.ts ? new Date(payload.ts * 1000).toISOString() : new Date().toISOString();
-                await fastify.db.query(
-                    'INSERT INTO telemetry (device_id, ts, payload) VALUES ($1, $2, $3)',
-                    [deviceId, ts, JSON.stringify(payload)]
-                );
-            } else if (parts[2] === 'response') {
-                if (payload.command_id) {
-                    await fastify.db.query(
-                        'UPDATE commands SET status = $1, executed_at = NOW() WHERE id = $2',
-                        [payload.status || 'done', payload.command_id]
-                    );
-                }
-            } else if (parts[2] === 'shadow' && parts[3] === 'report') {
-                await updateReported(fastify, deviceId, payload);
-            } else if (parts[2] === 'ota' && parts[3] === 'progress') {
-                await fastify.redis.set(`ota_progress:${deviceId}`, JSON.stringify(payload), 'EX', 600);
-            }
-        } catch (err) {
-            fastify.log.error({ err, topic }, 'MQTT message handler error');
+        let handled = true;
+        if (parts[2] === 'status') {
+            await handleStatus(fastify, deviceId, payload);
+        } else if (parts[2] === 'telemetry') {
+            await handleTelemetry(fastify, deviceId, payload);
+        } else if (parts[2] === 'response') {
+            await handleResponse(fastify, deviceId, payload);
+        } else if (parts[2] === 'shadow' && parts[3] === 'report') {
+            await handleShadowReport(fastify, deviceId, payload);
+        } else if (parts[2] === 'shadow' && parts[3] === 'get') {
+            await handleShadowGet(fastify, deviceId, payload);
+        } else if (parts[2] === 'ota' && parts[3] === 'progress') {
+            await handleOtaProgress(fastify, deviceId, payload);
+        } else {
+            handled = false;
         }
+
+        if (!handled) {
+            fastify.log.warn({ topic }, 'MQTT message topic not handled');
+        }
+    }
+
+    client.handleMessage = async (packet, callback) => {
+        const topic = packet.topic;
+        try {
+            await handleInboundMessage(topic, packet.payload);
+            callback();
+        } catch (err) {
+            fastify.log.error({ err, topic }, 'MQTT message handler error; message left unacked for redelivery');
+            // With manualAcks=true, not calling callback keeps the QoS1 message unacked.
+        }
+    };
+
+    fastify.addHook('onClose', async () => {
+        closed = true;
+        setNotReady();
+        client.end();
     });
 
-    fastify.decorate('mqttClient', client);
-    fastify.addHook('onClose', async () => client.end());
+    provisionAndConnect();
 }
 
 export default fp(mqttPlugin);

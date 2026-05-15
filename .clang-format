@@ -58,6 +58,7 @@ AlignOperands: Align
 AlignEscapedNewlines: Left
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
+AlignConsecutiveMacros: true
 
 # Spaces
 SpaceAfterCStyleCast: false

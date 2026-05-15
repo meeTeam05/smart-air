@@ -1,11 +1,11 @@
 idf_component_register(
     SRCS
-    "i2cdev.c"
+        "i2cdev.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    driver
-    freertos
-    log
-    config
+        driver
+        freertos
+        log
+        config
 )

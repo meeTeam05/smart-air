@@ -137,11 +137,11 @@ class BleService {
   }
 
   /// Write SSID and password to provisioning characteristics, wait for device
-  /// to connect WiFi, then return the device's WiFi STA MAC (device_id).
+  /// to connect WiFi, then return its reported device id and local IP.
   ///
   /// Keeps BLE connected until the notify arrives (device sends it after
   /// WiFi connect, up to [timeout]). Throws [BleException] on failure or timeout.
-  Future<String> sendCredentials(
+  Future<BleProvisioningResult> sendCredentials(
     String ssid,
     String password, {
     Duration timeout = const Duration(seconds: 30),
@@ -194,7 +194,8 @@ class BleService {
           .timeout(timeout, onTimeout: (sink) => sink.close())
           .first;
     } catch (_) {
-      throw BleException('Timed out waiting for device response (${timeout.inSeconds}s)');
+      throw BleException(
+          'Timed out waiting for device response (${timeout.inSeconds}s)');
     }
 
     final Map<String, dynamic> result;
@@ -205,15 +206,24 @@ class BleService {
     }
 
     if (result['status'] != 'ok') {
-      throw BleException('Device failed to connect to WiFi — check password');
+      throw const BleException(
+          'Device failed to connect to WiFi — check password');
     }
 
     final deviceId = result['device_id'] as String?;
     if (deviceId == null || deviceId.isEmpty) {
-      throw BleException('Device did not report its ID');
+      throw const BleException('Device did not report its ID');
     }
 
-    return deviceId;
+    final ip = result['ip'] as String?;
+    if (ip == null || ip.trim().isEmpty) {
+      throw const BleException('Device did not report its local IP');
+    }
+
+    return BleProvisioningResult(
+      deviceId: deviceId.trim().toLowerCase(),
+      ip: ip.trim(),
+    );
   }
 
   // ── Connect + read ─────────────────────────────────────────────────────────
@@ -239,7 +249,7 @@ class BleService {
       final services = await _device!.discoverServices();
       final svc = services.firstWhere(
         (s) => s.uuid.str128.toLowerCase() == SmartAirGatt.serviceUuid,
-        orElse: () => throw BleException(
+        orElse: () => throw const BleException(
           'Smart Air GATT service not found.\n'
           'Check UUID: ${SmartAirGatt.serviceUuid}',
         ),

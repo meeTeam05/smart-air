@@ -1,200 +1,127 @@
 import 'package:flutter/material.dart';
-import '../app_theme.dart';
+import '../design/palette.dart';
+import '../design/tokens.dart';
+import '../design/text_styles.dart';
+import '../design/icons.dart';
+import '../models/device.dart';
+import '../widgets/atoms/pill.dart';
+import '../widgets/atoms/ghost_button.dart';
 
-/// Card shown in the 2-column device grid on HomeScreen.
+/// Device card for Home tab list.
+/// Matches Phase 6 spec: tint bg, status pill, room/wifi info, view detail button.
 class DeviceCard extends StatelessWidget {
-  final String name;
-  final String room;
-  final bool isOnline;
-  final bool isProvisioned; // false = WiFi not yet configured
-  final String? temperature;
-  final String? humidity;
+  final Device device;
+  final String? roomName;
+  final VoidCallback? onTap;
 
   const DeviceCard({
     super.key,
-    required this.name,
-    required this.room,
-    this.isOnline = false,
-    this.isProvisioned = false,
-    this.temperature,
-    this.humidity,
+    required this.device,
+    this.roomName,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        // ── Main card ──────────────────────────────────────────────────────
-        Container(
-          decoration: BoxDecoration(
-            color: c.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: !isProvisioned
-                  ? Colors.orange.withValues(alpha: 0.5)
-                  : isOnline
-                      ? AppColors.primary.withValues(alpha: 0.3)
-                      : c.border,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+
+    final tintColor = _getTintColor(device.id, c);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: tintColor.bg,
+        borderRadius: BorderRadius.circular(AtmosphereTokens.radiusCard),
+        border: Border.all(color: c.line, width: 1),
+      ),
+      padding: const EdgeInsets.all(AtmosphereTokens.space20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row: icon + name + mode badge + status pill
+          Row(
             children: [
-              // ── Device image — fills top 60% of card ─────────────────────
-              Expanded(
-                flex: 6,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(15)),
-                  child: Container(
-                    color: c.surfaceVar,
-                    child: Image.asset(
-                      'assets/images/device_placeholder.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Icon(
-                        Icons.devices,
-                        size: 48,
-                        color: isOnline
-                            ? AppColors.primary
-                            : c.textSecondary,
-                      ),
-                    ),
-                  ),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: tintColor.accent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  AppIcons.device,
+                  color: c.ink,
+                  size: 20,
                 ),
               ),
-
-              // ── Bottom info strip ─────────────────────────────────────────
+              const SizedBox(width: AtmosphereTokens.space12),
               Expanded(
-                flex: 4,
-                child: Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Sensor values (when online + available)
-                      if (isOnline &&
-                          (temperature != null || humidity != null)) ...[
-                        Row(
-                          children: [
-                            if (temperature != null) ...[
-                              const Icon(Icons.thermostat,
-                                  size: 12,
-                                  color: AppColors.warning),
-                              const SizedBox(width: 2),
-                              Text(
-                                '$temperature°',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: c.textSecondary),
-                              ),
-                            ],
-                            if (temperature != null &&
-                                humidity != null)
-                              const SizedBox(width: 6),
-                            if (humidity != null) ...[
-                              const Icon(Icons.water_drop,
-                                  size: 12,
-                                  color: AppColors.primary),
-                              const SizedBox(width: 2),
-                              Text(
-                                '$humidity%',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: c.textSecondary),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                      ],
-
-                      // Device name
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: c.textPrimary,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-
-                      // Room + status dot
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              room,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  color: c.textSecondary),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: isOnline
-                                  ? AppColors.online
-                                  : AppColors.offline,
-                              boxShadow: isOnline
-                                  ? [
-                                      BoxShadow(
-                                        color: AppColors.online
-                                            .withValues(alpha: 0.5),
-                                        blurRadius: 4,
-                                      )
-                                    ]
-                                  : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                child: Text(
+                  device.name,
+                  style: AtmosphereTextStyles.h2(c.ink),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              const SizedBox(width: AtmosphereTokens.space8),
+              if (device.mode != null) ...[
+                AtmospherePill(
+                  label: device.mode!.toUpperCase(),
+                  tone:
+                      device.mode == 'on' ? PillTone.online : PillTone.offline,
+                ),
+                const SizedBox(width: AtmosphereTokens.space8),
+              ],
+              AtmospherePill(
+                label: device.online ? 'Online' : 'Offline',
+                tone: device.online ? PillTone.online : PillTone.offline,
               ),
             ],
           ),
-        ),
-
-        // ── "Setup Wi-Fi" badge ───────────────────────────────────────────
-        if (!isProvisioned)
-          Positioned(
-            top: -6,
-            right: -6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.orange,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.orange.withValues(alpha: 0.4),
-                    blurRadius: 6,
-                  )
-                ],
+          const SizedBox(height: AtmosphereTokens.space16),
+          // Room info
+          Row(
+            children: [
+              Icon(AppIcons.pin, size: 14, color: c.ink3),
+              const SizedBox(width: AtmosphereTokens.space6),
+              Text(
+                roomName ??
+                    (device.roomId == null
+                        ? 'No room assigned'
+                        : 'Room unavailable'),
+                style: AtmosphereTextStyles.caption(c.ink2),
               ),
-              child: const Text(
-                'Setup Wi-Fi',
-                style: TextStyle(
-                  fontSize: 9,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            ],
+          ),
+          const SizedBox(height: AtmosphereTokens.space20),
+          // View Detail button
+          SizedBox(
+            width: double.infinity,
+            child: GhostButton(
+              label: 'View Detail',
+              onPressed: onTap,
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
+
+  /// Generate tint color based on device ID hash.
+  /// Returns 4-tone palette rotation: brand, accent, mint, no2.
+  ({Color bg, Color accent}) _getTintColor(String id, AtmospherePalette c) {
+    final hash = id.hashCode.abs() % 4;
+    switch (hash) {
+      case 0:
+        return (bg: c.brandTint, accent: c.brand);
+      case 1:
+        return (bg: c.accentTint, accent: c.accent);
+      case 2:
+        return (bg: c.mint.withValues(alpha: 0.2), accent: c.brand);
+      case 3:
+        return (bg: const Color(0xFFF0E8FB), accent: const Color(0xFF7A4FD0));
+      default:
+        return (bg: c.brandTint, accent: c.brand);
+    }
+  }
 }
+

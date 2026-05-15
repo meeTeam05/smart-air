@@ -1,11 +1,10 @@
 idf_component_register(
     SRCS
-    "config.c"
+        "config.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    nvs_flash
-    log
-    EMBED_TXTFILES
-    "certs/ca_cert.pem"
+        nvs_flash
+        log
+        esp_hw_support
 )

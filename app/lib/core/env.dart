@@ -3,6 +3,11 @@ class Env {
 
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.1.16/api',
+    defaultValue: 'https://minhnhat05.xyz/api',
+  );
+
+  static const mqttBrokerUri = String.fromEnvironment(
+    'MQTT_BROKER_URI',
+    defaultValue: 'wss://minhnhat05.xyz/mqtt',
   );
 }

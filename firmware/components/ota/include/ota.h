@@ -13,24 +13,28 @@
 /**
  * @brief Spawn ota_task (Core 1, Priority 3, 8192 B stack).
  *
- * The task waits for a trigger from ota_trigger(). Must be called after
- * mqtt_start() so progress messages can be published.
- *
  * @param device_id  Device identifier used to build the ota/progress topic.
+ * 
  * @return ESP_OK on success, ESP_FAIL if task creation fails.
+ * 
+ * @note The task waits for a trigger from ota_trigger(). Must be called after
+ *       mqtt_start() so progress messages can be published.
  */
 esp_err_t ota_task_start(const char *device_id);
 
 /**
  * @brief Trigger an OTA download asynchronously.
  *
- * Validates that url starts with "https://" (SEC-02), then sends {url, sha256}
- * to the ota_task queue. Non-blocking. If a download is already in progress
- * the trigger is silently dropped (queue depth = 1).
+
  *
  * @param url     HTTPS URL to the firmware binary.
  * @param sha256  Expected SHA-256 hex string of the binary (informational for now).
+ * 
  * @return ESP_OK if queued, ESP_ERR_INVALID_ARG if URL is not https://.
+ * 
+ * @note Validates that url starts with "https://" (SEC-02), then sends {url, sha256}
+ *       to the ota_task queue. Non-blocking. If a download is already in progress
+ *       the trigger is silently dropped (queue depth = 1).
  */
 esp_err_t ota_trigger(const char *url, const char *sha256);
 

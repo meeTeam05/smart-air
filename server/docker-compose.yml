@@ -1,63 +1,84 @@
 name: smart-air
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # Reverse proxy — public entry point via Cloudflare Tunnel
   nginx:
     image: nginx:alpine
     container_name: sa-nginx
-    ports:
-      - "80:80"
-      - "443:443" # HTTPS — OTA firmware file server (uses EMQX cert)
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./emqx/certs:/etc/nginx/certs:ro # reuse EMQX self-signed cert
       - ./ota-files:/var/www/ota:ro # firmware binaries drop zone
     depends_on:
-      - api
-      - emqx
-      - grafana
+      api:     { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/nginx/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
+    mem_limit: 128m
+    logging: *default-logging
     networks:
       - sa-net
 
   # MQTT broker
-  # Phase 1.1: plain defaults
-  # Phase 1.2: add TLS, auth, ACL
   emqx:
     image: emqx/emqx:latest
     container_name: sa-emqx
     ports:
-      - "8083:8083" # WebSocket — Flutter app via nginx /mqtt
-      - "8883:8883" # MQTT/TLS — ESP32 firmware
-      - "18083:18083" # dashboard — LAN only, do not expose publicly
+      - "${MQTT_LAN_BIND_IP:-0.0.0.0}:8883:8883" # Optional direct MQTT/TLS path; public default is WSS via nginx + Cloudflare Tunnel
+      - "127.0.0.1:18083:18083"     # dashboard — localhost only
     environment:
-      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-changeme}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD is required}
+      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:?EMQX_NODE_COOKIE is required}
     volumes:
       - emqx-data:/opt/emqx/data
       - emqx-log:/opt/emqx/log
       - ./emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+      - ./emqx/api-key.bootstrap:/opt/emqx/etc/api-key.bootstrap:ro
       - ./emqx/certs:/opt/emqx/etc/certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "emqx ctl status | grep started"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
+    mem_limit: 512m
+    logging: *default-logging
     networks:
       - sa-net
 
   # API — Fastify service
   api:
-    image: node:20-alpine
+    build:
+      context: ./api
+    image: smart-air-api:local
     container_name: sa-api
-    working_dir: /app
     volumes:
-      - ./api:/app
       - ./db:/db:ro
-    command: sh -c "npm install && npm run migrate && node src/app.js"
     env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
+    mem_limit: 512m
+    logging: *default-logging
     networks:
       - sa-net
-    depends_on:
-      - postgres
-      - redis
-      - emqx
 
   # Database — TimescaleDB (PostgreSQL + time-series)
   postgres:
@@ -69,7 +90,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - ./postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smartair}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
+    mem_limit: 1g
+    logging: *default-logging
     networks:
       - sa-net
 
@@ -78,9 +106,18 @@ services:
     image: redis:7-alpine
     container_name: sa-redis
     command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required} --save 60 1 --loglevel warning
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - ./redis/data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
+    mem_limit: 256m
+    logging: *default-logging
     networks:
       - sa-net
 
@@ -94,7 +131,14 @@ services:
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - ./grafana/data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
+    mem_limit: 384m
+    logging: *default-logging
     networks:
       - sa-net
 
@@ -102,8 +146,9 @@ services:
   pgadmin:
     image: dpage/pgadmin4:8
     container_name: sa-pgadmin
+    profiles: ["admin"]
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"         # localhost only
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:?PGADMIN_EMAIL is required}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?PGADMIN_PASSWORD is required}
@@ -111,6 +156,8 @@ services:
     volumes:
       - ./pgadmin/data:/var/lib/pgadmin
     restart: unless-stopped
+    mem_limit: 256m
+    logging: *default-logging
     networks:
       - sa-net
 
@@ -118,12 +165,15 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: sa-portainer
+    profiles: ["admin"]
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"       # localhost only
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./portainer/data:/data
     restart: unless-stopped
+    mem_limit: 256m
+    logging: *default-logging
     networks:
       - sa-net
 
@@ -136,7 +186,9 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
     restart: unless-stopped
     depends_on:
-      - nginx
+      nginx: { condition: service_healthy }
+    mem_limit: 128m
+    logging: *default-logging
     networks:
       - sa-net
 

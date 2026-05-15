@@ -16,6 +16,8 @@
 
 #include "ota.h"
 
+#include "config.h"
+#include "esp_crt_bundle.h"
 #include "esp_https_ota.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -25,16 +27,12 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include <strings.h>
 
 /* Forward declaration — resolved at link time from sa_mqtt component (no CMake dep needed) */
 extern int mqtt_publish(const char *topic, const char *payload, int qos, bool retain);
 
 static const char *TAG = "ota";
-
-/* ── Embedded CA certificate ─────────────────────────────────────────────── */
-
-extern const uint8_t ca_cert_pem_start[] asm("_binary_ca_cert_pem_start");
-extern const uint8_t ca_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 
 /* ── Driver state ────────────────────────────────────────────────────────── */
 
@@ -75,7 +73,7 @@ static void ota_task_fn(void *arg)
         /* Configure HTTPS OTA */
         esp_http_client_config_t http_cfg = {
             .url = msg.url,
-            .cert_pem = (const char *)ca_cert_pem_start,
+            .crt_bundle_attach = esp_crt_bundle_attach,
             .keep_alive_enable = true,
         };
         esp_https_ota_config_t ota_cfg = {
@@ -117,6 +115,31 @@ static void ota_task_fn(void *arg)
             continue;
         }
 
+        /* Validate SHA256 BEFORE finish() — finish() changes the boot pointer,
+         * so a mismatch detected after finish() would leave boot targeting a bad image.
+         * Verify against the next-update partition (where OTA wrote data). */
+        if (msg.sha256[0] != '\0') {
+            const esp_partition_t *target = esp_ota_get_next_update_partition(NULL);
+            uint8_t digest[32];
+            if (target == NULL || esp_partition_get_sha256(target, digest) != ESP_OK) {
+                ESP_LOGE(TAG, "SHA256 read failed — rejecting OTA image");
+                esp_https_ota_abort(ota_handle);
+                publish_progress(0, "failed");
+                continue;
+            }
+            char actual_hex[65];
+            for (int i = 0; i < 32; i++) {
+                sprintf(&actual_hex[i * 2], "%02x", digest[i]);
+            }
+            if (strcasecmp(actual_hex, msg.sha256) != 0) {
+                ESP_LOGE(TAG, "SHA256 mismatch — expected %s, got %s", msg.sha256, actual_hex);
+                esp_https_ota_abort(ota_handle);
+                publish_progress(0, "sha256_mismatch");
+                continue;
+            }
+            ESP_LOGI(TAG, "SHA256 verified: %s", actual_hex);
+        }
+
         err = esp_https_ota_finish(ota_handle);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_https_ota_finish failed (%s)", esp_err_to_name(err));
@@ -137,8 +160,7 @@ static void ota_task_fn(void *arg)
 
 esp_err_t ota_task_start(const char *device_id)
 {
-    snprintf(s_progress_topic, sizeof(s_progress_topic),
-             "device/%s/ota/progress", device_id != NULL ? device_id : "");
+    snprintf(s_progress_topic, sizeof(s_progress_topic), "device/%s/ota/progress", device_id != NULL ? device_id : "");
 
     s_ota_queue = xQueueCreate(1, sizeof(ota_msg_t));
     if (s_ota_queue == NULL) {
@@ -179,9 +201,11 @@ esp_err_t ota_trigger(const char *url, const char *sha256)
     /* Non-blocking: drop trigger if a download is already queued */
     if (xQueueSend(s_ota_queue, &msg, 0) != pdTRUE) {
         ESP_LOGW(TAG, "OTA trigger dropped — queue full (download already pending)");
-    } else {
-        ESP_LOGI(TAG, "OTA queued: %s", url);
+        publish_progress(0, "busy");
+        return ESP_FAIL;
     }
+
+    ESP_LOGI(TAG, "OTA queued: %s", url);
     return ESP_OK;
 }
 
@@ -190,8 +214,7 @@ void ota_validate_and_commit(void)
     const esp_partition_t *running = esp_ota_get_running_partition();
     esp_ota_img_states_t state;
 
-    if (esp_ota_get_state_partition(running, &state) == ESP_OK
-        && state == ESP_OTA_IMG_PENDING_VERIFY) {
+    if (esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
         esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "OTA validated — new firmware committed");

@@ -5,14 +5,23 @@ import '../core/secure_storage.dart';
 import '../core/api_client.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../services/realtime_service.dart';
 import 'devices_provider.dart';
 import 'homes_provider.dart';
 
-final authProvider = AsyncNotifierProvider<AuthNotifier, User?>(AuthNotifier.new);
+final authProvider =
+    AsyncNotifierProvider<AuthNotifier, User?>(AuthNotifier.new);
 
 class AuthNotifier extends AsyncNotifier<User?> {
   late AuthService _auth;
   late SecureStorage _storage;
+
+  void _invalidateSessionProviders() {
+    ref.invalidate(devicesProvider);
+    ref.invalidate(homesProvider);
+    ref.invalidate(roomsProvider);
+    ref.invalidate(realtimeEventsProvider);
+  }
 
   @override
   Future<User?> build() async {
@@ -22,8 +31,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
     // When interceptor fires forced logout, clear state
     ref.listen<int>(forceLogoutSignalProvider, (_, __) {
       state = const AsyncData(null);
-      ref.invalidate(devicesProvider);
-      ref.invalidate(homesProvider);
+      _invalidateSessionProviders();
     });
 
     // Restore session from SecureStorage.
@@ -67,5 +75,6 @@ class AuthNotifier extends AsyncNotifier<User?> {
     setAccessToken(null);
     await _storage.clear();
     state = const AsyncData(null);
+    _invalidateSessionProviders();
   }
 }

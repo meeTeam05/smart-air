@@ -4,8 +4,7 @@
  * @brief I2C Device Abstraction API
  */
 
-#ifndef I2CDEV_H
-#define I2CDEV_H
+#pragma once
 
 /* Includes ------------------------------------------------------------------*/
 
@@ -151,5 +150,3 @@ esp_err_t i2c_dev_read(i2c_dev_t *dev, void *data, size_t len);
  * @return ESP_OK on success, otherwise error code
  */
 esp_err_t i2c_dev_write(i2c_dev_t *dev, const void *data, size_t len);
-
-#endif /* I2CDEV_H */

@@ -5,8 +5,7 @@
  * @brief SHT3x Temperature and Humidity Sensor Driver API
  */
 
-#ifndef SHT3X_H
-#define SHT3X_H
+#pragma once
 
 /* Includes ------------------------------------------------------------------*/
 
@@ -194,5 +193,3 @@ esp_err_t sht3x_compute_values(sht3x_raw_data_t raw_data, float *temperature, fl
  * @return            `ESP_OK` on success
  */
 esp_err_t sht3x_get_results(sht3x_t *dev, float *temperature, float *humidity);
-
-#endif /* SHT3X_H */

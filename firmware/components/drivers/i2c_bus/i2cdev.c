@@ -4,23 +4,23 @@
  * @brief I2C Device Abstraction Implementation
  */
 
-/* Includes ------------------------------------------------------------------*/
+/* ── Includes ───────────────────────────────────────────────────────────── */
 
 #include "i2cdev.h"
 #include "esp_log.h"
 #include "driver/i2c_master.h"
-#include <freertos/FreeRTOS.h>
-#include <freertos/semphr.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
-/* Private defines -----------------------------------------------------------*/
+/* ── Private defines ────────────────────────────────────────────────────── */
 
 #define I2C_TIMEOUT_MS SA_I2C_TIMEOUT_MS
 
-static const char *TAG = "I2CDEV";
+static const char *TAG = "i2cdev";
 static i2c_master_bus_handle_t i2c_bus_handle = NULL;
 
-/* Exported functions --------------------------------------------------------*/
+/* ── Exported functions ─────────────────────────────────────────────────── */
 
 /**
  * @brief Initialize I2C bus using new I2C Master API
@@ -34,7 +34,7 @@ esp_err_t i2c_bus_init(int port, gpio_num_t sda_gpio, gpio_num_t scl_gpio, uint3
              scl_gpio,
              clk_speed);
 
-    // Check if already initialized
+    /* Check if already initialized */
     if (i2c_bus_handle != NULL) {
         ESP_LOGW(TAG, "I2C bus already initialized on port %d", port);
         return ESP_OK;
@@ -79,7 +79,7 @@ esp_err_t i2c_dev_init(i2c_dev_t *dev)
         return ESP_ERR_INVALID_STATE;
     }
 
-    // Create device configuration
+    /* Create device configuration */
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = dev->addr,
@@ -154,10 +154,10 @@ esp_err_t i2c_dev_read_reg(i2c_dev_t *dev, uint8_t reg, void *data, size_t len)
 
     I2C_DEV_TAKE_MUTEX(dev);
 
-    // Use existing device handle
+    /* Use existing device handle */
     i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)dev->dev_handle;
 
-    // Write register address then read data
+    /* Write register address then read data */
     esp_err_t ret = i2c_master_transmit_receive(dev_handle, &reg, 1, (uint8_t *)data, len, I2C_TIMEOUT_MS);
 
     if (ret != ESP_OK) {
@@ -190,10 +190,10 @@ esp_err_t i2c_dev_write_reg(i2c_dev_t *dev, uint8_t reg, const void *data, size_
 
     I2C_DEV_TAKE_MUTEX(dev);
 
-    // Use existing device handle
+    /* Use existing device handle */
     i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)dev->dev_handle;
 
-    // Prepare buffer: register address + data
+    /* Prepare buffer: register address + data */
     uint8_t *write_buf = malloc(len + 1);
     if (!write_buf) {
         I2C_DEV_GIVE_MUTEX(dev);
@@ -237,7 +237,7 @@ esp_err_t i2c_dev_read(i2c_dev_t *dev, void *data, size_t len)
 
     I2C_DEV_TAKE_MUTEX(dev);
 
-    // Use existing device handle
+    /* Use existing device handle */
     i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)dev->dev_handle;
 
     esp_err_t ret = i2c_master_receive(dev_handle, (uint8_t *)data, len, I2C_TIMEOUT_MS);
@@ -267,7 +267,7 @@ esp_err_t i2c_dev_write(i2c_dev_t *dev, const void *data, size_t len)
 
     I2C_DEV_TAKE_MUTEX(dev);
 
-    // Use existing device handle
+    /* Use existing device handle */
     i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)dev->dev_handle;
 
     esp_err_t ret = i2c_master_transmit(dev_handle, (const uint8_t *)data, len, I2C_TIMEOUT_MS);

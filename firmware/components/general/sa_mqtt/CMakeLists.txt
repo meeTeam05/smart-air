@@ -1,0 +1,17 @@
+idf_component_register(
+    SRCS
+        "mqtt.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        mqtt
+        config
+        freertos
+        log
+        mbedtls
+        esp_hw_support
+    PRIV_REQUIRES
+        ota
+        json
+        led
+)

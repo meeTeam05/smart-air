@@ -113,7 +113,7 @@ CREATE TABLE commands (
     device_id       TEXT REFERENCES devices(id) ON DELETE CASCADE,
     user_id         UUID REFERENCES users(id),
     payload         JSONB NOT NULL,
-    status          VARCHAR DEFAULT 'pending', -- pending → sent → done | failed
+    status          VARCHAR DEFAULT 'pending', -- pending → sent → done | error | timeout
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     executed_at     TIMESTAMPTZ
 );
