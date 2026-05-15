@@ -1,4 +1,4 @@
-package com.example.smart_air
+package xyz.minhnhat05.smartair
 
 import android.content.Intent
 import android.provider.Settings

@@ -14,6 +14,15 @@ class AuthNotifier extends AsyncNotifier<User?> {
   late AuthService _auth;
   late SecureStorage _storage;
 
+  void _invalidateSessionProviders() {
+    ref.invalidate(devicesProvider);
+    ref.invalidate(homesProvider);
+    ref.invalidate(roomsProvider);
+    ref.invalidate(shadowProvider);
+    ref.invalidate(commandsProvider);
+    ref.invalidate(telemetryProvider);
+  }
+
   @override
   Future<User?> build() async {
     _auth = ref.read(authServiceProvider);
@@ -22,8 +31,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
     // When interceptor fires forced logout, clear state
     ref.listen<int>(forceLogoutSignalProvider, (_, __) {
       state = const AsyncData(null);
-      ref.invalidate(devicesProvider);
-      ref.invalidate(homesProvider);
+      _invalidateSessionProviders();
     });
 
     // Restore session from SecureStorage.
@@ -67,5 +75,6 @@ class AuthNotifier extends AsyncNotifier<User?> {
     setAccessToken(null);
     await _storage.clear();
     state = const AsyncData(null);
+    _invalidateSessionProviders();
   }
 }

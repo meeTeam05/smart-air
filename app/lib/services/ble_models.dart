@@ -46,6 +46,16 @@ class BleDeviceInfo {
 
 enum RssiLevel { strong, medium, weak }
 
+class BleProvisioningResult {
+  const BleProvisioningResult({
+    required this.deviceId,
+    required this.ip,
+  });
+
+  final String deviceId;
+  final String ip;
+}
+
 // ── Sensor snapshot ───────────────────────────────────────────────────────────
 
 /// A single reading from the ESP32-S3 sensor characteristic.

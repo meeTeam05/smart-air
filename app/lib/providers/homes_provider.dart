@@ -20,6 +20,14 @@ class HomesNotifier extends AsyncNotifier<List<Home>> {
     state = AsyncData([...state.valueOrNull ?? [], home]);
   }
 
+  Future<void> updateName(String id, String name) async {
+    final home = await _service.updateHome(id, name: name);
+    state = AsyncData([
+      for (final existing in state.valueOrNull ?? const <Home>[])
+        existing.id == id ? home : existing,
+    ]);
+  }
+
   Future<void> delete(String id) async {
     await _service.deleteHome(id);
     state = AsyncData(
@@ -48,5 +56,22 @@ class RoomsNotifier extends FamilyAsyncNotifier<List<Room>, String> {
   Future<void> create(String name) async {
     final room = await _service.createRoom(arg, name);
     state = AsyncData([...state.valueOrNull ?? [], room]);
+  }
+
+  Future<void> updateRoom(String roomId, String name) async {
+    final room = await _service.updateRoom(roomId, name: name);
+    state = AsyncData([
+      for (final existing in state.valueOrNull ?? const <Room>[])
+        existing.id == roomId ? room : existing,
+    ]);
+  }
+
+  Future<void> delete(String roomId) async {
+    await _service.deleteRoom(roomId);
+    state = AsyncData(
+      (state.valueOrNull ?? const <Room>[])
+          .where((room) => room.id != roomId)
+          .toList(),
+    );
   }
 }

@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app_theme.dart';
+import '../../design/palette.dart';
+import '../../design/text_styles.dart';
+import '../../design/tokens.dart';
+import '../../widgets/atoms/dot_logo.dart';
+import '../../widgets/atoms/field.dart';
+import '../../widgets/atoms/primary_button.dart';
+import '../../widgets/atoms/text_button_link.dart';
 import '../../providers/auth_provider.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -48,58 +54,83 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(
-        title: Text('Create Account', style: TextStyle(color: c.textPrimary)),
-        backgroundColor: c.bg,
-        elevation: 0,
-      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AtmosphereTokens.space24,
+            vertical: AtmosphereTokens.space32,
+          ),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextFormField(
+                Center(
+                  child: AtmosphereDotLogo(
+                    size: 64,
+                    color: c.brand,
+                  ),
+                ),
+                const SizedBox(height: AtmosphereTokens.space24),
+                Text(
+                  'Create Account',
+                  style: AtmosphereTextStyles.h2(c.ink),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AtmosphereTokens.space8),
+                Text(
+                  'Join Smart Air to monitor your indoor air quality',
+                  style: AtmosphereTextStyles.body(c.ink3),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AtmosphereTokens.space32),
+                AtmosphereField(
+                  label: 'Full Name',
                   controller: _nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Full Name'),
                   validator: (v) =>
                       v != null && v.isNotEmpty ? null : 'Name required',
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
+                const SizedBox(height: AtmosphereTokens.space20),
+                AtmosphereField(
+                  label: 'Email',
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  validator: (v) =>
-                      v != null && v.contains('@') ? null : 'Valid email required',
+                  validator: (v) => v != null && v.contains('@')
+                      ? null
+                      : 'Valid email required',
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
+                const SizedBox(height: AtmosphereTokens.space20),
+                AtmosphereField(
+                  label: 'Password',
                   controller: _passCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Password'),
+                  obscure: true,
                   validator: (v) =>
                       v != null && v.length >= 6 ? null : 'Min 6 characters',
                 ),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Register'),
+                const SizedBox(height: AtmosphereTokens.space32),
+                PrimaryButton(
+                  label: 'Create Account',
+                  loading: _loading,
+                  onPressed: _submit,
                 ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () => context.pop(),
-                  child: Text('Already have an account? Login',
-                      style: TextStyle(color: c.textSecondary)),
+                const SizedBox(height: AtmosphereTokens.space20),
+                Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Already have an account? ',
+                        style: AtmosphereTextStyles.body(c.ink3),
+                      ),
+                      TextLinkButton(
+                        label: 'Sign In',
+                        onPressed: () => context.pop(),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

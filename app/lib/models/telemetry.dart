@@ -7,8 +7,11 @@ part 'telemetry.g.dart';
 class TelemetryPoint with _$TelemetryPoint {
   const factory TelemetryPoint({
     required DateTime ts,
-    required double temperature,
-    required double humidity,
+    double? temperature,
+    double? humidity,
+    @JsonKey(name: 'co_ppm') double? coPpm,
+    @JsonKey(name: 'no2_ppm') double? no2Ppm,
+    String? mode,
   }) = _TelemetryPoint;
 
   factory TelemetryPoint.fromJson(Map<String, dynamic> json) =>

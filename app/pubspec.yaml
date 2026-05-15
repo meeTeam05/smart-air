@@ -28,6 +28,9 @@ dependencies:
   json_annotation: ^4.9.0
   # Charts
   fl_chart: ^0.68.0
+  # Typography (Phase 1)
+  google_fonts: ^6.2.1
+  lucide_icons: ^0.257.0
 
 dev_dependencies:
   flutter_test:
@@ -38,11 +41,28 @@ dev_dependencies:
   build_runner: ^2.4.9
   freezed: ^2.4.7
   json_serializable: ^6.8.0
+  golden_toolkit: ^0.15.0
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/fonts/
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+          weight: 400
 
 flutter_launcher_icons:
   android: true

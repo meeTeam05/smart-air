@@ -13,6 +13,10 @@ class Device with _$Device {
     @Default(false) bool online,
     @JsonKey(name: 'last_seen') DateTime? lastSeen,
     @JsonKey(name: 'firmware_ver') String? firmwareVer,
+    String? mode,
+    @JsonKey(name: 'relay_1') bool? relay1,
+    @JsonKey(name: 'relay_2') bool? relay2,
+    @JsonKey(name: 'relay_3') bool? relay3,
     @JsonKey(name: 'created_at') DateTime? createdAt,
   }) = _Device;
 

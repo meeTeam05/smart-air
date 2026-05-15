@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../design/tokens.dart';
 /// ── SAMPLE MOCKUP SCREEN ──────────────────────────────────────────────────
 /// Màn hình này được thiết kế ĐỘC LẬP để bạn có thể review hướng UI mới.
 /// Bạn có thể thử trỏ home của MaterialApp về `SampleUiMockup()` để xem trực tiếp.
@@ -73,7 +73,7 @@ class _SampleUiMockupState extends State<SampleUiMockup> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AtmosphereTokens.paper,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
@@ -122,7 +122,7 @@ class _SampleUiMockupState extends State<SampleUiMockup> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  color: isSelected ? Colors.white : const Color(0xFF64748B),
+                  color: isSelected ? AtmosphereTokens.paper : const Color(0xFF64748B),
                 ),
               ),
             ),
@@ -193,7 +193,7 @@ class _MockupDeviceCard extends StatelessWidget {
     // Thẻ được thiết kế với bóng mờ siêu mịn (soft drop shadow) và góc bo viền mượt.
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AtmosphereTokens.paper,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(

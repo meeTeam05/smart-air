@@ -1,11 +1,22 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'app_theme.dart';
 import 'app_state.dart';
 import 'core/router.dart';
 
-void main() => runApp(const ProviderScope(child: SmartAirApp()));
+void main() {
+  // Disable runtime font fetching - all fonts must be bundled
+  GoogleFonts.config.allowRuntimeFetching = false;
+  
+  if (kIsWeb) {
+    runApp(const _WebUnsupportedApp());
+  } else {
+    runApp(const ProviderScope(child: SmartAirApp()));
+  }
+}
 
 class SmartAirApp extends ConsumerStatefulWidget {
   const SmartAirApp({super.key});
@@ -35,10 +46,49 @@ class _SmartAirAppState extends ConsumerState<SmartAirApp> {
     return MaterialApp.router(
       title: 'Smart Air',
       themeMode: AppState.themeMode.value,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: AtmosphereTheme.light(),
+      darkTheme: AtmosphereTheme.dark(),
       debugShowCheckedModeBanner: false,
       routerConfig: router,
+    );
+  }
+}
+
+class _WebUnsupportedApp extends StatelessWidget {
+  const _WebUnsupportedApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Smart Air',
+      theme: AtmosphereTheme.light(),
+      darkTheme: AtmosphereTheme.dark(),
+      debugShowCheckedModeBanner: false,
+      home: const Scaffold(
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.phone_android, size: 64, color: Colors.grey),
+                SizedBox(height: 24),
+                Text(
+                  'Web Not Supported',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Smart Air requires Android or iOS.\nProvisioning flow uses Bluetooth Low Energy, which is not available on web.',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

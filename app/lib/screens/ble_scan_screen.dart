@@ -6,7 +6,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../app_theme.dart';
 import '../services/ble_models.dart';
 import '../services/ble_service.dart';
-import 'wifi_setup_screen.dart';
+import 'provision/step3_wifi.dart';
 
 // ── Public result type ────────────────────────────────────────────────────────
 
@@ -156,11 +156,17 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
 
     // Device is in provisioning mode (no sensor service found) — collect WiFi creds.
     if (snap == null) {
-      // Disconnect the failed connectAndRead attempt before WifiSetupScreen reconnects.
+      // Disconnect the failed connectAndRead attempt before the provisioning wizard reconnects.
       await _ble.disconnect();
       if (!mounted) return;
       final provisioned = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => WifiSetupScreen(device: info)),
+        MaterialPageRoute(
+          builder: (_) => Step3WifiScreen(
+            homeId: '',
+            mac: info.remoteId,
+            deviceId: info.remoteId,
+          ),
+        ),
       );
       if (!mounted) return;
       Navigator.of(context).pop(BleConnectResult(
@@ -206,7 +212,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
             // Full-screen loading overlay while connecting
             if (_isConnecting)
               Container(
-                color: Colors.black54,
+                color: AtmosphereTokens.ink.withValues(alpha: 0.54),
                 child: const Center(
                   child: CircularProgressIndicator(color: AppColors.primary),
                 ),
@@ -219,7 +225,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
 
   // ── App bar ─────────────────────────────────────────────────────────────────
 
-  Widget _buildAppBar(AppPalette c) {
+  Widget _buildAppBar(AtmospherePalette c) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
       child: Row(
@@ -257,7 +263,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
 
   // ── Scanning body ───────────────────────────────────────────────────────────
 
-  Widget _buildScanningBody(AppPalette c) {
+  Widget _buildScanningBody(AtmospherePalette c) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -315,7 +321,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
   // ── Found body ──────────────────────────────────────────────────────────────
 
   Widget _buildFoundBody(
-    AppPalette c,
+    AtmospherePalette c,
     BleDeviceInfo featured,
     List<BleDeviceInfo> others,
   ) {
@@ -341,7 +347,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
                     border: Border.all(color: c.border),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
+                        color: AtmosphereTokens.ink.withValues(alpha: 0.08),
                         blurRadius: 20,
                         offset: const Offset(0, 4),
                       ),
@@ -430,20 +436,21 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
 
   // ── Error body ──────────────────────────────────────────────────────────────
 
-  Widget _buildErrorBody(AppPalette c) {
+  Widget _buildErrorBody(AtmospherePalette c) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.bluetooth_disabled, size: 64, color: Colors.red),
+            const Icon(Icons.bluetooth_disabled,
+                size: 64, color: AtmosphereTokens.danger),
             const SizedBox(height: 16),
             Text(
               _errorMessage,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13, color: c.textSecondary, height: 1.6),
+              style:
+                  TextStyle(fontSize: 13, color: c.textSecondary, height: 1.6),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -452,7 +459,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
               label: const Text('Try again'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: AtmosphereTokens.paper,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -541,9 +548,9 @@ class _RssiPill extends StatelessWidget {
   const _RssiPill({required this.rssi});
 
   Color _color() {
-    if (rssi >= -60) return Colors.green;
-    if (rssi >= -75) return Colors.orange;
-    return Colors.red;
+    if (rssi >= -60) return AtmosphereTokens.brand;
+    if (rssi >= -75) return AtmosphereTokens.warn;
+    return AtmosphereTokens.danger;
   }
 
   @override

@@ -46,12 +46,29 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
     try {
       // Step 1 — BLE: send credentials, wait for device to connect WiFi.
       // sendCredentials() keeps BLE alive and returns the device's WiFi STA MAC
-      // (device_id) once the notify arrives (device connected to WiFi successfully).
+      // (device_id) and local IP once the notify arrives.
       await _bleService.connect(widget.mac);
       setState(() => _status = 'Sending WiFi credentials…');
-      final deviceId =
+      final provision =
           await _bleService.sendCredentials(_ssidCtrl.text, _passCtrl.text);
       await _bleService.disconnect();
+
+      final deviceId = provision.deviceId;
+
+      setState(() => _status = 'Registering device…');
+      final registration =
+          await ref.read(deviceServiceProvider).provisionDevice(
+                deviceId: deviceId,
+                name: 'Smart Air ${deviceId.substring(deviceId.length - 5).toUpperCase()}',
+                homeId: widget.homeId,
+              );
+
+      setState(() => _status = 'Sending MQTT credentials to device…');
+      await ref.read(deviceServiceProvider).configureProvisionedDevice(
+            host: provision.ip,
+            deviceId: provision.deviceId,
+            secretKey: registration.secretKey,
+          );
 
       // Step 2 — Device connected WiFi; poll backend until MQTT status arrives.
       // The firmware connects MQTT → publishes online status.
@@ -74,15 +91,9 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
             'Device did not come online — check WiFi password and try again');
       }
 
-      // Step 3 — Device is online; register with MAC as default name.
       if (!mounted) return;
-      setState(() => _status = 'Registering device…');
       try {
-        await ref.read(devicesProvider.notifier).register(
-              deviceId: deviceId,
-              name: 'Smart Air ${deviceId.substring(deviceId.length - 5).toUpperCase()}',
-              homeId: widget.homeId,
-            );
+        ref.invalidate(devicesProvider);
       } on ApiException catch (e) {
         // 409 = device already registered — treat as success and navigate
         if (e.statusCode != 409) rethrow;

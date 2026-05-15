@@ -16,6 +16,10 @@ _$DeviceImpl _$$DeviceImplFromJson(Map<String, dynamic> json) => _$DeviceImpl(
           ? null
           : DateTime.parse(json['last_seen'] as String),
       firmwareVer: json['firmware_ver'] as String?,
+      mode: json['mode'] as String?,
+      relay1: json['relay_1'] as bool?,
+      relay2: json['relay_2'] as bool?,
+      relay3: json['relay_3'] as bool?,
       createdAt: json['created_at'] == null
           ? null
           : DateTime.parse(json['created_at'] as String),
@@ -30,6 +34,10 @@ Map<String, dynamic> _$$DeviceImplToJson(_$DeviceImpl instance) =>
       'online': instance.online,
       'last_seen': instance.lastSeen?.toIso8601String(),
       'firmware_ver': instance.firmwareVer,
+      'mode': instance.mode,
+      'relay_1': instance.relay1,
+      'relay_2': instance.relay2,
+      'relay_3': instance.relay3,
       'created_at': instance.createdAt?.toIso8601String(),
     };
 

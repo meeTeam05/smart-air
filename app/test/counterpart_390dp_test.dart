@@ -39,14 +39,6 @@ class _FakeDeviceService extends Fake implements DeviceService {
 
   @override
   Future<List<Device>> getDevices() async => devices;
-  
-  @override
-  Future<Device> getDevice(String id) async => const Device(
-    id: 'device-1',
-    name: 'Test Device',
-    homeId: 'home-1',
-    online: true,
-  );
 }
 
 class _FakeHomeService extends Fake implements HomeService {

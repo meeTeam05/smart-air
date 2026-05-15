@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/command.dart';
 import '../models/device.dart';
+import '../models/telemetry.dart';
 import '../services/device_service.dart';
 
 final devicesProvider =
@@ -8,6 +10,8 @@ final devicesProvider =
 
 class DevicesNotifier extends AsyncNotifier<List<Device>> {
   late DeviceService _service;
+
+  String _normalizeDeviceId(String value) => value.trim().toLowerCase();
 
   @override
   Future<List<Device>> build() async {
@@ -32,9 +36,12 @@ class DevicesNotifier extends AsyncNotifier<List<Device>> {
   }
 
   Future<void> delete(String id) async {
-    await _service.deleteDevice(id);
+    final normalizedDeviceId = _normalizeDeviceId(id);
+    await _service.deleteDevice(normalizedDeviceId);
     state = AsyncData(
-      (state.valueOrNull ?? []).where((d) => d.id != id).toList(),
+      (state.valueOrNull ?? [])
+          .where((d) => d.id != normalizedDeviceId)
+          .toList(),
     );
   }
 }
@@ -59,14 +66,14 @@ class ShadowNotifier extends FamilyAsyncNotifier<DeviceShadow, String> {
 }
 
 final commandsProvider =
-    AsyncNotifierProviderFamily<CommandsNotifier, List<dynamic>, String>(
+    AsyncNotifierProviderFamily<CommandsNotifier, List<Command>, String>(
         CommandsNotifier.new);
 
-class CommandsNotifier extends FamilyAsyncNotifier<List<dynamic>, String> {
+class CommandsNotifier extends FamilyAsyncNotifier<List<Command>, String> {
   late DeviceService _service;
 
   @override
-  Future<List<dynamic>> build(String deviceId) async {
+  Future<List<Command>> build(String deviceId) async {
     _service = ref.read(deviceServiceProvider);
     return _service.getCommands(deviceId);
   }
@@ -78,16 +85,15 @@ class CommandsNotifier extends FamilyAsyncNotifier<List<dynamic>, String> {
   }
 }
 
-final telemetryProvider =
-    AsyncNotifierProviderFamily<TelemetryNotifier, List<dynamic>, TelemetryParams>(
-        TelemetryNotifier.new);
+final telemetryProvider = AsyncNotifierProviderFamily<TelemetryNotifier,
+    List<TelemetryPoint>, TelemetryParams>(TelemetryNotifier.new);
 
 class TelemetryNotifier
-    extends FamilyAsyncNotifier<List<dynamic>, TelemetryParams> {
+    extends FamilyAsyncNotifier<List<TelemetryPoint>, TelemetryParams> {
   late DeviceService _service;
 
   @override
-  Future<List<dynamic>> build(TelemetryParams params) async {
+  Future<List<TelemetryPoint>> build(TelemetryParams params) async {
     _service = ref.read(deviceServiceProvider);
     return _service.getTelemetry(
       params.deviceId,

@@ -18,14 +18,14 @@ class AuthService {
 
   Future<LoginResult> login(String email, String password) async {
     try {
-      final res = await _dio.post('/auth/login',
-          data: {'email': email, 'password': password});
+      final res = await _dio
+          .post('/auth/login', data: {'email': email, 'password': password});
       final data = res.data as Map<String, dynamic>;
       final accessToken = data['accessToken'] as String?;
       final refreshToken = data['refreshToken'] as String?;
       final userMap = data['user'] as Map<String, dynamic>?;
       if (accessToken == null || refreshToken == null || userMap == null) {
-        throw ApiException(0, 'Unexpected server response');
+        throw const ApiException(0, 'Unexpected server response');
       }
       return (
         accessToken: accessToken,
@@ -53,7 +53,9 @@ class AuthService {
           .post('/auth/refresh', data: {'refreshToken': refreshToken});
       final data = res.data as Map<String, dynamic>;
       final accessToken = data['accessToken'] as String?;
-      if (accessToken == null) throw const ApiException(0, 'Unexpected server response');
+      if (accessToken == null) {
+        throw const ApiException(0, 'Unexpected server response');
+      }
       return (
         accessToken: accessToken,
         refreshToken: data['refreshToken'] as String?,
@@ -72,7 +74,9 @@ class AuthService {
   }
 
   AppException _map(DioException e) {
-    if (e.error is AppException) return e.error as AppException;
+    if (e.error is AppException) {
+      return e.error as AppException;
+    }
     final status = e.response?.statusCode;
     // Use the server's error message if present (e.g. "Invalid credentials" on 401).
     // Only fall back to AuthException when there is no body — that means it was a

@@ -32,6 +32,17 @@ class HomeService {
     }
   }
 
+  Future<Home> updateHome(String id, {String? name}) async {
+    try {
+      final res = await _dio.put('/homes/$id', data: {
+        if (name != null) 'name': name,
+      });
+      return Home.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<void> deleteHome(String id) async {
     try {
       await _dio.delete('/homes/$id');
@@ -54,6 +65,25 @@ class HomeService {
       final res = await _dio
           .post('/homes/$homeId/rooms', data: {'name': name});
       return Room.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<Room> updateRoom(String roomId, {String? name}) async {
+    try {
+      final res = await _dio.put('/rooms/$roomId', data: {
+        if (name != null) 'name': name,
+      });
+      return Room.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<void> deleteRoom(String roomId) async {
+    try {
+      await _dio.delete('/rooms/$roomId');
     } on DioException catch (e) {
       throw _map(e);
     }
