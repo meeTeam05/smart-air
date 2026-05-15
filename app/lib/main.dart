@@ -44,7 +44,7 @@ class _SmartAirAppState extends ConsumerState<SmartAirApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
-      title: 'Smart Air',
+      title: 'Atmosphere',
       themeMode: AppState.themeMode.value,
       theme: AtmosphereTheme.light(),
       darkTheme: AtmosphereTheme.dark(),
@@ -60,7 +60,7 @@ class _WebUnsupportedApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Smart Air',
+      title: 'Atmosphere',
       theme: AtmosphereTheme.light(),
       darkTheme: AtmosphereTheme.dark(),
       debugShowCheckedModeBanner: false,

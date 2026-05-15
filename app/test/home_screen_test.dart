@@ -7,6 +7,7 @@ import 'package:smart_air/models/home.dart';
 import 'package:smart_air/screens/home_screen.dart';
 import 'package:smart_air/services/device_service.dart';
 import 'package:smart_air/services/home_service.dart';
+import 'package:smart_air/services/realtime_service.dart';
 
 void main() {
   testWidgets('renders empty branch when there are no devices', (
@@ -19,6 +20,7 @@ void main() {
             _FakeDeviceService(devices: const []),
           ),
           homeServiceProvider.overrideWithValue(_FakeHomeService()),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
         ],
         child: const MaterialApp(home: HomeScreen()),
       ),
@@ -58,6 +60,7 @@ void main() {
               },
             ),
           ),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
         ],
         child: const MaterialApp(home: HomeScreen()),
       ),
@@ -99,6 +102,7 @@ void main() {
               },
             ),
           ),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
         ],
         child: const MaterialApp(home: HomeScreen()),
       ),

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,8 +15,6 @@ import '../../design/icons.dart';
 
 enum _Metric { temp, humidity, co, no2 }
 
-enum _TimeRange { h1, h6, h24, d7, d30 }
-
 class DeviceChartScreen extends ConsumerStatefulWidget {
   const DeviceChartScreen({super.key, required this.deviceId});
   final String deviceId;
@@ -29,56 +25,16 @@ class DeviceChartScreen extends ConsumerStatefulWidget {
 
 class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
   final Set<_Metric> _activeMetrics = {_Metric.temp, _Metric.humidity};
-  _TimeRange _range = _TimeRange.h24;
-  late TelemetryParams _params;
-  Timer? _refreshTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _params = _buildParams(DateTime.now());
-    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        _params = _buildParams(DateTime.now());
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
-  }
-
-  TelemetryParams _buildParams(DateTime now) {
-    final (duration, agg) = switch (_range) {
-      _TimeRange.h1 => (const Duration(hours: 1), null),
-      _TimeRange.h6 => (const Duration(hours: 6), '5m'),
-      _TimeRange.h24 => (const Duration(hours: 24), '15m'),
-      _TimeRange.d7 => (const Duration(days: 7), '1h'),
-      _TimeRange.d30 => (const Duration(days: 30), '6h'),
-    };
-    return TelemetryParams(
-      deviceId: widget.deviceId,
-      from: now.subtract(duration),
-      to: now,
-      agg: agg,
-    );
-  }
-
-  double _xInterval() => switch (_range) {
-        _TimeRange.h1 => 15 * 60 * 1000.0,
-        _TimeRange.h6 => 60 * 60 * 1000.0,
-        _TimeRange.h24 => 6 * 3600 * 1000.0,
-        _TimeRange.d7 => 86400 * 1000.0,
-        _TimeRange.d30 => 7 * 86400 * 1000.0,
-      };
+  TelemetryHistoryRange _range = TelemetryHistoryRange.h24;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final telemetry = ref.watch(telemetryProvider(_params));
+    final telemetry = ref.watch(
+      telemetryHistoryProvider(
+        TelemetryHistoryParams(deviceId: widget.deviceId, range: _range),
+      ),
+    );
 
     return Scaffold(
       backgroundColor: c.bg,
@@ -129,32 +85,32 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
               children: [
                 AtmosphereFilterChip(
                   label: '1h',
-                  active: _range == _TimeRange.h1,
-                  onTap: () => _setRange(_TimeRange.h1),
+                  active: _range == TelemetryHistoryRange.h1,
+                  onTap: () => _setRange(TelemetryHistoryRange.h1),
                 ),
                 const SizedBox(width: AtmosphereTokens.space8),
                 AtmosphereFilterChip(
                   label: '6h',
-                  active: _range == _TimeRange.h6,
-                  onTap: () => _setRange(_TimeRange.h6),
+                  active: _range == TelemetryHistoryRange.h6,
+                  onTap: () => _setRange(TelemetryHistoryRange.h6),
                 ),
                 const SizedBox(width: AtmosphereTokens.space8),
                 AtmosphereFilterChip(
                   label: '24h',
-                  active: _range == _TimeRange.h24,
-                  onTap: () => _setRange(_TimeRange.h24),
+                  active: _range == TelemetryHistoryRange.h24,
+                  onTap: () => _setRange(TelemetryHistoryRange.h24),
                 ),
                 const SizedBox(width: AtmosphereTokens.space8),
                 AtmosphereFilterChip(
                   label: '7d',
-                  active: _range == _TimeRange.d7,
-                  onTap: () => _setRange(_TimeRange.d7),
+                  active: _range == TelemetryHistoryRange.d7,
+                  onTap: () => _setRange(TelemetryHistoryRange.d7),
                 ),
                 const SizedBox(width: AtmosphereTokens.space8),
                 AtmosphereFilterChip(
                   label: '30d',
-                  active: _range == _TimeRange.d30,
-                  onTap: () => _setRange(_TimeRange.d30),
+                  active: _range == TelemetryHistoryRange.d30,
+                  onTap: () => _setRange(TelemetryHistoryRange.d30),
                 ),
               ],
             ),
@@ -166,8 +122,8 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
                   horizontal: AtmosphereTokens.space16),
               child: AsyncValueWidget(
                 value: telemetry,
-                data: (points) {
-                  if (points.isEmpty || _activeMetrics.isEmpty) {
+                data: (history) {
+                  if (history.points.isEmpty || _activeMetrics.isEmpty) {
                     return const EmptyState(
                       icon: AppIcons.chart,
                       title: 'No data in this window',
@@ -177,10 +133,11 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
                   }
 
                   return _ChartWidget(
-                    points: points,
+                    points: history.points,
                     activeMetrics: _activeMetrics,
-                    params: _params,
-                    xInterval: _xInterval(),
+                    from: history.from,
+                    to: history.to,
+                    xInterval: _range.xInterval,
                     range: _range,
                   );
                 },
@@ -204,10 +161,9 @@ class _DeviceChartScreenState extends ConsumerState<DeviceChartScreen> {
     }
   }
 
-  void _setRange(_TimeRange range) {
+  void _setRange(TelemetryHistoryRange range) {
     setState(() {
       _range = range;
-      _params = _buildParams(DateTime.now());
     });
   }
 }
@@ -216,23 +172,25 @@ class _ChartWidget extends StatelessWidget {
   const _ChartWidget({
     required this.points,
     required this.activeMetrics,
-    required this.params,
+    required this.from,
+    required this.to,
     required this.xInterval,
     required this.range,
   });
 
   final List<TelemetryPoint> points;
   final Set<_Metric> activeMetrics;
-  final TelemetryParams params;
+  final DateTime from;
+  final DateTime to;
   final double xInterval;
-  final _TimeRange range;
+  final TelemetryHistoryRange range;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
 
-    final minX = params.from!.millisecondsSinceEpoch.toDouble();
-    final maxX = params.to!.millisecondsSinceEpoch.toDouble();
+    final minX = from.millisecondsSinceEpoch.toDouble();
+    final maxX = to.millisecondsSinceEpoch.toDouble();
 
     final allValues = <double>[];
     for (final p in points) {
@@ -301,7 +259,8 @@ class _ChartWidget extends StatelessWidget {
               interval: xInterval,
               getTitlesWidget: (v, _) {
                 final dt = DateTime.fromMillisecondsSinceEpoch(v.toInt());
-                final label = range == _TimeRange.d7 || range == _TimeRange.d30
+                final label = range == TelemetryHistoryRange.d7 ||
+                        range == TelemetryHistoryRange.d30
                     ? '${dt.month}/${dt.day}'
                     : '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
                 return Text(

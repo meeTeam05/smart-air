@@ -13,10 +13,11 @@ import 'package:smart_air/screens/home_screen.dart';
 import 'package:smart_air/screens/profile/profile_screen.dart';
 import 'package:smart_air/services/device_service.dart';
 import 'package:smart_air/services/home_service.dart';
+import 'package:smart_air/services/realtime_service.dart';
 
 void main() {
   const runGoldens = bool.fromEnvironment('RUN_GOLDENS', defaultValue: false);
-  
+
   group('Primary Screens Golden Baseline', () {
     testGoldens('Login Screen - light theme', (tester) async {
       if (!runGoldens) return;
@@ -48,6 +49,7 @@ void main() {
             deviceServiceProvider.overrideWithValue(
               _FakeDeviceService(devices: const []),
             ),
+            realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
           ],
           child: const HomeScreen(),
         ),
@@ -94,6 +96,7 @@ void main() {
             deviceServiceProvider.overrideWithValue(
               _FakeDeviceService(devices: mockDevices),
             ),
+            realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
           ],
           child: const HomeScreen(),
         ),

@@ -15,22 +15,8 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final disableAnimations =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     return Scaffold(
-      body: TweenAnimationBuilder<double>(
-        key: ValueKey(navigationShell.currentIndex),
-        tween: Tween(begin: 0, end: 1),
-        duration: disableAnimations
-            ? Duration.zero
-            : const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-        child: navigationShell,
-        builder: (context, opacity, child) => Opacity(
-          opacity: opacity,
-          child: child,
-        ),
-      ),
+      body: navigationShell,
       bottomNavigationBar: AtmosphereBottomNav(
         currentIndex: navigationShell.currentIndex,
         onTap: (index) => navigationShell.goBranch(

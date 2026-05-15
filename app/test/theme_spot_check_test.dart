@@ -13,6 +13,7 @@ import 'package:smart_air/screens/devices/device_chart_screen.dart';
 import 'package:smart_air/screens/profile/profile_screen.dart';
 import 'package:smart_air/services/device_service.dart';
 import 'package:smart_air/services/home_service.dart';
+import 'package:smart_air/services/realtime_service.dart';
 import 'package:smart_air/providers/auth_provider.dart';
 
 /// Theme spot-check tests for hero screens.
@@ -67,6 +68,7 @@ void main() {
                 ),
               ]),
             ),
+            realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
           ],
           child: MaterialApp(
             theme: ThemeData.light(),
@@ -95,6 +97,7 @@ void main() {
                 ),
               ]),
             ),
+            realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
           ],
           child: MaterialApp(
             theme: ThemeData.dark(),
@@ -137,6 +140,7 @@ void main() {
                 telemetry: const {},
               ),
             ),
+            realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
           ],
           child: MaterialApp(
             theme: ThemeData.light(),
@@ -178,6 +182,7 @@ void main() {
                 telemetry: const {},
               ),
             ),
+            realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
           ],
           child: MaterialApp(
             theme: ThemeData.dark(),

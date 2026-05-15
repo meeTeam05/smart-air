@@ -5,10 +5,12 @@ import '../core/secure_storage.dart';
 import '../core/api_client.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../services/realtime_service.dart';
 import 'devices_provider.dart';
 import 'homes_provider.dart';
 
-final authProvider = AsyncNotifierProvider<AuthNotifier, User?>(AuthNotifier.new);
+final authProvider =
+    AsyncNotifierProvider<AuthNotifier, User?>(AuthNotifier.new);
 
 class AuthNotifier extends AsyncNotifier<User?> {
   late AuthService _auth;
@@ -18,9 +20,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
     ref.invalidate(devicesProvider);
     ref.invalidate(homesProvider);
     ref.invalidate(roomsProvider);
-    ref.invalidate(shadowProvider);
-    ref.invalidate(commandsProvider);
-    ref.invalidate(telemetryProvider);
+    ref.invalidate(realtimeEventsProvider);
   }
 
   @override

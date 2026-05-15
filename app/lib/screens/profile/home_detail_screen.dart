@@ -224,7 +224,8 @@ class _HomeDetailScreenState extends ConsumerState<HomeDetailScreen> {
                           _RoomRow(
                             name: rooms[i].name,
                             canManage: isOwner,
-                            onEdit: () => _showEditRoom(rooms[i].id, rooms[i].name),
+                            onEdit: () =>
+                                _showEditRoom(rooms[i].id, rooms[i].name),
                             onDelete: () => _confirmDeleteRoom(rooms[i].id),
                           ),
                         ],
@@ -360,7 +361,9 @@ class _HomeDetailScreenState extends ConsumerState<HomeDetailScreen> {
     if (name == null) return;
 
     try {
-      await ref.read(roomsProvider(widget.homeId).notifier).updateRoom(roomId, name);
+      await ref
+          .read(roomsProvider(widget.homeId).notifier)
+          .updateRoom(roomId, name);
       _showSnack('Room updated.');
     } catch (error) {
       _showSnack(error.toString());
@@ -436,35 +439,36 @@ class _HomeDetailScreenState extends ConsumerState<HomeDetailScreen> {
     required String label,
     required String initialValue,
   }) async {
-    final controller = TextEditingController(text: initialValue);
-    try {
-      return await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(labelText: label),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final value = controller.text.trim();
-                Navigator.pop(ctx, value.isEmpty ? null : value);
-              },
-              child: const Text('Save'),
-            ),
-          ],
+    var value = initialValue;
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextFormField(
+          initialValue: initialValue,
+          autofocus: true,
+          decoration: InputDecoration(labelText: label),
+          onChanged: (next) => value = next,
+          onFieldSubmitted: (next) {
+            final trimmed = next.trim();
+            Navigator.pop(ctx, trimmed.isEmpty ? null : trimmed);
+          },
         ),
-      );
-    } finally {
-      controller.dispose();
-    }
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final trimmed = value.trim();
+              Navigator.pop(ctx, trimmed.isEmpty ? null : trimmed);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSnack(String message) {

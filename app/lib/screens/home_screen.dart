@@ -11,7 +11,7 @@ import '../providers/homes_provider.dart';
 import '../models/home.dart';
 import '../widgets/device_card.dart';
 import '../widgets/atoms/empty_state.dart';
-import '../widgets/atoms/pill.dart';
+import '../widgets/shell/atmosphere_app_bar.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -27,9 +27,9 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: c.bg,
+      appBar: const AtmosphereAppBar.brand(),
       body: CustomScrollView(
         slivers: [
-          _buildAppBar(context, c, devicesAsync),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -74,33 +74,6 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  SliverAppBar _buildAppBar(
-    BuildContext context,
-    AtmospherePalette c,
-    AsyncValue<List<Device>> devicesAsync,
-  ) {
-    final deviceCount = devicesAsync.valueOrNull?.length ?? 0;
-    final activeCount =
-        devicesAsync.valueOrNull?.where((d) => d.online).length ?? 0;
-
-    return SliverAppBar(
-      floating: true,
-      backgroundColor: c.bg,
-      elevation: 0,
-      titleSpacing: AtmosphereTokens.space20,
-      title: Row(
-        children: [
-          if (deviceCount > 0)
-            AtmospherePill(
-              label: activeCount > 0
-                  ? '$activeCount Active'
-                  : '$deviceCount Devices',
-              tone: activeCount > 0 ? PillTone.online : PillTone.offline,
-            ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildEmptyState(
     BuildContext context,

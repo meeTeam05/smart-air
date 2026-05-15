@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,34 +28,7 @@ class DeviceDashboardScreen extends ConsumerStatefulWidget {
 class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
   bool _modeLoading = false;
   final Map<int, bool> _relayLoading = {};
-  late TelemetryParams _telemetryParams;
-  Timer? _refreshTimer;
   bool _refreshing = false;
-
-  TelemetryParams _buildTelemetryParams() {
-    final now = DateTime.now();
-    return TelemetryParams(
-      deviceId: widget.deviceId,
-      from: now.subtract(const Duration(minutes: 30)),
-      to: now,
-      agg: '1m',
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _telemetryParams = _buildTelemetryParams();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      unawaited(_refreshLiveData());
-    });
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,9 +51,11 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     final relay2 = reported['relay_2'] as bool? ?? false;
     final relay3 = reported['relay_3'] as bool? ?? false;
 
-    final telemetryAsync = ref.watch(telemetryProvider(_telemetryParams));
-    final telemetryPoints = telemetryAsync.valueOrNull ?? [];
-    final latestTelemetry = _latestTelemetryPoint(telemetryPoints);
+    final telemetryLiveAsync =
+        ref.watch(telemetryLiveProvider(widget.deviceId));
+    final telemetryState = telemetryLiveAsync.valueOrNull;
+    final telemetryPoints = telemetryState?.points ?? const <TelemetryPoint>[];
+    final latestTelemetry = telemetryState?.latest;
     final commandsAsync = ref.watch(commandsProvider(widget.deviceId));
     final recentCommands = commandsAsync.valueOrNull ?? const <Command>[];
 
@@ -91,22 +64,26 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     final humidity = latestTelemetry?.humidity ?? reported['humidity'] as num?;
     final coPpm = latestTelemetry?.coPpm ?? reported['co_ppm'] as num?;
     final no2Ppm = latestTelemetry?.no2Ppm ?? reported['no2_ppm'] as num?;
-    final tempSparkline = telemetryPoints
+    // Keep at most 30 recent points so the mini sparkline stays readable.
+    List<double> _trim(List<double> l) =>
+        l.length > 30 ? l.sublist(l.length - 30) : l;
+
+    final tempSparkline = _trim(telemetryPoints
         .where((p) => p.temperature != null)
         .map((p) => p.temperature!)
-        .toList();
-    final humiditySparkline = telemetryPoints
+        .toList());
+    final humiditySparkline = _trim(telemetryPoints
         .where((p) => p.humidity != null)
         .map((p) => p.humidity!)
-        .toList();
-    final coSparkline = telemetryPoints
+        .toList());
+    final coSparkline = _trim(telemetryPoints
         .where((p) => p.coPpm != null)
         .map((p) => p.coPpm!)
-        .toList();
-    final no2Sparkline = telemetryPoints
+        .toList());
+    final no2Sparkline = _trim(telemetryPoints
         .where((p) => p.no2Ppm != null)
         .map((p) => p.no2Ppm!)
-        .toList();
+        .toList());
 
     final statusText = device?.online == true
         ? '● ONLINE · ${_relativeTime(device!.lastSeen ?? DateTime.now())}'
@@ -372,8 +349,10 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     final payload = command.payload;
     final type = payload['type'] as String? ?? 'unknown';
     return switch (type) {
-      'device_mode' =>
-        (AppIcons.bolt, 'Mode changed to ${(payload['mode'] ?? '?').toString().toUpperCase()}'),
+      'device_mode' => (
+          AppIcons.bolt,
+          'Mode changed to ${(payload['mode'] ?? '?').toString().toUpperCase()}'
+        ),
       'relay_set' => (
           AppIcons.wind,
           'Relay ${payload['relay'] ?? '?'} turned ${payload['state'] == true ? 'on' : 'off'}',
@@ -394,30 +373,21 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     };
   }
 
-  TelemetryPoint? _latestTelemetryPoint(List<TelemetryPoint> points) {
-    TelemetryPoint? latest;
-    for (final point in points) {
-      if (latest == null || point.ts.isAfter(latest.ts)) {
-        latest = point;
-      }
-    }
-    return latest;
-  }
-
-  Future<void> _refreshLiveData({bool refreshDevices = false}) async {
+  Future<void> _refreshLiveData({
+    bool refreshDevices = false,
+    bool refreshTelemetry = true,
+  }) async {
     if (_refreshing) return;
     _refreshing = true;
-
-    final params = _buildTelemetryParams();
-    if (mounted) {
-      setState(() => _telemetryParams = params);
-    }
 
     try {
       await Future.wait([
         if (refreshDevices) ref.refresh(devicesProvider.future),
         ref.refresh(shadowProvider(widget.deviceId).future),
-        ref.refresh(telemetryProvider(params).future),
+        if (refreshTelemetry)
+          ref
+              .read(telemetryLiveProvider(widget.deviceId).notifier)
+              .refreshSnapshot(),
         ref.refresh(commandsProvider(widget.deviceId).future),
       ]);
     } finally {
@@ -427,13 +397,14 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
 
   Future<void> _waitForCommandAndRefresh(String commandId) async {
     ref.invalidate(commandsProvider(widget.deviceId));
-    final command = await ref.read(deviceServiceProvider).waitForCommandCompletion(
-          widget.deviceId,
-          commandId,
-          timeout: const Duration(seconds: 30),
-          pollInterval: const Duration(seconds: 2),
-        );
-    await _refreshLiveData();
+    final command =
+        await ref.read(deviceServiceProvider).waitForCommandCompletion(
+              widget.deviceId,
+              commandId,
+              timeout: const Duration(seconds: 30),
+              pollInterval: const Duration(seconds: 2),
+            );
+    await _refreshLiveData(refreshTelemetry: false);
     if (command.status != 'done') {
       throw StateError('Command finished with status ${command.status}');
     }
@@ -468,8 +439,9 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     setState(() => _modeLoading = true);
 
     try {
-      final commandId =
-          await ref.read(deviceServiceProvider).setMode(widget.deviceId, newMode);
+      final commandId = await ref
+          .read(deviceServiceProvider)
+          .setMode(widget.deviceId, newMode);
       await _waitForCommandAndRefresh(commandId);
     } catch (e) {
       if (mounted) {

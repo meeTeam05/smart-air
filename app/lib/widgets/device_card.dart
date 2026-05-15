@@ -92,19 +92,6 @@ class DeviceCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: AtmosphereTokens.space8),
-          // Relay indicators
-          Row(
-            children: [
-              Icon(AppIcons.device, size: 14, color: c.ink3),
-              const SizedBox(width: AtmosphereTokens.space6),
-              _RelayIndicator(label: 'R1', active: device.relay1),
-              const SizedBox(width: AtmosphereTokens.space6),
-              _RelayIndicator(label: 'R2', active: device.relay2),
-              const SizedBox(width: AtmosphereTokens.space6),
-              _RelayIndicator(label: 'R3', active: device.relay3),
-            ],
-          ),
           const SizedBox(height: AtmosphereTokens.space20),
           // View Detail button
           SizedBox(
@@ -138,39 +125,3 @@ class DeviceCard extends StatelessWidget {
   }
 }
 
-/// Relay indicator dot with label.
-class _RelayIndicator extends StatelessWidget {
-  final String label;
-  final bool? active;
-
-  const _RelayIndicator({
-    required this.label,
-    required this.active,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    final color = active == true ? c.brand : c.ink3;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 2),
-        Text(
-          label,
-          style: AtmosphereTextStyles.caption(c.ink3),
-        ),
-      ],
-    );
-  }
-}

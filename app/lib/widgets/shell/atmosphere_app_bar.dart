@@ -70,15 +70,7 @@ class AtmosphereAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ],
       ),
-      actions: actions ??
-          [
-            const CircleAvatar(
-              radius: 16,
-              backgroundColor: AtmosphereTokens.brandTint,
-              child: Icon(AppIcons.profile, size: 18, color: AppColors.primary),
-            ),
-            const SizedBox(width: 16),
-          ],
+      actions: actions ?? const [],
     );
   }
 

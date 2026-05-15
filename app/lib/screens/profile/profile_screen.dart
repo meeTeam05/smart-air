@@ -166,13 +166,7 @@ class ProfileScreen extends ConsumerWidget {
                 label: 'Theme',
                 trailing: _ThemeSelector(),
               ),
-              Divider(height: 1, color: c.line),
-              _SettingRow(
-                icon: AppIcons.device,
-                label: 'Language',
-                trailing: _LanguageSelector(),
-              ),
-              Divider(height: 1, color: c.line),
+
               _SettingRow(
                 icon: AppIcons.notifications,
                 label: 'Notifications',
@@ -416,26 +410,5 @@ class _ThemeSelector extends StatelessWidget {
       case ThemeMode.dark:
         return 'Dark';
     }
-  }
-}
-
-// ── Language selector ─────────────────────────────────────────────────────────
-
-class _LanguageSelector extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'English',
-          style: AtmosphereTextStyles.caption(c.ink2),
-        ),
-        const SizedBox(width: AtmosphereTokens.space4),
-        Icon(AppIcons.chev, size: 16, color: c.ink3),
-      ],
-    );
   }
 }
