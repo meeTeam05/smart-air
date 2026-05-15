@@ -1,613 +1,259 @@
-# ARCHITECTURE.md — smart-air System Architecture
+# ARCHITECTURE.md
 
-> Canonical system architecture reference — covers all 6 layers: hardware, firmware, cloud, database, API, mobile app.
-> Update this file whenever a new subsystem is added or a component boundary changes.
-> Agent: read this file before making any structural or cross-layer changes.
+## Mục tiêu
 
----
+Tài liệu này mô tả kiến trúc của hệ thống `smart-air`.
+Phạm vi của tài liệu chỉ gồm kiến trúc hệ thống, kiến trúc thiết bị, ranh giới thành phần, và các bus kết nối chính.
 
-## System Overview
+## Kiến trúc tổng thể
 
-**smart-air** là thiết bị giám sát chất lượng không khí trong nhà và điều khiển thiết bị thông minh.
-Stack: ESP32-S3 (ESP-IDF v5.x) + Flutter app (iOS/Android) + self-hosted IoT cloud (Raspberry Pi → VPS).
+`smart-air` là một hệ thống IoT gồm bốn khối chính:
 
-```
-╔═════════════════════════════════════════════════════════════╗
-║                        INTERNET                             ║
-║                                                             ║
-║   [Flutter App]    [Web Admin]      [ESP32 ở nhà user]      ║
-║        │               │                   │                ║
-║        │ HTTPS/REST    │ HTTPS             │ MQTT TLS       ║
-║        │ MQTT/WSS      │                   │ :8883          ║
-╚════════╪═══════════════╪═══════════════════╪════════════════╝
-         │               │                   │
-    [Cloudflare Tunnel / Domain]             │
-         │               │                   │
-╔════════▼═══════════════▼═══════════════════▼════════════════╗
-║            Cloud Server (Raspberry Pi 4 → VPS)              ║
-║                                                             ║
-║  ┌──────────────────────────────────────────────────────┐   ║
-║  │                     Nginx                            │   ║
-║  │   /api/*   /ws   /grafana   :8883(MQTT TLS)          │   ║
-║  └───┬─────────┬──────────────┬─────────────────────────┘   ║
-║      │         │              │                             ║
-║  ┌───▼───┐ ┌───▼───┐    ┌─────▼──────┐  ┌──────────────┐    ║
-║  │Node.js│ │ EMQX  │    │  Grafana   │  │   pgAdmin    │    ║
-║  │Fastify│ │Broker │    │ (telemetry)│  │  Portainer   │    ║
-║  └───┬───┘ └───┬───┘    └────────────┘  └──────────────┘    ║
-║      │         │                                            ║
-║  ┌───▼─────────▼──────────────────────────┐                 ║
-║  │              Redis 7                   │                 ║
-║  │  • Device Shadow   • JWT Session       │                 ║
-║  │  • Command Queue   • Rate Limiting     │                 ║
-║  └───────────────────┬────────────────────┘                 ║
-║                      │                                      ║
-║  ┌───────────────────▼────────────────────┐                 ║
-║  │     PostgreSQL 15 + TimescaleDB        │                 ║
-║  └────────────────────────────────────────┘                 ║
-╚═════════════════════════════════════════════════════════════╝
-                         │ MQTT TLS :8883
-┌────────────────────────▼────────────────────────────────────┐
-│                  ESP32-S3 Firmware (ESP-IDF v5.x)           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌────────┐   │
-│  │  Sensors │  │ Display  │  │   Network    │  │  Core  │   │
-│  │  SHT3x   │  │  ST7789  │  │  WiFi STA    │  │  NVS   │   │
-│  │  DS3231  │  │  XPT2046 │  │  MQTT TLS    │  │  OTA   │   │
-│  └────┬─────┘  └────┬─────┘  │  HTTP/mDNS   │  │  BLE   │   │
-│       │I2C          │SPI     │  DNS         │  └────────┘   │
-│       │             │        └──────────────┘               │
-└───────┴─────────────┴───────────────────────────────────────┘
-                         │ SDIO / SPI
-┌────────────────────────▼────────────────────────────────────┐
-│                   Custom KiCad PCB Hardware                 │
-│   ESP32-S3 MCU · 5V→3.3V regulator · sensors · SD card      │
-└─────────────────────────────────────────────────────────────┘
+1. Thiết bị biên dùng ESP32-S3 để đo môi trường, hiển thị trạng thái, lưu cục bộ, và giao tiếp mạng.
+2. MQTT broker làm kênh đồng bộ trạng thái và vận chuyển telemetry/command giữa thiết bị và cloud.
+3. API server làm ranh giới HTTP cho ứng dụng di động và điều phối nghiệp vụ phía server.
+4. Ứng dụng Flutter làm lớp điều khiển và quan sát cho người dùng cuối.
+
+Kiến trúc logic:
+
+```text
++-------------------+        HTTPS         +-------------------+
+|   Flutter App     | <------------------> |    API Server     |
++-------------------+                      +---------+---------+
+                                                     |
+                                                     | internal services
+                                                     v
+                                           +---------+---------+
+                                           |   Data / Cache    |
+                                           +---------+---------+
+                                                     ^
+                                                     |
+                                                     | MQTT bridge / state sync
++-------------------+        MQTT/TLS       +--------+---------+
+|   ESP32-S3 Node   | <------------------>  |   MQTT Broker    |
++-------------------+                       +------------------+
 ```
 
----
+## Luồng provisioning và cấp quyền MQTT
 
-## Layer 1 — Hardware (`hardware/`)
+Thiết bị mới không được thêm thủ công trong EMQX dashboard, và cũng không tự xuất hiện trong EMQX chỉ vì vừa bật nguồn hoặc vừa kết nối Wi-Fi.
 
-Custom PCB thiết kế bằng KiCad v8.
-Schematic gốc: `hardware/smart-air/smart-air.kicad_sch`.
-Thư viện linh kiện: `hardware/lib/` (mỗi module là 1 sub-project).
+User MQTT cho từng thiết bị được tạo bởi backend trong lúc ứng dụng di động gọi API đăng ký thiết bị.
 
-| Subsystem    | Component        | Interface  | Notes                                  |
-| ------------ | ---------------- | ---------- | -------------------------------------- |
-| Sensor — T/H | SHT3x            | I2C        | 0x44 (ADDR pin low), 400 kHz           |
-| Sensor — RTC | DS3231           | I2C        | 0x68, 400 kHz                          |
-| Display      | ST7789 (TFT LCD) | SPI        | SPI2_HOST, 10 MHz, CPOL=0 CPHA=0       |
-| Touch        | XPT2046          | SPI        | SPI2_HOST, 2 MHz max (slow dev handle) |
-| Storage      | SD card          | SDIO / SPI | SDIO preferred (4-bit); SPI fallback   |
-| I/O          | Buzzer           | LEDC/GPIO  | PWM via LEDC for tone control          |
-| I/O          | LEDs             | GPIO/LEDC  | PWM for dimming                        |
-| Power        | 5V → 3.3V reg    | —          | See `hardware/` KiCad schematic        |
+Luồng thực tế:
 
-### SD card — SDIO vs SPI
-
-SDIO (4-bit) là interface ưu tiên: throughput cao hơn đáng kể, dùng SDMMC peripheral chuyên dụng, cần pin riêng (không chia sẻ SPI2_HOST). Fallback sang SPI bus riêng nếu pin constraints bắt buộc.
-
-```
-SDIO (preferred)            SPI (fallback)
-SDMMC peripheral            Separate SPI bus — NOT SPI2_HOST
-CLK / CMD / D0–D3           CLK / MOSI / MISO / CS
-```
-
----
-
-## Layer 2 — Firmware (`firmware/`)
-
-ESP-IDF v5.x + FreeRTOS. Entry point: `firmware/main/main.c` → `void app_main(void)` → `sysload_init()`.
-
-### Boot Sequence
-
-```
-app_main()
-  └── sysload_init()
-        ├── nvs_init()              — init NVS flash
-        ├── i2c_bus_init()          — shared I2C master (400 kHz)
-        ├── spi_bus_init()          — shared SPI2_HOST
-        ├── driver_init_all()       — SHT3x, DS3231, ST7789, XPT2046
-        ├── sdmmc_init()            — SD card (SDIO 4-bit mode)
-        ├── ble_prov_start()        — BLE advertising (if not provisioned)
-        │     └── on creds received:
-        │           ├── wifi_sta_connect(ssid, pass)
-        │           ├── nvs_save_credentials()
-        │           └── ble_prov_stop()
-        ├── wifi_connect()          — connect using saved NVS credentials
-        ├── mqtt_start()            — connect broker TLS, sub/pub topics
-        ├── webserver_start()       — HTTP config server + mDNS
-        └── tasks_start_all()       — sensor, display, mqtt, sd_log tasks
+```text
++-------------------+
+|   ESP32-S3 Node   |
+| device_id = MAC   |
++---------+---------+
+          |
+          | BLE / local provisioning info
+          v
++---------+---------+          HTTPS           +-------------------+
+|   Flutter App     | ----------------------> |    API Server     |
++---------+---------+   POST /api/devices     +---------+---------+
+          ^                                              |
+          |                                              | 1. validate home / role
+          |                                              | 2. create secret_key
+          |                                              | 3. create EMQX auth user = device_id
+          |                                              | 4. create per-device ACL
+          |                                              | 5. insert row into devices
+          |                                              v
+          |                                    +---------+---------+
+          |                                    |    MQTT Broker    |
+          |                                    |      EMQX         |
+          |                                    +---------+---------+
+          |                                              ^
+          |                                              |
+          | secret_key returned to app                   | MQTT/TLS
+          +----------------------------------------------+
+                         app passes credential to device
 ```
 
-### BLE Provisioning Flow
+Trình tự nghiệp vụ:
 
-```
-Phone                    BLE (GATT)             prov_task           WiFi / NVS
-  │                          │                      │                     │
-  │── scan / discover ──────→│                      │                     │
-  │←── ADV_IND (prov UUID) ──│                      │                     │
-  │── GATT connect ─────────→│                      │                     │
-  │── subscribe 0xFF03 ─────→│                      │                     │
-  │── Write 0xFF01 (SSID) ──→│── s_got_ssid ───────→│                     │
-  │── Write 0xFF02 (Pass) ──→│── xTaskNotifyGive ──→│                     │
-  │                          │                      ├── wifi_connect() ──→│
-  │                          │                      │←── IP_EVENT_GOT_IP ─│
-  │                          │                      ├── nvs_save() ──────→│
-  │                          │←── notify (JSON) ────│                     │
-  │←── {"ip":"...","ok":1} ──│                      │                     │
-  │                          │←── PROV_DONE_BIT ────│                     │
-  │←── ble_prov_stop() ──────│                      │                     │
-```
+1. Ứng dụng lấy `device_id` của thiết bị, tức MAC address chuẩn hóa dạng `aa:bb:cc:dd:ee:ff`.
+2. Ứng dụng gọi `POST /api/devices` với `device_id`, `name`, `home_id`, và `room_id` nếu có.
+3. API tạo `secret_key` ngẫu nhiên cho thiết bị.
+4. API gọi EMQX Admin API để tạo user built-in database với:
+   - `username = device_id`
+   - `password = secret_key`
+5. API tạo ACL per-device để thiết bị chỉ publish/subscribe đúng topic của chính nó.
+6. Nếu bước EMQX thành công, API mới insert bản ghi vào bảng `devices`.
+7. API trả `secret_key` về ứng dụng để ứng dụng chuyển credential đó xuống firmware qua local device provisioning.
+8. Từ thời điểm này thiết bị mới có thể đăng nhập MQTT broker bằng credential riêng.
 
-### Component Map
+Hệ quả kiến trúc:
 
-```
-firmware/
-├── main/
-│   └── main.c                          ← app_main() entry point
-└── components/
-    ├── drivers/
-    │   ├── i2c_bus/                    ← Shared I2C bus init (400 kHz)
-    │   ├── i2c_devices/
-    │   │   ├── sht3x/                  ← Temperature/humidity (0x44)
-    │   │   └── ds3231/                 ← RTC (0x68)
-    │   ├── spi_bus/                    ← Shared SPI2_HOST init
-    │   ├── spi_devices/
-    │   │   ├── st7789/                 ← TFT display (10 MHz)
-    │   │   └── xpt2046/                ← Touch controller (2 MHz)
-    │   ├── sdmmc/                      ← SD card SDIO driver
-    │   └── general/
-    │       ├── ble_prov/               ← BLE GATT provisioning server
-    │       ├── wifi/                   ← WiFi station mode (event-driven)
-    │       ├── mqtt/                   ← MQTT client (TLS, LWT, QoS1)
-    │       ├── webserver/              ← HTTP config server + mDNS
-    │       └── dns/                    ← Captive DNS (~169 lines, implemented)
-    ├── config/                         ← Kconfig + NVS config access
-    ├── core/                           ← sysload.c, version.c
-    └── ota/                            ← HTTPS OTA + rollback + validate task
-```
+- User `sa-server` là bridge user của API server, không đại diện cho thiết bị biên.
+- Nếu chưa có lời gọi `POST /api/devices`, EMQX chỉ cần có `sa-server` là đúng.
+- Nếu tạo user EMQX thất bại, API không lưu thiết bị vào database.
+- Nếu lưu database thất bại sau khi vừa tạo user EMQX, backend chạy cleanup để xóa user vừa tạo, tránh để lại orphan.
+- Bước chuyển `secret_key` từ app xuống firmware là bắt buộc trước lần MQTT login đầu tiên. Firmware hỗ trợ local `POST http://<device-ip>/api/config` để validate `device_id` trùng MAC thật, lưu `secret_key`, và nếu có `broker_uri` thì ghi override vào NVS; nếu không thì xóa override cũ và dùng Kconfig default, sau đó reboot để kết nối MQTT bằng credential mới.
+- Factory reset vật lý phải xóa toàn bộ trạng thái firmware trong NVS mặc định, gồm Wi-Fi provisioning, MQTT `secret_key`/`broker_uri`, device mode, và calibration gas.
 
-> **Component status (2026-04-13):** Hầu hết là stub. Chỉ `dns.c` có implementation thực chất. Xem `TODO.md` để biết trạng thái từng component.
+## Bề mặt truy cập runtime
 
-### FreeRTOS Task Map
+Các service cloud trong repo không cùng kiểu exposure:
 
-| Task           | Core | Priority | Stack (B) | Role                               |
-| -------------- | ---- | -------- | --------- | ---------------------------------- |
-| `prov_task`    | 1    | 5        | 4096      | BLE provisioning (one-shot)        |
-| `mqtt_task`    | 1    | 6        | 6144      | Publish telemetry, handle commands |
-| `sensor_task`  | 1    | 5        | 4096      | Poll SHT3x + DS3231 every 30 s     |
-| `display_task` | 0    | 4        | 8192      | Render UI on ST7789                |
-| `ota_task`     | 1    | 3        | 8192      | HTTPS OTA download + validate      |
-| `sd_log_task`  | 0    | 2        | 4096      | Write sensor logs to SD card       |
+- `emqx` publish `127.0.0.1:18083` cho dashboard/admin và `0.0.0.0:8883` như một direct MQTT/TLS override path.
+- `pgadmin` publish `127.0.0.1:5050`.
+- `portainer` publish `127.0.0.1:9000`.
+- `api`, `nginx`, `grafana`, và `redis` không bind port trực tiếp ra host trong `docker-compose.yml`.
+- `grafana` được thiết kế đi qua `nginx` tại path `/grafana/`, rồi qua Cloudflare Tunnel ở domain public.
+- `api` được thiết kế đi qua `nginx` tại path `/api/`, rồi qua Cloudflare Tunnel ở domain public.
+- Public path chuẩn cho firmware/app MQTT là `wss://minhnhat05.xyz/mqtt` qua Cloudflare Tunnel -> `nginx` -> EMQX WebSocket `8083`, nên không phụ thuộc NAT hay port forwarding ở router.
+- Listener `8883` vẫn tồn tại như một direct `mqtts://` override path khi operator thật sự có public TCP và chứng chỉ phù hợp cho hostname đó.
 
-### Bus Architectures
+Hệ quả vận hành:
 
-```
-I2C — Shared master (400 kHz)
-    ├── SHT3x  @ 0x44  — temperature + humidity
-    └── DS3231 @ 0x68  — real-time clock
-    (API: i2c_master v5.x — NOT legacy i2c_master_cmd_begin)
-    (Each device: own i2c_master_dev_handle_t)
+- Truy cập local admin trực tiếp dùng các URL localhost đã publish.
+- Truy cập `Grafana` và `API` theo thiết kế chuẩn là qua public path được reverse proxy, không phải `https://127.0.0.1/...`.
 
-SPI2_HOST — Shared bus
-    ├── ST7789  (display) — 10 MHz, CPOL=0 CPHA=0
-    └── XPT2046 (touch)  —  2 MHz → separate slow spi_device_handle_t
-```
+## Phân lớp trong thiết bị
 
-### MQTT Topics (Firmware side)
+Thiết bị biên được tổ chức theo các lớp sau:
 
-```
-device/{deviceId}/status          → broker  : LWT online/offline + firmware ver
-device/{deviceId}/telemetry       → broker  : sensor data (temperature, humidity, co_ppm, no2_ppm, ts)
-device/{deviceId}/command         ← broker  : control command from app
-device/{deviceId}/response        → broker  : command execution result
-device/{deviceId}/shadow/report   → broker  : current state on boot/change
-device/{deviceId}/shadow/get      → broker  : request desired state on boot
-device/{deviceId}/ota/update      ← broker  : trigger OTA (URL + expected hash)
-device/{deviceId}/ota/progress    → broker  : OTA download progress %
+1. `Application layer`
+   Điều phối luồng đo đạc, cập nhật hiển thị, đồng bộ dữ liệu, và xử lý lệnh điều khiển.
+2. `Device services layer`
+   Gom các dịch vụ dùng chung như Wi-Fi, MQTT, lưu cấu hình, logging, và quản lý trạng thái thiết bị.
+3. `Driver layer`
+   Bao bọc từng ngoại vi và từng bus phần cứng.
+4. `Hardware layer`
+   ESP32-S3, cảm biến, màn hình, thẻ nhớ, và các khối I/O.
+
+Sơ đồ khối:
+
+```text
++--------------------------------------------------------------+
+|                     Application Layer                        |
+|  telemetry | control | display update | local storage flow   |
++------------------------------+-------------------------------+
+                               |
++------------------------------v-------------------------------+
+|                    Device Services Layer                     |
+|  Wi-Fi  |  MQTT  |  config/NVS  |  state  |  logging         |
++------------------------------+-------------------------------+
+                               |
++------------------------------v-------------------------------+
+|                        Driver Layer                          |
+|     I2C drivers     |     SPI drivers     |   ADC drivers    |
++------------------------------+-------------------------------+
+                               |
++------------------------------v-------------------------------+
+|                       Hardware Layer                         |
+|  ESP32-S3 | SHT3x | DS3231 | ILI9225 | SD Card | gas sensors |
++--------------------------------------------------------------+
 ```
 
----
+## Kiến trúc phần cứng thiết bị
 
-## Layer 3 — Cloud Infrastructure
+Thiết bị tập trung quanh một MCU `ESP32-S3`, các bus ngoại vi dùng chung, và các khối cảm biến/hiển thị/lưu trữ tách biệt theo vai trò.
 
-Self-hosted trên Raspberry Pi 4 (dev/beta) → migrate lên VPS Hetzner (production).
-Tất cả services chạy Docker Compose.
+### Khối xử lý trung tâm
 
-### Docker Compose Services
+- `ESP32-S3` là bộ điều khiển trung tâm.
+- MCU chịu trách nhiệm đọc cảm biến, dựng dữ liệu trạng thái, giao tiếp mạng, và điều phối các ngoại vi.
 
-| Service     | Image                             | Ports                      | Role                                  |
-| ----------- | --------------------------------- | -------------------------- | ------------------------------------- |
-| `nginx`     | nginx:alpine                      | 80, 443                    | Reverse proxy + SSL termination       |
-| `emqx`      | emqx:5                            | 1883, 8883(TLS), 8083(WS)  | MQTT broker                           |
-| `api`       | custom (Node.js + Fastify)        | 3000 (internal)            | REST API + MQTT bridge                |
-| `postgres`  | timescale/timescaledb:latest-pg15 | 5432 (internal)            | Main DB + time-series telemetry       |
-| `redis`     | redis:7-alpine                    | 6379 (internal)            | Shadow · session · queue · rate-limit |
-| `grafana`   | grafana/grafana                   | 3001 (internal, via nginx) | Telemetry dashboards                  |
-| `pgadmin`   | dpage/pgadmin4                    | (internal only)            | DB admin UI                           |
-| `portainer` | portainer/portainer-ce            | 9000 (internal)            | Docker container management           |
+### Khối cảm biến
 
-### Nginx Routing
+- `SHT3x` cung cấp nhiệt độ và độ ẩm.
+- `DS3231` cung cấp thời gian thực.
+- Hệ thống có thêm hai kênh cảm biến khí analog:
+  - một kênh khí `CO`
+  - một kênh khí `NO2`
 
-```
-/api/*       → api:3000        (REST API)
-/ws          → emqx:8083       (MQTT WebSocket for Flutter)
-/grafana     → grafana:3001    (dashboards)
-:8883        → emqx:8883       (MQTT TLS for ESP32)
-```
+### Khối hiển thị và lưu trữ
 
----
+- Màn hình dùng `ILI9225`.
+- Thẻ nhớ `SD Card` là khối lưu trữ cục bộ riêng.
 
-## Layer 4 — Database Schema
+## Kiến trúc bus
 
-### Full Schema (PostgreSQL 15 + TimescaleDB)
+Thiết bị dùng ba bus chính, mỗi bus phục vụ một nhóm ngoại vi riêng:
 
-```sql
--- ══════════════════════════════
--- USERS & AUTH
--- ══════════════════════════════
-CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email           VARCHAR UNIQUE NOT NULL,
-    password_hash   VARCHAR NOT NULL,
-    full_name       VARCHAR,
-    avatar_url      VARCHAR,
-    phone           VARCHAR,
-    is_verified     BOOLEAN DEFAULT false,
-    is_active       BOOLEAN DEFAULT true,
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ DEFAULT NOW()
-);
+### I2C bus
 
-CREATE TABLE refresh_tokens (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
-    token           VARCHAR UNIQUE NOT NULL,
-    expires_at      TIMESTAMPTZ NOT NULL,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
+- `I2C` là bus cảm biến số dùng chung.
+- `SHT3x` và `DS3231` cùng nằm trên bus này.
+- Bus này phục vụ nhóm ngoại vi cần trao đổi dữ liệu điều khiển/trạng thái tuần tự, băng thông thấp.
 
--- ══════════════════════════════
--- HOMES & ROOMS
--- ══════════════════════════════
-CREATE TABLE homes (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id        UUID REFERENCES users(id),
-    name            VARCHAR NOT NULL,
-    address         VARCHAR,
-    timezone        VARCHAR DEFAULT 'Asia/Ho_Chi_Minh',
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
+### SPI bus cho hiển thị
 
-CREATE TABLE home_members (
-    home_id         UUID REFERENCES homes(id) ON DELETE CASCADE,
-    user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
-    role            VARCHAR DEFAULT 'member', -- owner | admin | member
-    PRIMARY KEY (home_id, user_id)
-);
+- `SPI2_HOST` dành cho màn hình `ILI9225`.
+- Bus này tách riêng cho khối hiển thị.
 
-CREATE TABLE rooms (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    home_id         UUID REFERENCES homes(id) ON DELETE CASCADE,
-    name            VARCHAR NOT NULL,
-    icon            VARCHAR
-);
+### SPI bus cho lưu trữ
 
--- ══════════════════════════════
--- DEVICE TYPES
--- ══════════════════════════════
-CREATE TABLE device_types (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name            VARCHAR NOT NULL,          -- e.g. "smart_air_v1"
-    display_name    VARCHAR,
-    icon            VARCHAR,
-    spec            JSONB NOT NULL
-    -- {"properties":[{"key":"temperature","type":"float","unit":"°C",  "label":"Nhiệt độ"},
-    --                {"key":"humidity",   "type":"float","unit":"%RH", "label":"Độ ẩm"},
-    --                {"key":"co_ppm",     "type":"float","unit":"ppm", "label":"CO"},
-    --                {"key":"no2_ppm",    "type":"float","unit":"ppm", "label":"NO2"}]}
-);
+- `SPI3_HOST` dành cho `SD Card`.
+- Thẻ nhớ không dùng chung host SPI với màn hình.
+- Cách tách này giữ cho khối hiển thị và khối lưu trữ độc lập về mode và nhịp truyền.
 
--- ══════════════════════════════
--- DEVICES
--- ══════════════════════════════
-CREATE TABLE devices (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    home_id         UUID REFERENCES homes(id),
-    room_id         UUID REFERENCES rooms(id),
-    type_id         UUID REFERENCES device_types(id),
-    owner_id        UUID REFERENCES users(id),
-    name            VARCHAR NOT NULL,
-    secret_key      VARCHAR UNIQUE NOT NULL,   -- MQTT auth (never in source)
-    firmware_ver    VARCHAR,
-    online          BOOLEAN DEFAULT false,
-    last_seen       TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
+### ADC bus cho cảm biến khí
 
--- ══════════════════════════════
--- DEVICE SHADOW (Redis primary + PostgreSQL backup)
--- ══════════════════════════════
-CREATE TABLE device_shadows (
-    device_id       UUID PRIMARY KEY REFERENCES devices(id),
-    reported        JSONB DEFAULT '{}',  -- actual state from device
-    desired         JSONB DEFAULT '{}',  -- target state from app
-    updated_at      TIMESTAMPTZ DEFAULT NOW()
-    -- delta = desired - reported (computed at query time)
-);
+- `ADC1` dành cho các cảm biến khí analog.
+- Hai kênh analog được tách riêng cho:
+  - cảm biến `CO`
+  - cảm biến `NO2`
 
--- ══════════════════════════════
--- COMMANDS
--- ══════════════════════════════
-CREATE TABLE commands (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    device_id       UUID REFERENCES devices(id),
-    user_id         UUID REFERENCES users(id),
-    payload         JSONB NOT NULL,
-    status          VARCHAR DEFAULT 'pending', -- pending → sent → done | failed
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    executed_at     TIMESTAMPTZ
-);
+Sơ đồ bus:
 
--- ══════════════════════════════
--- TELEMETRY (TimescaleDB hypertable)
--- ══════════════════════════════
-CREATE TABLE telemetry (
-    device_id       UUID NOT NULL,
-    ts              TIMESTAMPTZ NOT NULL,
-    payload         JSONB NOT NULL
-    -- {"temperature":28.5,"humidity":65.2}
-);
-SELECT create_hypertable('telemetry', 'ts');
-SELECT add_retention_policy('telemetry', INTERVAL '1 year');
+```text
+                    +------------------+
+                    |     ESP32-S3     |
+                    +----+----+----+---+
+                         |    |    |
+           +-------------+    |    +-------------------+
+           |                  |                        |
+           v                  v                        v
+      +----+----+        +----+-----+            +-----+------+
+      |   I2C   |        | SPI2_HOST|            |    ADC1    |
+      +----+----+        +----+-----+            +-----+------+
+           |                  |                        |
+     +-----+-----+       +----+----+            +------+------+
+     |           |       | ILI9225 |            |             |
+  +--+--+    +---+---+   +---------+         +--+--+      +---+---+
+  |SHT3x|    |DS3231 |                     |  CO |      |  NO2  |
+  +-----+    +-------+                     +-----+      +-------+
 
--- ══════════════════════════════
--- AUTOMATIONS
--- ══════════════════════════════
-CREATE TABLE automations (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    home_id         UUID REFERENCES homes(id),
-    user_id         UUID REFERENCES users(id),
-    name            VARCHAR NOT NULL,
-    enabled         BOOLEAN DEFAULT true,
-    trigger         JSONB NOT NULL,
-    -- {"type":"telemetry","device_id":"…","property":"temperature","operator":">","value":30}
-    -- {"type":"schedule","cron":"0 8 * * *"}
-    action          JSONB NOT NULL,
-    -- {"device_id":"…","command":{"power":false}}
-    last_triggered  TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ══════════════════════════════
--- NOTIFICATIONS
--- ══════════════════════════════
-CREATE TABLE notifications (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID REFERENCES users(id),
-    title           VARCHAR NOT NULL,
-    body            VARCHAR,
-    type            VARCHAR,   -- alert | info | command_result
-    read            BOOLEAN DEFAULT false,
-    payload         JSONB,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE fcm_tokens (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID REFERENCES users(id),
-    token           VARCHAR NOT NULL,
-    platform        VARCHAR,   -- ios | android
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
+                    +------------------+
+                    |    SPI3_HOST     |
+                    +--------+---------+
+                             |
+                         +---+---+
+                         |SD Card|
+                         +-------+
 ```
 
----
+## Kiến trúc phần mềm hệ thống
 
-## Layer 5 — Node.js API (Fastify)
+Mã nguồn được chia theo ranh giới kiến trúc như sau:
 
-### Folder Structure
+- `firmware/`
+  Chứa toàn bộ phần mềm chạy trên ESP32-S3, gồm core system, services, drivers, và tác vụ thiết bị.
+- `server/api/`
+  Chứa API server và nghiệp vụ phía cloud.
+- `server/`
+  Chứa hạ tầng triển khai, broker, cache, database, và wiring giữa các dịch vụ backend.
+- `app/`
+  Chứa ứng dụng Flutter cho iOS và Android.
+- `docs/`
+  Chứa tài liệu kiến trúc, giao thức, và tài liệu tham chiếu hệ thống.
 
-```
-api/src/
-├── index.js
-├── config/
-│   ├── db.js               ← PostgreSQL pool
-│   ├── redis.js            ← Redis client
-│   └── mqtt.js             ← EMQX internal connection
-├── routes/
-│   ├── auth.js
-│   ├── users.js
-│   ├── homes.js
-│   ├── rooms.js
-│   ├── devices.js
-│   ├── commands.js
-│   ├── telemetry.js
-│   ├── automations.js
-│   └── notifications.js
-├── services/
-│   ├── auth.service.js         ← JWT (access 15 min, refresh 30 d)
-│   ├── device.service.js       ← CRUD + online/offline detection
-│   ├── shadow.service.js       ← Redis primary + PostgreSQL backup
-│   ├── command.service.js      ← Online direct + offline queue
-│   ├── mqtt.service.js         ← EMQX bridge: subscribe all device topics
-│   ├── automation.service.js   ← Evaluate trigger conditions
-│   └── notification.service.js ← FCM push via Firebase Admin SDK
-├── middlewares/
-│   ├── auth.js             ← JWT verify (Bearer token)
-│   ├── rateLimit.js        ← Redis-backed rate limiting
-│   └── validate.js         ← Request schema validation
-└── jobs/
-    ├── offline-check.js    ← Detect device offline via MQTT LWT
-    └── automation.js       ← Cron-scheduled automation runner
-```
+## Ranh giới thành phần
 
-### API Endpoints
+Các thành phần giao tiếp với nhau qua ranh giới rõ ràng:
 
-```
-AUTH
-  POST /api/auth/register
-  POST /api/auth/login
-  POST /api/auth/refresh
-  POST /api/auth/logout
-  POST /api/auth/verify-email
+- Thiết bị và broker giao tiếp qua `MQTT/TLS`.
+- Ứng dụng di động và API server giao tiếp qua `HTTP(S)`.
+- API server và broker phối hợp để phản chiếu trạng thái thiết bị và chuyển lệnh điều khiển.
+- Thiết bị tách ba miền phần cứng chính:
+  - miền cảm biến số trên `I2C`
+  - miền hiển thị trên `SPI2_HOST`
+  - miền lưu trữ trên `SPI3_HOST`
 
-USERS
-  GET  /api/users/me
-  PUT  /api/users/me
-  POST /api/users/me/fcm-token        ← register FCM push token
+## Tóm tắt kiến trúc
 
-HOMES
-  GET    /api/homes
-  POST   /api/homes
-  PUT    /api/homes/:id
-  DELETE /api/homes/:id
-  POST   /api/homes/:id/invite        ← invite member
-
-ROOMS
-  GET    /api/homes/:homeId/rooms
-  POST   /api/homes/:homeId/rooms
-  PUT    /api/rooms/:id
-  DELETE /api/rooms/:id
-
-DEVICES
-  GET    /api/devices
-  POST   /api/devices                 ← register after BLE provisioning
-  GET    /api/devices/:id
-  PUT    /api/devices/:id
-  DELETE /api/devices/:id
-  GET    /api/devices/:id/shadow      ← current reported/desired/delta
-  POST   /api/devices/:id/command     ← send control command
-  GET    /api/devices/:id/commands    ← command history
-  GET    /api/devices/:id/telemetry?from=&to=
-
-AUTOMATIONS
-  GET    /api/automations
-  POST   /api/automations
-  PUT    /api/automations/:id
-  DELETE /api/automations/:id
-  PATCH  /api/automations/:id/toggle
-
-NOTIFICATIONS
-  GET    /api/notifications
-  PATCH  /api/notifications/:id/read
-```
-
-### Device Shadow & Command Queue
-
-```
-CASE 1: Device ONLINE → điều khiển ngay
-
-App               API           Redis Shadow        ESP32
- ├─POST /command─→│             │                    │
- │                ├─update desired──────────────────→│
- │                ├─MQTT publish command────────────→│
- │                │             │                    ├─execute
- │                │←────────────response─────────────│
- │←─notification──│             │                    │
-
-CASE 2: Device OFFLINE → queue lại
-
-App               API           Redis/DB            ESP32
- ├─POST /command─→│             │                    │
- │                ├─queue cmd──→│                    │
- │←─"queued"──────│             │         (reconnect)│
- │                │             │←───────online msg──│
- │                │             ├─flush pending cmds→│
- │                │             │                    ├─execute
- │←─notification──│←─────────────────────────────────│
-```
-
----
-
-## Layer 6 — Mobile App (`app/`)
-
-Flutter (iOS + Android). Adaptive theming qua `AppPalette` — all colors via `context.colors`. `AppState.themeMode` (ValueNotifier) drives full MaterialApp rebuild on theme change.
-
-### App Feature → Transport Map
-
-| Feature              | Transport     | Notes                                       |
-| -------------------- | ------------- | ------------------------------------------- |
-| BLE provisioning     | BLE GATT      | Scan → connect → write SSID/pass → notify   |
-| Auth                 | HTTPS REST    | JWT access (15 min) + refresh token (30 d)  |
-| Device list + shadow | HTTPS REST    | Fetch shadow state on load                  |
-| Realtime status      | MQTT over WSS | Subscribe `device/+/status` + `+/telemetry` |
-| Send command         | HTTPS REST    | POST → queued if device offline             |
-| Telemetry chart      | HTTPS REST    | `fl_chart` — query by time range            |
-| Push notification    | FCM           | Register token on login                     |
-| OTA trigger          | HTTPS REST    | POST → API → MQTT → device                  |
-
-### BLE Provisioning Flow (App Side)
-
-```
-1. Scan BLE → detect device advertising provisioning service UUID
-2. Connect GATT
-3. Subscribe characteristic 0xFF03 (notify)
-4. Write 0xFF01 → SSID
-5. Write 0xFF02 → Password
-6. Wait for notify: {"ip":"…","status":"ok"}
-7. POST /api/devices  ← register device in backend
-8. Navigate to device detail screen
-```
-
----
-
-## Cross-Cutting Concerns
-
-| Concern        | Approach                                                           |
-| -------------- | ------------------------------------------------------------------ |
-| Error handling | `esp_err_t` + `ESP_ERROR_CHECK` everywhere; `ESP_LOGx` + TAG       |
-| Config/secrets | Kconfig for build-time; NVS for runtime — never in source          |
-| Task model     | `xTaskCreatePinnedToCore`; ISR → queue handoff, no blocking in ISR |
-| Persistence    | NVS for config/credentials; SD card for sensor log CSV             |
-| OTA            | HTTPS only, embedded CA cert, rollback + validation task           |
-| MQTT auth      | Per-device secret key from NVS; TLS mandatory                      |
-| JWT            | Access: 15 min; Refresh: 30 d; sessions in Redis                   |
-| Rate limiting  | Redis-backed per-IP per-endpoint in API layer                      |
-| Telemetry TTL  | TimescaleDB retention policy → auto-drop data older than 1 year    |
-
----
-
-## Security Rules
-
-| Rule   | Constraint                                                                      |
-| ------ | ------------------------------------------------------------------------------- |
-| SEC-01 | No hardcoded credentials — MQTT key, WiFi password, API secrets via NVS/Kconfig |
-| SEC-02 | OTA over HTTPS only — embedded CA cert (`_binary_*_pem_start`)                  |
-| SEC-03 | OTA rollback required — validation task must confirm before committing update   |
-| SEC-04 | MQTT TLS mandatory for all device-to-broker communication                       |
-| SEC-05 | JWT in Authorization header only — never in URL                                 |
-
----
-
-## Directory Reference
-
-| Path                 | Contents                                       |
-| -------------------- | ---------------------------------------------- |
-| `firmware/`          | ESP-IDF v5.x source — components, main         |
-| `app/`               | Flutter app — iOS + Android                    |
-| `hardware/`          | KiCad v8 schematics + PCB                      |
-| `docs/`              | ARCHITECTURE, CONSTRAINTS, DECISIONS           |
-| `TODO.md`            | Active tasks and in-progress session notes     |
-| `.claude/agents/`    | Specialized agent definitions (load on demand) |
-| `.claude/skills/`    | Domain skill files (load on demand)            |
-| `.claude/knowledge/` | Long-term wiki + raw research + agent output   |
-
----
-
-## Web Admin — Tools Used (Not Custom Built)
-
-| Tool           | Purpose                           |
-| -------------- | --------------------------------- |
-| EMQX Dashboard | Monitor MQTT, device connections  |
-| Grafana        | Telemetry charts + system metrics |
-| pgAdmin        | Database management               |
-| Portainer      | Docker container management       |
-
----
-
-## See also
-
-- [[CONSTRAINTS]] — Hard limits enforced at all layers
-- [[DECISIONS]] — ADRs that shaped these design choices
+`smart-air` là kiến trúc nhiều lớp, trong đó ESP32-S3 là nút biên trung tâm; `SHT3x`, `DS3231`, cảm biến khí `CO` và `NO2`, màn hình `ILI9225`, và `SD Card` được nối qua các bus tách biệt theo vai trò; phía cloud gồm MQTT broker, API server, và lớp dữ liệu; ứng dụng Flutter là lớp giao tiếp người dùng ở đầu cuối.
