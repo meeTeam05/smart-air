@@ -35,23 +35,23 @@ typedef struct {
 } led_color_t;
 
 static const led_color_t s_color_table[] = {
-    [LED_STATE_BOOT]          = {80,  80,  80,  true},  /* white  blink  */
-    [LED_STATE_BLE]           = {0,   0,   180, true},  /* blue   blink  */
-    [LED_STATE_WIFI]          = {200, 180, 0,   true},  /* yellow blink  */
-    [LED_STATE_ONLINE]        = {0,   180, 0,   false}, /* green  static */
-    [LED_STATE_OTA]           = {120, 0,   120, true},  /* purple blink  */
-    [LED_STATE_ERROR]         = {180, 0,   0,   false}, /* red    static — fatal   */
-    [LED_STATE_FACTORY_RESET] = {180, 0,   0,   true},  /* red    blink  — cancellable */
-    [LED_STATE_OFF]           = {0,   0,   0,   false},
+    [LED_STATE_BOOT] = {80, 80, 80, true},         /* white  blink  */
+    [LED_STATE_BLE] = {0, 0, 180, true},           /* blue   blink  */
+    [LED_STATE_WIFI] = {200, 180, 0, true},        /* yellow blink  */
+    [LED_STATE_ONLINE] = {0, 180, 0, false},       /* green  static */
+    [LED_STATE_OTA] = {120, 0, 120, true},         /* purple blink  */
+    [LED_STATE_ERROR] = {180, 0, 0, false},        /* red    static — fatal   */
+    [LED_STATE_FACTORY_RESET] = {180, 0, 0, true}, /* red    blink  — cancellable */
+    [LED_STATE_OFF] = {0, 0, 0, false},
 };
 
-static rmt_channel_handle_t s_chan    = NULL;
+static rmt_channel_handle_t s_chan = NULL;
 static rmt_encoder_handle_t s_encoder = NULL;
-static esp_timer_handle_t   s_timer   = NULL;
+static esp_timer_handle_t s_timer = NULL;
 
-static portMUX_TYPE      s_spinlock = portMUX_INITIALIZER_UNLOCKED;
-static volatile led_state_t s_state  = LED_STATE_OFF;
-static volatile bool        s_led_on = false;
+static portMUX_TYPE s_spinlock = portMUX_INITIALIZER_UNLOCKED;
+static volatile led_state_t s_state = LED_STATE_OFF;
+static volatile bool s_led_on = false;
 
 static void write_color(uint8_t r, uint8_t g, uint8_t b)
 {
@@ -79,9 +79,7 @@ static void blink_timer_cb(void *arg)
     portEXIT_CRITICAL(&s_spinlock);
 
     if (on) {
-        write_color(s_color_table[state].r,
-                    s_color_table[state].g,
-                    s_color_table[state].b);
+        write_color(s_color_table[state].r, s_color_table[state].g, s_color_table[state].b);
     } else {
         write_color(0, 0, 0);
     }
@@ -96,9 +94,9 @@ esp_err_t led_init(void)
 #if SA_ENABLE_LED
     /* RMT TX channel — 10 MHz clock → 100 ns per tick */
     rmt_tx_channel_config_t chan_cfg = {
-        .gpio_num         = SA_LED_PIN,
-        .clk_src          = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz    = 10 * 1000 * 1000,
+        .gpio_num = SA_LED_PIN,
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = 10 * 1000 * 1000,
         .mem_block_symbols = 64,
         .trans_queue_depth = 4,
     };
@@ -112,8 +110,8 @@ esp_err_t led_init(void)
      *   bit0 — HIGH 400 ns (4 ticks), LOW 850 ns (9 ticks)  [spec: 0.4/0.85 µs]
      *   bit1 — HIGH 800 ns (8 ticks), LOW 450 ns (5 ticks)  [spec: 0.8/0.45 µs] */
     rmt_bytes_encoder_config_t enc_cfg = {
-        .bit0  = {.duration0 = 4, .level0 = 1, .duration1 = 9, .level1 = 0},
-        .bit1  = {.duration0 = 8, .level0 = 1, .duration1 = 5, .level1 = 0},
+        .bit0 = {.duration0 = 4, .level0 = 1, .duration1 = 9, .level1 = 0},
+        .bit1 = {.duration0 = 8, .level0 = 1, .duration1 = 5, .level1 = 0},
         .flags = {.msb_first = 1},
     };
     err = rmt_new_bytes_encoder(&enc_cfg, &s_encoder);
@@ -133,9 +131,9 @@ esp_err_t led_init(void)
 
     /* 500 ms periodic timer drives blink states */
     esp_timer_create_args_t timer_args = {
-        .callback        = blink_timer_cb,
-        .arg             = NULL,
-        .name            = "led_blink",
+        .callback = blink_timer_cb,
+        .arg = NULL,
+        .name = "led_blink",
         .dispatch_method = ESP_TIMER_TASK,
     };
     err = esp_timer_create(&timer_args, &s_timer);
@@ -161,7 +159,7 @@ void led_set_state(led_state_t state)
 {
 #if SA_ENABLE_LED
     portENTER_CRITICAL(&s_spinlock);
-    s_state  = state;
+    s_state = state;
     s_led_on = true; /* start each new state with LED on */
     portEXIT_CRITICAL(&s_spinlock);
 #else

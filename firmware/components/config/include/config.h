@@ -81,15 +81,38 @@
 /**
  * @brief Shared guard for NVS writes and factory reset erase coordination.
  *
- * Call config_nvs_write_begin() before any NVS write/erase and
- * config_nvs_write_end() afterwards. Factory reset uses the matching
- * config_factory_reset_begin()/end() pair to block writers while the full
- * default NVS partition is erased.
+ * @return ESP_OK if the caller is cleared to proceed with NVS writes, 
+ *         or an error if a lock could not be obtained.
+ * 
+ * @note Writers must call config_nvs_write_end() when finished. Factory 
+ *       reset will call config_factory_reset_end() when the erase is 
+ *       complete to unblock writers.
  */
 esp_err_t config_nvs_write_begin(void);
+
+/**
+ * @brief Release the NVS write lock obtained from config_nvs_write_begin().
+ */
 void config_nvs_write_end(void);
+
+/**
+ * @brief Check if a factory reset is currently in progress.
+ * 
+ * @return true if factory reset is in progress, false otherwise.
+ */
 bool config_factory_reset_in_progress(void);
+
+/**
+ * @brief Begin factory reset by erasing the default NVS partition and blocking writers.
+ * 
+ * @return ESP_OK if factory reset was successfully initiated, or an error if the erase 
+ *         could not be started.
+ */
 esp_err_t config_factory_reset_begin(void);
+
+/**
+ * @brief End factory reset by unblocking writers after the default NVS partition erase is complete.
+ */
 void config_factory_reset_end(void);
 
 /**
@@ -162,7 +185,8 @@ bool device_mode_get(void);
 /**
  * @brief Sensor task publish gate shared across components to avoid dependency cycles.
  *
- * @return true when sensor task is allowed to publish readings (device mode ON and not in factory reset).
+ * @return true when sensor task is allowed to publish readings 
+ *         (device mode ON and not in factory reset).
  */
 bool sensor_task_get_enabled(void);
 
@@ -178,8 +202,8 @@ void sensor_task_set_enabled(bool enabled);
 /**
  * @brief Run NVS write/read roundtrip self-test (only when SA_CONFIG_SELF_TEST=y).
  *
- * Writes known test values, reads them back, verifies match, then erases them.
- * Logs PASS or FAIL. Does not affect production namespaces.
+ * @note Writes known test values, reads them back, verifies match, then erases them.
+ *       Logs PASS or FAIL. Does not affect production namespaces.
  */
 void config_self_test(void);
 

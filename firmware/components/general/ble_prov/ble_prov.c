@@ -189,8 +189,8 @@ static void prov_task(void *arg)
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
         char mac_str[18];
-        snprintf(mac_str, sizeof(mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
-                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        snprintf(
+            mac_str, sizeof(mac_str), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         snprintf(json, sizeof(json), "{\"ip\":\"%s\",\"device_id\":\"%s\",\"status\":\"ok\"}", ip, mac_str);
         esp_err_t save_err = save_credentials(s_ssid, s_password);
         if (save_err != ESP_OK) {

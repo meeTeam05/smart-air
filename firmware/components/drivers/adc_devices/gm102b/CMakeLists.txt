@@ -1,11 +1,11 @@
 idf_component_register(
     SRCS
-    "gm102b.c"
+        "gm102b.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    adc_bus
-    log
-    config
-    freertos
+        adc_bus
+        log
+        config
+        freertos
 )

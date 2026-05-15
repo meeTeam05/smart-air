@@ -24,7 +24,7 @@
 static const char *TAG = "wifi_sta";
 
 #define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT BIT1
+#define WIFI_FAIL_BIT      BIT1
 
 static EventGroupHandle_t s_wifi_eg;
 static esp_netif_t *s_netif;
@@ -54,8 +54,7 @@ static esp_err_t wifi_apply_custom_dns(void)
 
     esp_err_t err = esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to apply custom DNS %s: %s",
-                 SA_CUSTOM_DNS_SERVER, esp_err_to_name(err));
+        ESP_LOGE(TAG, "Failed to apply custom DNS %s: %s", SA_CUSTOM_DNS_SERVER, esp_err_to_name(err));
         return err;
     }
 
@@ -70,8 +69,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
 
         if (s_reconnect_count < WIFI_MAX_RECONNECT_ATTEMPTS) {
             s_reconnect_count++;
-            ESP_LOGW(TAG, "Disconnected — reconnect attempt %d/%d",
-                     s_reconnect_count, WIFI_MAX_RECONNECT_ATTEMPTS);
+            ESP_LOGW(TAG, "Disconnected — reconnect attempt %d/%d", s_reconnect_count, WIFI_MAX_RECONNECT_ATTEMPTS);
             esp_wifi_connect();
         } else {
             ESP_LOGE(TAG, "Disconnected — max reconnect attempts reached, giving up");

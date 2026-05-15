@@ -1,13 +1,13 @@
 idf_component_register(
     SRCS
-    "httpd.c"
+        "httpd.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    esp_http_server
-    esp_netif
-    config
-    log
+        esp_http_server
+        esp_netif
+        config
+        log
     PRIV_REQUIRES
-    json
+        json
 )

@@ -1,3 +1,11 @@
+/**
+ * @file buzzer.c
+ * 
+ * @brief Buzzer driver implementation.
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
+ */
+
 #include "buzzer.h"
 
 #include "config.h"

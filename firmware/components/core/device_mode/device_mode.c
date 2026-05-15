@@ -13,9 +13,6 @@
 #include "nvs.h"
 
 #include "mqtt.h"
-#if SA_ENABLE_RELAYS
-#include "relay.h"
-#endif
 
 #include "cJSON.h"
 
@@ -24,8 +21,12 @@
 #include <string.h>
 #include <time.h>
 
+#if SA_ENABLE_RELAYS
+#include "relay.h"
+#endif
+
 #define DEVICE_MODE_NVS_NAMESPACE "device"
-#define DEVICE_MODE_NVS_KEY "mode"
+#define DEVICE_MODE_NVS_KEY       "mode"
 
 static const char *TAG = "device_mode";
 

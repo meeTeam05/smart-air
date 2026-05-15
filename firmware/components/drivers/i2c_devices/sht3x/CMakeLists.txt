@@ -1,12 +1,12 @@
 idf_component_register(
     SRCS
-    "sht3x.c"
+        "sht3x.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    i2c_bus
-    freertos
-    log
-    esp_timer
-    config
+        i2c_bus
+        freertos
+        log
+        esp_timer
+        config
 )

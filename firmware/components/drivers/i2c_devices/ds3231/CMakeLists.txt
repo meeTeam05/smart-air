@@ -1,10 +1,10 @@
 idf_component_register(
     SRCS
-    "ds3231.c"
+        "ds3231.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    i2c_bus
-    log
-    config
+        i2c_bus
+        log
+        config
 )

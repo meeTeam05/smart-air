@@ -39,7 +39,6 @@
  *       telemetry JSON to device/{id}/telemetry via mqtt_publish().
  *       NULL pointers produce JSON null for that field.
  *       Timestamps fall back to time(NULL) when DS3231 is unavailable.
- *
  *       Must be called after mqtt_start() returns.
  */
 esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231, gm702b_t *co, gm102b_t *no2, const char *device_id);

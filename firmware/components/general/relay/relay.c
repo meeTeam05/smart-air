@@ -1,3 +1,11 @@
+/**
+ * @file relay.c
+ * 
+ * @brief Relay control component
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
+ */
+
 #include "relay.h"
 
 #include "esp_log.h"
@@ -18,13 +26,13 @@
 #include <string.h>
 #include <time.h>
 
-#define RELAY_BEEP_MS_SINGLE 50
+#define RELAY_BEEP_MS_SINGLE  50
 #define RELAY_BEEP_MS_ALL_OFF 100
 
 #define RELAY_NVS_NAMESPACE "device"
-#define RELAY_KEY_1 "relay_1"
-#define RELAY_KEY_2 "relay_2"
-#define RELAY_KEY_3 "relay_3"
+#define RELAY_KEY_1         "relay_1"
+#define RELAY_KEY_2         "relay_2"
+#define RELAY_KEY_3         "relay_3"
 
 static const char *TAG = "relay";
 
@@ -178,7 +186,8 @@ esp_err_t relay_init(const char *device_id)
 
     snprintf(s_shadow_topic, sizeof(s_shadow_topic), "device/%s/shadow/report", device_id);
 
-    ESP_LOGI(TAG, "init OK (pins=%d,%d,%d state=[%s,%s,%s])",
+    ESP_LOGI(TAG,
+             "init OK (pins=%d,%d,%d state=[%s,%s,%s])",
              (int)s_pins[0],
              (int)s_pins[1],
              (int)s_pins[2],

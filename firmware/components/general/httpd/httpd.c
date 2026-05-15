@@ -110,10 +110,8 @@ static esp_err_t config_post_handler(httpd_req_t *req)
 
     char existing_broker[128] = {0};
     char existing_secret_key[64] = {0};
-    esp_err_t err = config_get_mqtt_creds(existing_broker,
-                                          sizeof(existing_broker),
-                                          existing_secret_key,
-                                          sizeof(existing_secret_key));
+    esp_err_t err = config_get_mqtt_creds(
+        existing_broker, sizeof(existing_broker), existing_secret_key, sizeof(existing_secret_key));
     if (err != ESP_OK) {
         cJSON_Delete(root);
         return send_json_error(req, "500 Internal Server Error", "config read failed");

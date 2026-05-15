@@ -33,36 +33,36 @@
 /* ── Private defines ────────────────────────────────────────────────────── */
 
 /* Status register bits */
-#define DS3231_STAT_OSCILLATOR 0x80  /**< Oscillator stop flag */
-#define DS3231_STAT_32KHZ 0x08       /**< 32kHz output enable */
-#define DS3231_STAT_ALARM_2 0x02     /**< Alarm 2 flag */
-#define DS3231_STAT_ALARM_1 0x01     /**< Alarm 1 flag */
+#define DS3231_STAT_OSCILLATOR 0x80 /**< Oscillator stop flag */
+#define DS3231_STAT_32KHZ      0x08 /**< 32kHz output enable */
+#define DS3231_STAT_ALARM_2    0x02 /**< Alarm 2 flag */
+#define DS3231_STAT_ALARM_1    0x01 /**< Alarm 1 flag */
 
 /* Control register bits */
-#define DS3231_CTRL_OSCILLATOR 0x80  /**< Oscillator enable/disable */
-#define DS3231_CTRL_TEMPCONV 0x20    /**< Force temperature conversion */
-#define DS3231_CTRL_ALARM_INTS 0x04  /**< Alarm interrupt enable */
-#define DS3231_CTRL_ALARM2_INT 0x02  /**< Alarm 2 interrupt enable */
-#define DS3231_CTRL_ALARM1_INT 0x01  /**< Alarm 1 interrupt enable */
+#define DS3231_CTRL_OSCILLATOR 0x80 /**< Oscillator enable/disable */
+#define DS3231_CTRL_TEMPCONV   0x20 /**< Force temperature conversion */
+#define DS3231_CTRL_ALARM_INTS 0x04 /**< Alarm interrupt enable */
+#define DS3231_CTRL_ALARM2_INT 0x02 /**< Alarm 2 interrupt enable */
+#define DS3231_CTRL_ALARM1_INT 0x01 /**< Alarm 1 interrupt enable */
 
 /* Alarm configuration bits */
-#define DS3231_ALARM_WDAY 0x40    /**< Use day of week for alarm */
-#define DS3231_ALARM_NOTSET 0x80  /**< Alarm field not set */
+#define DS3231_ALARM_WDAY   0x40 /**< Use day of week for alarm */
+#define DS3231_ALARM_NOTSET 0x80 /**< Alarm field not set */
 
 /* Register addresses */
-#define DS3231_ADDR_TIME 0x00     /**< Time registers start */
-#define DS3231_ADDR_ALARM1 0x07   /**< Alarm 1 registers start */
-#define DS3231_ADDR_ALARM2 0x0b   /**< Alarm 2 registers start */
-#define DS3231_ADDR_CONTROL 0x0e  /**< Control register */
-#define DS3231_ADDR_STATUS 0x0f   /**< Status register */
-#define DS3231_ADDR_AGING 0x10    /**< Aging offset register */
-#define DS3231_ADDR_TEMP 0x11     /**< Temperature registers start */
+#define DS3231_ADDR_TIME    0x00 /**< Time registers start */
+#define DS3231_ADDR_ALARM1  0x07 /**< Alarm 1 registers start */
+#define DS3231_ADDR_ALARM2  0x0b /**< Alarm 2 registers start */
+#define DS3231_ADDR_CONTROL 0x0e /**< Control register */
+#define DS3231_ADDR_STATUS  0x0f /**< Status register */
+#define DS3231_ADDR_AGING   0x10 /**< Aging offset register */
+#define DS3231_ADDR_TEMP    0x11 /**< Temperature registers start */
 
 /* Time format flags */
-#define DS3231_12HOUR_FLAG 0x40  /**< 12-hour mode flag */
-#define DS3231_12HOUR_MASK 0x1f  /**< 12-hour value mask */
-#define DS3231_PM_FLAG 0x20      /**< PM flag in 12-hour mode */
-#define DS3231_MONTH_MASK 0x1f   /**< Month value mask */
+#define DS3231_12HOUR_FLAG 0x40 /**< 12-hour mode flag */
+#define DS3231_12HOUR_MASK 0x1f /**< 12-hour value mask */
+#define DS3231_PM_FLAG     0x20 /**< PM flag in 12-hour mode */
+#define DS3231_MONTH_MASK  0x1f /**< Month value mask */
 
 /* I2C configuration */
 #define I2C_FREQ_HZ SA_I2C_FREQ_HZ

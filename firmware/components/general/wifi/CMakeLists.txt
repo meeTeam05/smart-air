@@ -1,12 +1,12 @@
 idf_component_register(
     SRCS
-    "wifi.c"
+        "wifi.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    esp_wifi
-    esp_event
-    esp_netif
-    freertos
-    config
+        esp_wifi
+        esp_event
+        esp_netif
+        freertos
+        config
 )

@@ -1,5 +1,11 @@
 idf_component_register(
-    SRCS "led.c"
-    INCLUDE_DIRS "include"
-    REQUIRES esp_driver_rmt freertos esp_timer config
+    SRCS 
+        "led.c"
+    INCLUDE_DIRS 
+        "include"
+    REQUIRES 
+        esp_driver_rmt 
+        freertos 
+        esp_timer 
+        config
 )

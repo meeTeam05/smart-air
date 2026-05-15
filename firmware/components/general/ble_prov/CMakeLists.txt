@@ -1,16 +1,16 @@
 idf_component_register(
     SRCS
-    "ble_prov.c"
+        "ble_prov.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    nvs_flash
-    bt
-    esp_wifi
-    esp_hw_support
-    freertos
-    wifi
-    config
+        nvs_flash
+        bt
+        esp_wifi
+        esp_hw_support
+        freertos
+        wifi
+        config
     PRIV_REQUIRES
-    mbedtls
+        mbedtls
 )

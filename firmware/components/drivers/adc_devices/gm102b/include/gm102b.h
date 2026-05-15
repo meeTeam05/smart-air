@@ -6,7 +6,7 @@
  * Copyright (C) 2026 MinhNhat & BaoViet
  *
  * DFRobot SEN0574 breakout board. Heater circuit managed by board.
- * ESP32 reads analog output via ADC1 → converts voltage to NO2 ppm.
+ * ESP32 reads analog output via ADC1 -> converts voltage to NO2 ppm.
  *
  * Detection range: 0.1–10 ppm NO2.
  * Preheat required: ≥24h first use.
@@ -57,15 +57,27 @@ esp_err_t gm102b_calibrate(gm102b_t *dev);
  *
  * @param dev     Device descriptor (must be calibrated)
  * @param no2_ppm Output: NO2 concentration in ppm
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t gm102b_read(gm102b_t *dev, float *no2_ppm);
 
 /**
  * @brief Read raw Rs/R0 ratio (for debugging).
+ * 
+ * @param dev   Device descriptor (must be calibrated)
+ * @param ratio Output: Rs/R0 ratio (unitless)
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t gm102b_read_ratio(gm102b_t *dev, float *ratio);
 
 /**
  * @brief Read raw ADC voltage in millivolts.
+ * 
+ * @param dev         Device descriptor (must be initialized)
+ * @param voltage_mv  Output: measured voltage in millivolts
+ * 
+ * @return ESP_OK on success, or an error code on failure.
  */
 esp_err_t gm102b_read_voltage(gm102b_t *dev, int *voltage_mv);

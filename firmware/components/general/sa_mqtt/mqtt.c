@@ -115,7 +115,8 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                     } else if (strcmp(j_type->valuestring, "set_config") == 0) {
                         command_handled = true;
                         cmd_status = "error";
-                        ESP_LOGW(TAG, "set_config is not accepted over MQTT; use local POST /api/config before first login");
+                        ESP_LOGW(TAG,
+                                 "set_config is not accepted over MQTT; use local POST /api/config before first login");
                     } else {
                         for (int i = 0; i < s_cmd_handler_count; i++) {
                             if (strcmp(j_type->valuestring, s_cmd_handlers[i].type) == 0) {

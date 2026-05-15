@@ -14,15 +14,15 @@
 #include <esp_err.h>
 #include <esp_adc/adc_oneshot.h>
 
-#define GM702B_CO_PPM_MIN   5.0f
-#define GM702B_CO_PPM_MAX   5000.0f
+#define GM702B_CO_PPM_MIN 5.0f
+#define GM702B_CO_PPM_MAX 5000.0f
 
 typedef struct {
-    adc_channel_t channel;    /**< ADC1 channel */
-    float r0;                 /**< Baseline resistance in clean air (ohm) */
-    float rl;                 /**< Load resistor on breakout board (ohm) */
-    float vc;                 /**< Circuit voltage (V) */
-    bool  calibrated;         /**< true after successful calibration */
+    adc_channel_t channel; /**< ADC1 channel */
+    float r0;              /**< Baseline resistance in clean air (ohm) */
+    float rl;              /**< Load resistor on breakout board (ohm) */
+    float vc;              /**< Circuit voltage (V) */
+    bool calibrated;       /**< true after successful calibration */
 } gm702b_t;
 
 /**

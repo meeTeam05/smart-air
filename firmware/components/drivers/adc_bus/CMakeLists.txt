@@ -1,10 +1,10 @@
 idf_component_register(
     SRCS
-    "adc_bus.c"
+        "adc_bus.c"
     INCLUDE_DIRS
-    "include"
+        "include"
     REQUIRES
-    esp_adc
-    log
-    freertos
+        esp_adc
+        log
+        freertos
 )

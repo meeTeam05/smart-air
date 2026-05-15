@@ -160,8 +160,7 @@ static void ota_task_fn(void *arg)
 
 esp_err_t ota_task_start(const char *device_id)
 {
-    snprintf(s_progress_topic, sizeof(s_progress_topic),
-             "device/%s/ota/progress", device_id != NULL ? device_id : "");
+    snprintf(s_progress_topic, sizeof(s_progress_topic), "device/%s/ota/progress", device_id != NULL ? device_id : "");
 
     s_ota_queue = xQueueCreate(1, sizeof(ota_msg_t));
     if (s_ota_queue == NULL) {
@@ -215,8 +214,7 @@ void ota_validate_and_commit(void)
     const esp_partition_t *running = esp_ota_get_running_partition();
     esp_ota_img_states_t state;
 
-    if (esp_ota_get_state_partition(running, &state) == ESP_OK
-        && state == ESP_OTA_IMG_PENDING_VERIFY) {
+    if (esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
         esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "OTA validated — new firmware committed");
