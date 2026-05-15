@@ -1,3 +1,5 @@
+import { createRealtimeEvent } from './realtime-events.js';
+
 const DEFAULT_PENDING_TIMEOUT_SECONDS = 1800;
 
 export async function sendCommand(fastify, deviceId, payload, userId) {
@@ -7,6 +9,16 @@ export async function sendCommand(fastify, deviceId, payload, userId) {
         [deviceId, userId, JSON.stringify(payload)]
     );
     const commandId = rows[0].id;
+
+    await createRealtimeEvent(fastify, {
+        type: 'command.updated',
+        deviceId,
+        payload: {
+            command_id: commandId,
+            status: 'pending',
+            payload,
+        },
+    });
 
     if (typeof fastify.mqttIsReady === 'function' && fastify.mqttIsReady()) {
         flushPending(fastify, deviceId).catch((err) => {
@@ -79,6 +91,15 @@ export async function flushPending(fastify, deviceId) {
                          WHERE id = $1 AND device_id = $2 AND status = 'pending'`,
                         [command.id, deviceId]
                     );
+                    await createRealtimeEvent(client, {
+                        type: 'command.updated',
+                        deviceId,
+                        payload: {
+                            command_id: command.id,
+                            status: 'timeout',
+                            payload: command.payload,
+                        },
+                    });
                     await client.query('COMMIT');
                     fastify.log.warn({ deviceId, commandId: command.id }, 'expired pending command dropped before publish');
                     continue;
@@ -94,6 +115,15 @@ export async function flushPending(fastify, deviceId) {
                     "UPDATE commands SET status = 'sent' WHERE id = $1 AND device_id = $2 AND status = 'pending'",
                     [command.id, deviceId]
                 );
+                await createRealtimeEvent(client, {
+                    type: 'command.updated',
+                    deviceId,
+                    payload: {
+                        command_id: command.id,
+                        status: 'sent',
+                        payload: command.payload,
+                    },
+                });
                 await client.query('COMMIT');
             } catch (err) {
                 await client.query('ROLLBACK');

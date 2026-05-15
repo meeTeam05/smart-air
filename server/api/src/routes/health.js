@@ -28,6 +28,9 @@ export default async function healthRoutes(fastify) {
         checks.mqtt = fastify.mqttReadyAt ? 'ok' : 'fail';
         if (!fastify.mqttReadyAt) healthy = false;
 
+        checks.realtime = fastify.realtimeReadyAt ? 'ok' : 'fail';
+        if (!fastify.realtimeReadyAt) healthy = false;
+
         return reply.code(healthy ? 200 : 503).send({
             status: healthy ? 'ok' : 'degraded',
             ts: Date.now(),
@@ -58,6 +61,9 @@ export default async function healthRoutes(fastify) {
 
         checks.mqtt = fastify.mqttReadyAt ? 'ok' : 'fail';
         if (!fastify.mqttReadyAt) healthy = false;
+
+        checks.realtime = fastify.realtimeReadyAt ? 'ok' : 'fail';
+        if (!fastify.realtimeReadyAt) healthy = false;
 
         return reply.code(healthy ? 200 : 503).send({
             status: healthy ? 'ok' : 'degraded',

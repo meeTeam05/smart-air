@@ -1,3 +1,5 @@
+import { createRealtimeEvent } from '../services/realtime-events.js';
+
 const DEFAULT_TIMEOUT_SECONDS = 60;
 const DEFAULT_PENDING_TIMEOUT_SECONDS = 1800; // 30 min
 const DEFAULT_SWEEP_INTERVAL_MS = 30_000;
@@ -13,14 +15,33 @@ export function registerCommandTimeoutJob(fastify, options = {}) {
     const sweepIntervalMs = options.sweepIntervalMs ?? parsePositiveIntEnv('COMMAND_TIMEOUT_SWEEP_INTERVAL_MS', DEFAULT_SWEEP_INTERVAL_MS);
 
     const runSweep = async () => {
+        let client;
+
         try {
-            const result = await fastify.db.query(
+            client = await fastify.db.connect();
+            await client.query('BEGIN');
+            const result = await client.query(
                 `UPDATE commands
                  SET status = 'timeout', executed_at = NOW()
                  WHERE (status = 'sent'    AND created_at < NOW() - ($1 * INTERVAL '1 second'))
-                    OR (status = 'pending' AND created_at < NOW() - ($2 * INTERVAL '1 second'))`,
+                    OR (status = 'pending' AND created_at < NOW() - ($2 * INTERVAL '1 second'))
+                 RETURNING id, device_id, payload`,
                 [timeoutSeconds, pendingTimeoutSeconds]
             );
+
+            for (const command of result.rows) {
+                await createRealtimeEvent(client, {
+                    type: 'command.updated',
+                    deviceId: command.device_id,
+                    payload: {
+                        command_id: command.id,
+                        status: 'timeout',
+                        payload: command.payload,
+                    },
+                });
+            }
+
+            await client.query('COMMIT');
 
             if (result.rowCount > 0) {
                 fastify.log.info(
@@ -29,13 +50,20 @@ export function registerCommandTimeoutJob(fastify, options = {}) {
                 );
             }
         } catch (err) {
+            if (client) {
+                try {
+                    await client.query('ROLLBACK');
+                } catch (rollbackErr) {
+                    fastify.log.error({ err: rollbackErr }, 'command timeout sweep rollback failed');
+                }
+            }
             fastify.log.error({ err }, 'command timeout sweep failed');
+        } finally {
+            client?.release();
         }
     };
 
-    const intervalId = setInterval(() => {
-        runSweep();
-    }, sweepIntervalMs);
+    const intervalId = setInterval(runSweep, sweepIntervalMs);
 
     fastify.addHook('onClose', async () => {
         clearInterval(intervalId);

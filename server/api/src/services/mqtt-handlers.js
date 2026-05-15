@@ -1,5 +1,6 @@
 import { getShadow, computeDelta, updateReported } from './shadow.js';
 import { flushPending } from './commands.js';
+import { createRealtimeEvent } from './realtime-events.js';
 import { REDIS_TTL_ANNOUNCE, REDIS_TTL_OTA } from '../constants.js';
 
 const SENSOR_FIELDS = Object.freeze(['temperature', 'humidity', 'co_ppm', 'no2_ppm']);
@@ -112,6 +113,17 @@ function normalizeTelemetryTimestamp(fastify, deviceId, payload) {
     return new Date(candidateTs * 1000).toISOString();
 }
 
+function telemetryEventPayload(payload, ts) {
+    return {
+        ts,
+        temperature: Object.hasOwn(payload, 'temperature') ? payload.temperature : null,
+        humidity: Object.hasOwn(payload, 'humidity') ? payload.humidity : null,
+        co_ppm: Object.hasOwn(payload, 'co_ppm') ? payload.co_ppm : null,
+        no2_ppm: Object.hasOwn(payload, 'no2_ppm') ? payload.no2_ppm : null,
+        mode: payload.mode,
+    };
+}
+
 export async function publishShadowGetResponse(fastify, deviceId, shadow, logMessage = 'shadow get_response publish failed') {
     try {
         await fastify.mqttPublish(
@@ -143,6 +155,14 @@ export async function handleStatus(fastify, deviceId, payload) {
         'UPDATE devices SET online = $1, last_seen = NOW() WHERE id = $2',
         [payload.online, deviceId]
     );
+    await createRealtimeEvent(fastify, {
+        type: 'device.status',
+        deviceId,
+        payload: {
+            online: payload.online,
+            firmware: typeof payload.firmware === 'string' ? payload.firmware : null,
+        },
+    });
     if (payload.online) {
         await fastify.redis.set(`announce:${deviceId}`, '1', 'EX', REDIS_TTL_ANNOUNCE);
         try {
@@ -181,6 +201,12 @@ export async function handleTelemetry(fastify, deviceId, payload) {
             'INSERT INTO telemetry (device_id, ts, payload) VALUES ($1, $2, $3)',
             [deviceId, ts, JSON.stringify(payload)]
         );
+        await createRealtimeEvent(fastify, {
+            type: 'telemetry.point',
+            deviceId,
+            occurredAt: ts,
+            payload: telemetryEventPayload(payload, ts),
+        });
     } catch (err) {
         if (err.code === '23514' && err.constraint === 'telemetry_payload_size_check') {
             fastify.log.warn({ deviceId, err, payloadBytes: payloadByteLength(payload) }, 'telemetry payload rejected by size constraint');
@@ -201,7 +227,15 @@ export async function handleShadowReport(fastify, deviceId, payload) {
         return;
     }
 
-    await updateReported(fastify, deviceId, payload);
+    const shadow = await updateReported(fastify, deviceId, payload);
+    await createRealtimeEvent(fastify, {
+        type: 'shadow.reported',
+        deviceId,
+        payload: {
+            reported: shadow.reported ?? {},
+            patch: payload,
+        },
+    });
 }
 
 export async function handleShadowGet(fastify, deviceId, payload) {
@@ -254,11 +288,23 @@ export async function handleResponse(fastify, deviceId, payload) {
     const updateResult = await fastify.db.query(
         `UPDATE commands
          SET status = $1, executed_at = NOW(), error_message = $4
-         WHERE id = $2 AND device_id = $3 AND status = 'sent'`,
+         WHERE id = $2 AND device_id = $3 AND status = 'sent'
+         RETURNING id, device_id, status, executed_at, error_message`,
         [status, commandId, deviceId, status === 'error' ? cleanCommandErrorMessage(payload) : null]
     );
 
     if (updateResult.rowCount > 0) {
+        const command = updateResult.rows[0];
+        await createRealtimeEvent(fastify, {
+            type: 'command.updated',
+            deviceId,
+            occurredAt: command.executed_at ?? new Date(),
+            payload: {
+                command_id: command.id,
+                status: command.status,
+                error_message: command.error_message ?? null,
+            },
+        });
         return;
     }
 
@@ -298,4 +344,9 @@ export async function handleOtaProgress(fastify, deviceId, payload) {
     }
 
     await fastify.redis.set(`ota_progress:${deviceId}`, JSON.stringify(payload), 'EX', REDIS_TTL_OTA);
+    await createRealtimeEvent(fastify, {
+        type: 'ota.progress',
+        deviceId,
+        payload,
+    });
 }

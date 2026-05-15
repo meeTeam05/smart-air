@@ -8,6 +8,7 @@ import dbPlugin from './plugins/db.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
 import mqttPlugin from './plugins/mqtt.js';
+import realtimePlugin from './plugins/realtime.js';
 
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
@@ -16,9 +17,11 @@ import devicesRoutes from './routes/devices.js';
 import shadowRoutes from './routes/shadow.js';
 import commandsRoutes from './routes/commands.js';
 import telemetryRoutes from './routes/telemetry.js';
+import realtimeRoutes from './routes/realtime.js';
 import { registerCommandTimeoutJob } from './jobs/command-timeout.js';
 import { registerEmqxCleanupRetryJob } from './jobs/emqx-cleanup-retry.js';
 import { registerRefreshTokenMarkerCleanupJob } from './jobs/refresh-token-marker-cleanup.js';
+import { registerRealtimeEventRetentionJob } from './jobs/realtime-event-retention.js';
 
 // ── Startup guards ──────────────────────────────────────────────
 const REQUIRED_RUNTIME_ENV_VARS = [
@@ -86,10 +89,12 @@ await fastify.register(dbPlugin);
 await fastify.register(redisPlugin);
 await fastify.register(authPlugin);
 await fastify.register(mqttPlugin);
+await fastify.register(realtimePlugin);
 
 registerCommandTimeoutJob(fastify);
 registerEmqxCleanupRetryJob(fastify);
 registerRefreshTokenMarkerCleanupJob(fastify);
+registerRealtimeEventRetentionJob(fastify);
 
 // ── Rate limiting — applied globally, tighter on auth routes ────
 await fastify.register(rateLimit, {
@@ -104,6 +109,7 @@ await fastify.register(devicesRoutes, { prefix: '/api' });
 await fastify.register(shadowRoutes, { prefix: '/api' });
 await fastify.register(commandsRoutes, { prefix: '/api' });
 await fastify.register(telemetryRoutes, { prefix: '/api' });
+await fastify.register(realtimeRoutes, { prefix: '/api' });
 
 // ── Global Error Handler ─────────────────────────────────────────
 fastify.setErrorHandler((error, request, reply) => {
