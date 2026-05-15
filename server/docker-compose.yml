@@ -33,7 +33,7 @@ services:
     image: emqx/emqx:latest
     container_name: sa-emqx
     ports:
-      - "${MQTT_LAN_BIND_IP:-0.0.0.0}:8883:8883" # MQTT/TLS — ESP32 firmware on LAN
+      - "${MQTT_LAN_BIND_IP:-0.0.0.0}:8883:8883" # Optional direct MQTT/TLS path; public default is WSS via nginx + Cloudflare Tunnel
       - "127.0.0.1:18083:18083"     # dashboard — localhost only
     environment:
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD is required}

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Generate self-signed TLS certificate for EMQX (dev only)
-# For production: replace with Let's Encrypt cert
+# For production: replace with a real certificate for the public MQTT hostname
 #
 # Usage: bash gen-certs.sh [PI_IP]
 # Default PI_IP: 192.168.1.16
@@ -29,5 +29,5 @@ chmod 644 "$CERT_DIR/server.crt"
 
 echo ""
 echo "Done:"
-echo "  certs/server.crt — embed in ESP32 firmware as CA cert"
+echo "  certs/server.crt — dev-only cert for local testing"
 echo "  certs/server.key — keep secret, never commit"
