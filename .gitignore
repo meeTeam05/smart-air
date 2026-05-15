@@ -27,6 +27,17 @@ hardware/**/*-backups/
 # Server secrets
 server/.env
 server/api/.env
+.env.*
+!.env.example
+!**/.env.example
+*.key
+*.p12
+*.pfx
+firmware/sdkconfig.demo.active
+firmware/**/nvs*.bin
+firmware/**/nvs*.csv
+server/ota-files/*
+!server/ota-files/.gitkeep
 
 # Python local caches
 __pycache__/
@@ -41,3 +52,4 @@ __pycache__/
 tmp/
 server/api/node_modules/
 .planning/
+scripts/ddns-cloudflare.sh

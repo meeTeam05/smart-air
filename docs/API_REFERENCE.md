@@ -18,7 +18,7 @@
 6. [Shadow — Trạng thái thiết bị](#6-shadow--trạng-thái-thiết-bị)
 7. [Commands — Điều khiển](#7-commands--điều-khiển)
 8. [Telemetry — Dữ liệu cảm biến](#8-telemetry--dữ-liệu-cảm-biến)
-9. [MQTT WebSocket — Realtime](#9-mqtt-websocket--realtime)
+9. [Realtime — App SSE and MQTT WSS](#9-realtime--app-sse-and-mqtt-wss)
 10. [Redis Keys Reference](#10-redis-keys-reference)
 11. [MQTT Bridge — Server-side](#11-mqtt-bridge--server-side)
 12. [Constants Reference](#12-constants-reference)
@@ -34,7 +34,7 @@
 | Method | Path                              | Auth  | Rate Limit | Mô tả                                  |
 | ------ | --------------------------------- | :---: | :--------: | -------------------------------------- |
 | GET    | `/api/health/live`                |       |            | Liveness check (process up)             |
-| GET    | `/api/health/ready`               |       |            | Readiness check (DB + Redis + MQTT)     |
+| GET    | `/api/health/ready`               |       |            | Readiness check (DB + Redis + MQTT + realtime) |
 | GET    | `/api/health`                     |       |            | Alias của readiness check               |
 | POST   | `/api/auth/register`              |       |   10/min   | Đăng ký                                |
 | POST   | `/api/auth/login`                 |       |   10/min   | Đăng nhập                              |
@@ -59,6 +59,7 @@
 | POST   | `/api/devices/:id/command`        |   🔒   |   30/min   | Gửi command                            |
 | GET    | `/api/devices/:id/commands`       |   🔒   |            | Lịch sử command                        |
 | GET    | `/api/devices/:id/telemetry`      |   🔒   |            | Dữ liệu cảm biến                       |
+| GET    | `/api/realtime`                   |   🔒   |            | App realtime stream (SSE)              |
 
 ### Authentication
 
@@ -795,7 +796,53 @@ Sắp xếp `ts DESC`.
 
 ---
 
-## 9. MQTT WebSocket — Realtime
+## 9. Realtime — App SSE and MQTT WSS
+
+### `GET /api/realtime` 🔒
+
+App-facing realtime stream. This endpoint uses the same JWT session and device ownership checks as the REST API.
+It is the default realtime transport for Flutter UI state.
+
+```text
+Authorization: Bearer <accessToken>
+Accept: text/event-stream
+Last-Event-ID: <optional event id>
+```
+
+Nginx disables buffering for this exact path. Server sends heartbeat comments to keep the connection open.
+
+**SSE frame:**
+
+```text
+id: 12345
+event: telemetry.point
+data: {"id":"12345","type":"telemetry.point","device_id":"aa:bb:cc:dd:ee:ff","occurred_at":"2026-05-15T10:00:00.000Z","payload":{}}
+```
+
+**Envelope fields:**
+
+| Field         | Type   | Mô tả                                          |
+| ------------- | ------ | ---------------------------------------------- |
+| `id`          | string | Monotonic realtime event id for reconnect replay |
+| `type`        | string | Event type, also used as the SSE `event` field |
+| `device_id`   | string | Device id this event belongs to                |
+| `occurred_at` | string | ISO timestamp for the underlying state change  |
+| `payload`     | object | Type-specific app payload                      |
+
+**Event types:**
+
+| Type              | Produced after                                  | Payload shape |
+| ----------------- | ----------------------------------------------- | ------------- |
+| `telemetry.point` | Telemetry DB insert succeeds                    | `{ ts, temperature, humidity, co_ppm, no2_ppm, mode }` |
+| `device.status`  | Device row online/last_seen update succeeds     | `{ online, firmware }` |
+| `shadow.reported`| Reported shadow update succeeds                 | `{ reported, patch }` |
+| `command.updated`| Command row changes status                      | `{ command_id, status, payload?, error_message? }` |
+| `ota.progress`   | OTA progress Redis write succeeds               | OTA progress payload |
+
+REST remains canonical for initial snapshots, history, reconnect backfill beyond the SSE replay window, and fallback.
+Realtime events are retained for short reconnect replay (`REALTIME_EVENT_RETENTION_HOURS`, default 24h).
+
+### MQTT WebSocket — broker clients
 
 ```text
 Public URL:   wss://minhnhat05.xyz/mqtt
@@ -806,9 +853,8 @@ Protocol:     MQTT v3.1.1 over WebSocket
 > EMQX không publish port `8083` ra host.
 > WebSocket path này chỉ đi qua `nginx` và Cloudflare Tunnel, không phải `ws://127.0.0.1:8083`.
 
-> **Lưu ý:** Flutter app hiện chưa implement MQTT WebSocket client.
-> UI hiện đọc shadow/telemetry qua REST endpoints, không dùng WSS path này trong app production flow hiện tại.
-> Nếu dùng WebSocket trực tiếp, EMQX đang xác thực bằng MQTT username/password theo built-in database; JWT của REST API chưa được dùng cho MQTT/WSS.
+> **Lưu ý:** Flutter app production flow dùng `/api/realtime`, không subscribe trực tiếp `/mqtt`.
+> Nếu dùng WebSocket MQTT trực tiếp, EMQX đang xác thực bằng MQTT username/password theo built-in database; JWT của REST API không được dùng cho MQTT/WSS.
 
 **Topics subscribe:**
 
@@ -840,12 +886,12 @@ EMQX Admin API provisioning/cleanup dùng `EMQX_API_URL` và timeout `EMQX_API_T
 
 | Topic                    | Handler               | Xử lý                                                                                         |
 | ------------------------ | --------------------- | --------------------------------------------------------------------------------------------- |
-| `device/+/status`        | `handleStatus()`      | Validate `{online:boolean}`; UPDATE `devices.online` + `last_seen`; SET `announce:`; `flushPending()`; push desired shadow |
-| `device/+/telemetry`     | `handleTelemetry()`   | Validate device/topic, mode, sensor fields, ts; INSERT TimescaleDB                            |
-| `device/+/response`      | `handleResponse()`    | UPDATE `commands.status` + `executed_at`. Status whitelist: `done`/`error`                    |
-| `device/+/shadow/report` | `handleShadowReport()`| Drop unknown devices, validate known fields, UPSERT `device_shadows`                           |
+| `device/+/status`        | `handleStatus()`      | Validate `{online:boolean}`; UPDATE `devices.online` + `last_seen`; emit `device.status`; SET `announce:`; `flushPending()`; push desired shadow |
+| `device/+/telemetry`     | `handleTelemetry()`   | Validate device/topic, mode, sensor fields, ts; INSERT TimescaleDB; emit `telemetry.point`    |
+| `device/+/response`      | `handleResponse()`    | UPDATE `commands.status` + `executed_at`; emit `command.updated`. Status whitelist: `done`/`error` |
+| `device/+/shadow/report` | `handleShadowReport()`| Drop unknown devices, validate known fields, UPSERT `device_shadows`; emit `shadow.reported`  |
 | `device/+/shadow/get`    | `handleShadowGet()`   | Load shadow and publish `shadow/get_response`                                                  |
-| `device/+/ota/progress`  | `handleOtaProgress()` | SET Redis TTL 600s                                                                            |
+| `device/+/ota/progress`  | `handleOtaProgress()` | SET Redis TTL 600s; emit `ota.progress`                                                       |
 
 **Publish:**
 
@@ -910,11 +956,12 @@ Tất cả centralized tại `src/constants.js`:
 ```
 1. Flutter mở device detail
 2. GET /api/devices/:id/shadow → hiển thị reported/desired state hiện tại
-3. GET /api/devices/:id/telemetry?agg=1m&from=now-30m → vẽ sparkline trong dashboard hiện tại
-4. User pull-to-refresh hoặc mở lại màn hình → app refresh shadow + devices qua REST
-5. ESP32 disconnect → LWT publish device/{id}/status = {"online":false}
-6. Server handleStatus() → UPDATE devices.online = false
-7. Flutter refresh → offline badge + last_seen
+3. GET /api/devices/:id/telemetry?from=now-30m&limit=... → initial live snapshot
+4. GET /api/realtime → subscribe SSE bằng JWT
+5. ESP32 publish telemetry/status/shadow/response/OTA qua MQTT
+6. Server persist state → insert `realtime_events` → SSE emits app event
+7. Flutter Riverpod live store append/merge event without remounting the screen
+8. Nếu reconnect vượt replay window, Flutter refetch snapshot/history qua REST
 ```
 
 ### Flow 3 — Command set_time
@@ -926,8 +973,8 @@ Tất cả centralized tại `src/constants.js`:
 4. Server UPDATE status='sent'
 5. ESP32 nhận → cập nhật DS3231 RTC
 6. ESP32 publish device/{id}/response: { command_id, status: "done" }
-7. Server handleResponse() → UPDATE status='done', executed_at=NOW()
-8. Flutter GET /api/devices/:id/commands → status "done"
+7. Server handleResponse() → UPDATE status='done', executed_at=NOW(), emit `command.updated`
+8. Flutter SSE updates recent command state; REST command history remains available for history/backfill
 ```
 
 ### Flow 4 — OTA thủ công
