@@ -1,34 +1,43 @@
 # Firmware / ESP-IDF
 firmware/build/
+firmware/build-demo/
+firmware/build-normal/
 firmware/**/build/
 firmware/**/compile_commands.json
 firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/tools/**/sdkconfig
 firmware/tools/**/sdkconfig.old
-firmware/managed_components
+firmware/managed_components/
 
 # Hardware / KiCad local artifacts
 hardware/**/fp-info-cache
 hardware/**/*.kicad_prl
 hardware/**/*-backups/
 
-# Claude Code
-.claude/
+# Codex local runtime files
+.codex/log/
+.codex/*.db
+.codex/*.sqlite
+.codex/*.sqlite3
 
 # Editor / workspace
 .vscode/
-
-# Private notes
-TODO.md
 
 # Server secrets
 server/.env
 server/api/.env
 
-# Others
+# Python local caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyd
+.venv/
+
+# Local runtime / generated
 .env
 .gitnexus
-
-hardware/**
-tmp/**
+tmp/
+server/api/node_modules/
+.planning/
