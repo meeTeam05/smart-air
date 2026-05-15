@@ -14,12 +14,13 @@ menu "Smart Air Configuration"
 
     config SA_MQTT_BROKER_URI
         string "MQTT broker URI"
-        default "mqtts://mqtt.minhnhat05.xyz:8883"
+        default "wss://minhnhat05.xyz/mqtt"
         help
             Full URI of the EMQX broker reachable from the ESP32.
-            Use the public raw MQTT hostname that resolves to the server and
-            forwards TCP 8883 to EMQX. This is separate from the Cloudflare
-            HTTP/WSS ingress used by the API and mobile app.
+            Public production default uses Cloudflare HTTPS ingress with
+            secure WebSocket transport to nginx /mqtt -> EMQX:8083, so
+            firmware works without router port forwarding or a public 8883.
+            Raw mqtts://...:8883 remains an optional direct override.
             Runtime override source: NVS namespace "device", key "broker_uri".
 
     config SA_WIFI_CONNECT_TIMEOUT_MS
@@ -28,6 +29,14 @@ menu "Smart Air Configuration"
         range 5000 120000
         help
             Maximum time to wait for an IP address after esp_wifi_connect().
+
+    config SA_CUSTOM_DNS_SERVER
+        string "Custom DNS server"
+        default "1.1.1.1"
+        help
+            IPv4 DNS resolver applied to WIFI_STA_DEF after the station gets
+            an IP address. Use this when the upstream DHCP server advertises
+            a resolver that cannot reliably resolve the MQTT TLS hostname.
 
     config SA_PROV_TIMEOUT_MS
         int "BLE provisioning timeout (ms)"
@@ -71,7 +80,9 @@ menu "Smart Air Configuration"
             sample array while preserving the normal MQTT/TLS/auth flow,
             topics, command handling, and telemetry/shadow JSON schema.
             This mode is intended for ESP32-S3-DevKit-C-6R8 demos without
-            sensors, display, relay, buzzer, LED, SD card, or RTC hardware.
+            sensors, display, buzzer, SD card, or RTC hardware. Relay, LED,
+            and factory reset stay available when their own feature flags are
+            enabled.
 
     config SA_SENSOR_POLLING_INTERVAL
         int "Sensor Polling Interval Seconds"
@@ -334,12 +345,11 @@ menu "Smart Air Configuration"
 
     config SA_FACTORY_RESET_PIN
         int "Factory reset button GPIO"
-        default 7
-        range 1 48
+        default 0
+        range 0 48
         help
             GPIO for factory reset button. Active-low with internal pull-up.
             Hold for SA_FACTORY_RESET_HOLD_MS to trigger full NVS erase + reboot.
-            AVOID GPIO 0 (strapping pin — causes download mode on reset).
 
     config SA_FACTORY_RESET_HOLD_MS
         int "Factory reset hold duration (ms)"

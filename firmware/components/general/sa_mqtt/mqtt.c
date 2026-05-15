@@ -1,7 +1,7 @@
 /**
  * @file mqtt.c
  *
- * @brief MQTT client — TLS connection to EMQX, LWT, pub/sub.
+ * @brief MQTT client — MQTT over TLS/WSS to EMQX, LWT, pub/sub.
  *
  * Architecture:
  *   - mqtt_start() creates mqtt_task (Core 1, Priority 6, 6144 B).
@@ -273,7 +273,7 @@ esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *
     }
 
     strlcpy(s_broker_uri,
-            (broker_uri != NULL && broker_uri[0] != '\0') ? broker_uri : CONFIG_SA_MQTT_BROKER_URI,
+            (broker_uri != NULL && broker_uri[0] != '\0') ? broker_uri : SA_MQTT_BROKER_URI,
             sizeof(s_broker_uri));
     strlcpy(s_device_id, device_id, sizeof(s_device_id));
     strlcpy(s_secret_key, secret_key, sizeof(s_secret_key));

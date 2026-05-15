@@ -12,6 +12,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_log.h"
+#include "lwip/ip4_addr.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -33,6 +34,35 @@ static int s_reconnect_count;
 
 #define WIFI_MAX_RECONNECT_ATTEMPTS 10
 
+static esp_err_t wifi_apply_custom_dns(void)
+{
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta_netif == NULL) {
+        ESP_LOGE(TAG, "WIFI_STA_DEF netif not found; cannot apply custom DNS");
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    uint32_t dns_addr = ipaddr_addr(SA_CUSTOM_DNS_SERVER);
+    if (dns_addr == IPADDR_NONE) {
+        ESP_LOGE(TAG, "Invalid SA_CUSTOM_DNS_SERVER value: %s", SA_CUSTOM_DNS_SERVER);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_netif_dns_info_t dns = {0};
+    dns.ip.u_addr.ip4.addr = dns_addr;
+    dns.ip.type = ESP_IPADDR_TYPE_V4;
+
+    esp_err_t err = esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to apply custom DNS %s: %s",
+                 SA_CUSTOM_DNS_SERVER, esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Applied custom DNS on WIFI_STA_DEF: %s", SA_CUSTOM_DNS_SERVER);
+    return ESP_OK;
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -52,6 +82,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         ip_event_got_ip_t *ev = (ip_event_got_ip_t *)data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&ev->ip_info.ip));
         ESP_LOGI(TAG, "Got IP: %s", s_ip);
+        esp_err_t dns_err = wifi_apply_custom_dns();
+        if (dns_err != ESP_OK) {
+            ESP_LOGW(TAG, "Continuing with DHCP DNS after custom DNS apply failure");
+        }
         s_reconnect_count = 0;
         xEventGroupClearBits(s_wifi_eg, WIFI_FAIL_BIT);
         xEventGroupSetBits(s_wifi_eg, WIFI_CONNECTED_BIT);

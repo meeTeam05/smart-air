@@ -8,7 +8,7 @@
  *   IDLE  → button not pressed, hold_ms == 0
  *   HOLD  → button pressed, 0 < hold_ms < SA_FACTORY_RESET_HOLD_MS
  *             LED switches to FACTORY_RESET (red blink) after 1 s
- *   RESET → hold_ms >= SA_FACTORY_RESET_HOLD_MS → do_factory_reset()
+ *   RESET → hold_ms >= SA_FACTORY_RESET_HOLD_MS → factory_reset_run()
  *
  * Releasing during HOLD restores the LED state that was active before hold
  * started and returns to IDLE — no side effects.
@@ -18,16 +18,15 @@
 
 #include "factory_reset.h"
 
-#include "ble_prov.h"
 #include "config.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "led.h"
 #include "mqtt.h"
 #include "wifi.h"
-
-#if SA_ENABLE_FACTORY_RESET
 
 static const char *TAG = "factory_reset";
 
@@ -41,29 +40,46 @@ static gpio_num_t s_gpio;
 
 /* ── Reset sequence ──────────────────────────────────────────────────────── */
 
-static void do_factory_reset(void)
+esp_err_t factory_reset_run(void)
 {
+    esp_err_t err = config_factory_reset_begin();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "config_factory_reset_begin failed (%s)", esp_err_to_name(err));
+        return err;
+    }
+
     ESP_LOGW(TAG, "Factory reset triggered — erasing provisioning data");
+    ESP_LOGW(TAG, "Factory reset scope: Wi-Fi provisioning + MQTT creds/URI + mode + calibration");
 
     /* Solid red: point of no return */
     led_set_state(LED_STATE_ERROR);
 
-    /* 1. Erase WiFi provisioning NVS namespace — device re-provisions on boot */
-    ble_prov_reset();
-
-    /* 2. Clean WiFi shutdown */
+    /* 1. Clean WiFi shutdown */
     wifi_sta_deinit();
 
-    /* 3. Clean MQTT shutdown (suppresses spurious reconnects during reboot) */
+    /* 2. Clean MQTT shutdown (suppresses spurious reconnects during reboot) */
     mqtt_stop();
 
-    /* Brief settle for peripheral shutdown */
+    /* 3. Erase the default NVS partition so no firmware state survives reset */
+    err = nvs_flash_erase();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "nvs_flash_erase failed (%s)", esp_err_to_name(err));
+        config_factory_reset_end();
+        return err;
+    }
+
+    /* Brief settle for peripheral shutdown while reset guard stays held. */
     vTaskDelay(pdMS_TO_TICKS(500));
 
     ESP_LOGI(TAG, "Rebooting into BLE provisioning mode");
     esp_restart();
-    /* Never reached */
+
+    /* If restart ever returns, release the guard before reporting the error. */
+    config_factory_reset_end();
+    return ESP_OK;
 }
+
+#if SA_ENABLE_FACTORY_RESET
 
 /* ── Polling task ────────────────────────────────────────────────────────── */
 
@@ -105,11 +121,16 @@ static void factory_reset_task(void *arg)
         }
 
         if (hold_ms >= (uint32_t)CONFIG_SA_FACTORY_RESET_HOLD_MS) {
-            do_factory_reset(); /* never returns */
+            esp_err_t err = factory_reset_run();
+            if (err != ESP_OK) {
+                hold_ms = 0;
+                was_holding = false;
+                led_set_state(LED_STATE_ERROR);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
         }
     }
 }
-
 #endif /* SA_ENABLE_FACTORY_RESET */
 
 /* ── Public API ──────────────────────────────────────────────────────────── */

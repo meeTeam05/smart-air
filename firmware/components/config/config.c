@@ -13,10 +13,18 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 #include <ctype.h>
 #include <string.h>
 
 static const char *TAG = "config";
+
+static StaticSemaphore_t s_nvs_write_lock_buf;
+static SemaphoreHandle_t s_nvs_write_lock;
+static portMUX_TYPE s_guard_mux = portMUX_INITIALIZER_UNLOCKED;
+static volatile bool s_factory_reset_in_progress = false;
 
 /* Private namespace / key constants */
 
@@ -32,8 +40,91 @@ static const char *TAG = "config";
 static bool is_mac_format(const char *input);
 static bool copy_lowercase_mac(const char *input, char *out, size_t out_len);
 static esp_err_t copy_device_mac(char *out, size_t out_len);
+static bool is_supported_broker_uri(const char *broker_uri);
+static SemaphoreHandle_t ensure_nvs_write_lock(void);
 
 /* MQTT / device credential API */
+
+static SemaphoreHandle_t ensure_nvs_write_lock(void)
+{
+    if (s_nvs_write_lock != NULL) {
+        return s_nvs_write_lock;
+    }
+
+    portENTER_CRITICAL(&s_guard_mux);
+    if (s_nvs_write_lock == NULL) {
+        s_nvs_write_lock = xSemaphoreCreateMutexStatic(&s_nvs_write_lock_buf);
+    }
+    portEXIT_CRITICAL(&s_guard_mux);
+    return s_nvs_write_lock;
+}
+
+esp_err_t config_nvs_write_begin(void)
+{
+    SemaphoreHandle_t lock = ensure_nvs_write_lock();
+    if (lock == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (s_factory_reset_in_progress) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE) {
+        portENTER_CRITICAL(&s_guard_mux);
+        s_factory_reset_in_progress = false;
+        portEXIT_CRITICAL(&s_guard_mux);
+        return ESP_FAIL;
+    }
+
+    if (s_factory_reset_in_progress) {
+        xSemaphoreGive(lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return ESP_OK;
+}
+
+void config_nvs_write_end(void)
+{
+    if (s_nvs_write_lock != NULL) {
+        xSemaphoreGive(s_nvs_write_lock);
+    }
+}
+
+bool config_factory_reset_in_progress(void)
+{
+    return s_factory_reset_in_progress;
+}
+
+esp_err_t config_factory_reset_begin(void)
+{
+    SemaphoreHandle_t lock = ensure_nvs_write_lock();
+    if (lock == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    portENTER_CRITICAL(&s_guard_mux);
+    s_factory_reset_in_progress = true;
+    portEXIT_CRITICAL(&s_guard_mux);
+
+    if (xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE) {
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+void config_factory_reset_end(void)
+{
+    portENTER_CRITICAL(&s_guard_mux);
+    s_factory_reset_in_progress = false;
+    portEXIT_CRITICAL(&s_guard_mux);
+
+    if (s_nvs_write_lock != NULL) {
+        xSemaphoreGive(s_nvs_write_lock);
+    }
+}
 
 esp_err_t config_get_mqtt_creds(char *broker_uri_buf,
                                 size_t broker_uri_len,
@@ -51,28 +142,32 @@ esp_err_t config_get_mqtt_creds(char *broker_uri_buf,
     if (err == ESP_OK) {
         esp_err_t r = nvs_get_str(h, KEY_BROKER_URI, broker_uri_buf, &broker_uri_len);
         if (r == ESP_ERR_NVS_NOT_FOUND) {
-            strlcpy(broker_uri_buf, CONFIG_SA_MQTT_BROKER_URI, broker_uri_len);
+            strlcpy(broker_uri_buf, SA_MQTT_BROKER_URI, broker_uri_len);
+            ESP_LOGI(TAG, "broker_uri using Kconfig default: %s", broker_uri_buf);
         } else if (r != ESP_OK) {
             ESP_LOGE(TAG, "read broker_uri failed: %s", esp_err_to_name(r));
             nvs_close(h);
             return r;
+        } else {
+            ESP_LOGI(TAG, "broker_uri loaded from NVS: %s", broker_uri_buf);
         }
     } else {
-        strlcpy(broker_uri_buf, CONFIG_SA_MQTT_BROKER_URI, broker_uri_len);
+        strlcpy(broker_uri_buf, SA_MQTT_BROKER_URI, broker_uri_len);
+        ESP_LOGI(TAG, "broker_uri using Kconfig default: %s", broker_uri_buf);
     }
 
     /* secret_key — NVS first, fall back to Kconfig */
     if (err == ESP_OK) {
         esp_err_t r = nvs_get_str(h, KEY_SECRET_KEY, secret_key_buf, &secret_key_len);
         if (r == ESP_ERR_NVS_NOT_FOUND) {
-            strlcpy(secret_key_buf, CONFIG_SA_MQTT_SECRET_KEY, secret_key_len);
+            strlcpy(secret_key_buf, SA_MQTT_SECRET_KEY, secret_key_len);
         } else if (r != ESP_OK) {
             ESP_LOGE(TAG, "read secret_key failed: %s", esp_err_to_name(r));
             nvs_close(h);
             return r;
         }
     } else {
-        strlcpy(secret_key_buf, CONFIG_SA_MQTT_SECRET_KEY, secret_key_len);
+        strlcpy(secret_key_buf, SA_MQTT_SECRET_KEY, secret_key_len);
     }
 
     if (err == ESP_OK) {
@@ -98,14 +193,20 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
         || secret_key[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
-    if (broker_uri != NULL && broker_uri[0] != '\0' && strncmp(broker_uri, "mqtts://", 8) != 0) {
+    if (!is_supported_broker_uri(broker_uri)) {
         return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t guard_err = config_nvs_write_begin();
+    if (guard_err != ESP_OK) {
+        return guard_err;
     }
 
     nvs_handle_t h;
     esp_err_t err = nvs_open(NS_DEVICE, NVS_READWRITE, &h);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "nvs_open(%s) failed: %s", NS_DEVICE, esp_err_to_name(err));
+        config_nvs_write_end();
         return err;
     }
 
@@ -114,6 +215,15 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "set broker_uri failed: %s", esp_err_to_name(err));
             nvs_close(h);
+            config_nvs_write_end();
+            return err;
+        }
+    } else {
+        err = nvs_erase_key(h, KEY_BROKER_URI);
+        if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGE(TAG, "clear broker_uri failed: %s", esp_err_to_name(err));
+            nvs_close(h);
+            config_nvs_write_end();
             return err;
         }
     }
@@ -122,6 +232,7 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGE(TAG, "erase legacy device_id failed: %s", esp_err_to_name(err));
         nvs_close(h);
+        config_nvs_write_end();
         return err;
     }
 
@@ -129,6 +240,7 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "set secret_key failed: %s", esp_err_to_name(err));
         nvs_close(h);
+        config_nvs_write_end();
         return err;
     }
 
@@ -138,6 +250,7 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
     }
 
     nvs_close(h);
+    config_nvs_write_end();
     return err;
 }
 
@@ -195,6 +308,15 @@ static esp_err_t copy_device_mac(char *out, size_t out_len)
     return ESP_OK;
 }
 
+static bool is_supported_broker_uri(const char *broker_uri)
+{
+    if (broker_uri == NULL || broker_uri[0] == '\0') {
+        return true;
+    }
+
+    return strncmp(broker_uri, "mqtts://", 8) == 0 || strncmp(broker_uri, "wss://", 6) == 0;
+}
+
 /* Gas sensor R0 persistence */
 
 esp_err_t config_load_gas_r0(const char *sensor_name, float *r0, bool *calibrated)
@@ -235,10 +357,16 @@ esp_err_t config_save_gas_r0(const char *sensor_name, float r0)
 {
     const char *key = (sensor_name[0] == 'c') ? KEY_R0_CO : KEY_R0_NO2;
 
+    esp_err_t guard_err = config_nvs_write_begin();
+    if (guard_err != ESP_OK) {
+        return guard_err;
+    }
+
     nvs_handle_t h;
     esp_err_t err = nvs_open(NS_DEVICE, NVS_READWRITE, &h);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "save_gas_r0(%s): nvs_open failed: %s", sensor_name, esp_err_to_name(err));
+        config_nvs_write_end();
         return err;
     }
 
@@ -247,6 +375,7 @@ esp_err_t config_save_gas_r0(const char *sensor_name, float r0)
         err = nvs_commit(h);
     }
     nvs_close(h);
+    config_nvs_write_end();
 
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "save_gas_r0(%s): R0 = %.0f ohm saved", sensor_name, r0);
@@ -265,20 +394,27 @@ void config_self_test(void)
 
     /* Use a dedicated test namespace to avoid polluting production data */
     const char *NS_TEST = "config_test";
-    const char *TEST_BROKER = "mqtts://mqtt.minhnhat05.xyz:8883";
+    const char *TEST_BROKER = "wss://minhnhat05.xyz/mqtt";
     const char *TEST_SECRET = "test-secret-99";
 
     /* --- Write --- */
+    esp_err_t guard_err = config_nvs_write_begin();
+    if (guard_err != ESP_OK) {
+        ESP_LOGE(TAG, "Self-test FAIL: nvs write lock: %s", esp_err_to_name(guard_err));
+        return;
+    }
     nvs_handle_t h;
     esp_err_t err = nvs_open(NS_TEST, NVS_READWRITE, &h);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Self-test FAIL: nvs_open: %s", esp_err_to_name(err));
+        config_nvs_write_end();
         return;
     }
     nvs_set_str(h, KEY_BROKER_URI, TEST_BROKER);
     nvs_set_str(h, KEY_SECRET_KEY, TEST_SECRET);
     nvs_commit(h);
     nvs_close(h);
+    config_nvs_write_end();
 
     /* --- Read back --- */
     char broker_buf[128] = {0};
@@ -304,11 +440,17 @@ void config_self_test(void)
     }
 
     /* --- Erase test namespace --- */
+    guard_err = config_nvs_write_begin();
+    if (guard_err != ESP_OK) {
+        ESP_LOGE(TAG, "Self-test FAIL: nvs erase lock: %s", esp_err_to_name(guard_err));
+        return;
+    }
     err = nvs_open(NS_TEST, NVS_READWRITE, &h);
     if (err == ESP_OK) {
         nvs_erase_all(h);
         nvs_commit(h);
         nvs_close(h);
     }
+    config_nvs_write_end();
 }
 #endif /* CONFIG_SA_CONFIG_SELF_TEST */

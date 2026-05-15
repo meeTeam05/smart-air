@@ -91,16 +91,37 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
     {0}, /* terminator */
 };
 
-static void save_credentials(const char *ssid, const char *password)
+static esp_err_t save_credentials(const char *ssid, const char *password)
 {
+    esp_err_t guard_err = config_nvs_write_begin();
+    if (guard_err != ESP_OK) {
+        ESP_LOGW(TAG, "Skipping NVS save during factory reset (%s)", esp_err_to_name(guard_err));
+        return guard_err;
+    }
+
     nvs_handle_t h;
-    ESP_ERROR_CHECK(nvs_open(SA_NVS_WIFI_NAMESPACE, NVS_READWRITE, &h));
-    ESP_ERROR_CHECK(nvs_set_str(h, SA_NVS_KEY_SSID, ssid));
-    ESP_ERROR_CHECK(nvs_set_str(h, SA_NVS_KEY_PASS, password));
-    ESP_ERROR_CHECK(nvs_set_u8(h, SA_NVS_KEY_DONE, 1));
-    ESP_ERROR_CHECK(nvs_commit(h));
+    esp_err_t err = nvs_open(SA_NVS_WIFI_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        config_nvs_write_end();
+        return err;
+    }
+
+    err = nvs_set_str(h, SA_NVS_KEY_SSID, ssid);
+    if (err == ESP_OK) {
+        err = nvs_set_str(h, SA_NVS_KEY_PASS, password);
+    }
+    if (err == ESP_OK) {
+        err = nvs_set_u8(h, SA_NVS_KEY_DONE, 1);
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
     nvs_close(h);
-    ESP_LOGI(TAG, "Credentials saved to NVS");
+    config_nvs_write_end();
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Credentials saved to NVS");
+    }
+    return err;
 }
 
 static int prov_chr_access(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -171,8 +192,14 @@ static void prov_task(void *arg)
         snprintf(mac_str, sizeof(mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         snprintf(json, sizeof(json), "{\"ip\":\"%s\",\"device_id\":\"%s\",\"status\":\"ok\"}", ip, mac_str);
-        save_credentials(s_ssid, s_password);
-        ESP_LOGI(TAG, "Provisioning OK — IP: %s", ip);
+        esp_err_t save_err = save_credentials(s_ssid, s_password);
+        if (save_err != ESP_OK) {
+            err = save_err;
+            snprintf(json, sizeof(json), "{\"status\":\"fail\"}");
+            ESP_LOGW(TAG, "Provisioning NVS save failed: %s", esp_err_to_name(save_err));
+        } else {
+            ESP_LOGI(TAG, "Provisioning OK — IP: %s", ip);
+        }
     } else {
         snprintf(json, sizeof(json), "{\"status\":\"fail\"}");
         ESP_LOGW(TAG, "WiFi connect failed: %s", esp_err_to_name(err));
@@ -362,14 +389,24 @@ esp_err_t ble_prov_load_credentials(char *ssid_buf, size_t ssid_len, char *pass_
 
 esp_err_t ble_prov_reset(void)
 {
+    esp_err_t guard_err = config_nvs_write_begin();
+    if (guard_err != ESP_OK) {
+        return guard_err;
+    }
+
     nvs_handle_t h;
     esp_err_t err = nvs_open(SA_NVS_WIFI_NAMESPACE, NVS_READWRITE, &h);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        config_nvs_write_end();
         return err;
+    }
 
     nvs_erase_all(h);
-    nvs_commit(h);
+    err = nvs_commit(h);
     nvs_close(h);
-    ESP_LOGI(TAG, "Provisioning credentials cleared");
-    return ESP_OK;
+    config_nvs_write_end();
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Provisioning credentials cleared");
+    }
+    return err;
 }

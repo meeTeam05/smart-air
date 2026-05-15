@@ -4,3 +4,6 @@
 #   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig;sdkconfig.demo" -D SDKCONFIG=sdkconfig.demo.active build
 
 CONFIG_SA_DEMO_NO_PERIPHERALS=y
+CONFIG_SA_ENABLE_RELAYS=y
+CONFIG_SA_CUSTOM_DNS_SERVER="1.1.1.1"
+CONFIG_SA_MQTT_BROKER_URI="wss://minhnhat05.xyz/mqtt"

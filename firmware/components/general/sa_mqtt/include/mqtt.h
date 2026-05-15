@@ -56,7 +56,7 @@ void mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb);
  * Returns immediately after the task is created — the actual TCP/TLS
  * connection happens in the background.
  *
- * @param broker_uri  Full broker URI, e.g. "mqtts://mqtt.minhnhat05.xyz:8883"
+ * @param broker_uri  Full broker URI, e.g. "wss://minhnhat05.xyz/mqtt"
  * @param device_id   MQTT client ID / username. Must be the lowercase
  *                    Wi-Fi STA MAC resolved by config_get_device_id().
  * @param secret_key  Per-device MQTT password (stored in NVS / Kconfig).

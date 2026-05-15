@@ -19,32 +19,33 @@
 #define DEVICE_NAME "SMART_AIR"
 
 /** Firmware version string */
-#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
+#define FIRMWARE_VERSION     CONFIG_FIRMWARE_VERSION
+#define SA_MQTT_BROKER_URI   CONFIG_SA_MQTT_BROKER_URI
+#define SA_MQTT_SECRET_KEY   CONFIG_SA_MQTT_SECRET_KEY
+#define SA_CUSTOM_DNS_SERVER CONFIG_SA_CUSTOM_DNS_SERVER
+
+#define SA_ENABLE_LED           CONFIG_SA_ENABLE_LED
+#define SA_ENABLE_FACTORY_RESET CONFIG_SA_ENABLE_FACTORY_RESET
+#define SA_ENABLE_RELAYS        CONFIG_SA_ENABLE_RELAYS
 
 #define SA_DEMO_NO_PERIPHERALS CONFIG_SA_DEMO_NO_PERIPHERALS
 
 #if CONFIG_SA_DEMO_NO_PERIPHERALS
-#define SA_ENABLE_SHT3X         0
-#define SA_ENABLE_DS3231        0
-#define SA_ENABLE_CO_SENSOR     0
-#define SA_ENABLE_NO2_SENSOR    0
-#define SA_ENABLE_ILI9225       0
-#define SA_ENABLE_SD_CARD       0
-#define SA_ENABLE_RELAYS        0
-#define SA_ENABLE_BUZZER        0
-#define SA_ENABLE_LED           0
-#define SA_ENABLE_FACTORY_RESET 0
+#define SA_ENABLE_SHT3X      0
+#define SA_ENABLE_DS3231     0
+#define SA_ENABLE_CO_SENSOR  0
+#define SA_ENABLE_NO2_SENSOR 0
+#define SA_ENABLE_ILI9225    0
+#define SA_ENABLE_SD_CARD    0
+#define SA_ENABLE_BUZZER     0
 #else
-#define SA_ENABLE_SHT3X         CONFIG_SA_ENABLE_SHT3X
-#define SA_ENABLE_DS3231        CONFIG_SA_ENABLE_DS3231
-#define SA_ENABLE_CO_SENSOR     CONFIG_SA_ENABLE_CO_SENSOR
-#define SA_ENABLE_NO2_SENSOR    CONFIG_SA_ENABLE_NO2_SENSOR
-#define SA_ENABLE_ILI9225       CONFIG_SA_ENABLE_ILI9225
-#define SA_ENABLE_SD_CARD       CONFIG_SA_ENABLE_SD_CARD
-#define SA_ENABLE_RELAYS        CONFIG_SA_ENABLE_RELAYS
-#define SA_ENABLE_BUZZER        CONFIG_SA_ENABLE_BUZZER
-#define SA_ENABLE_LED           CONFIG_SA_ENABLE_LED
-#define SA_ENABLE_FACTORY_RESET CONFIG_SA_ENABLE_FACTORY_RESET
+#define SA_ENABLE_SHT3X      CONFIG_SA_ENABLE_SHT3X
+#define SA_ENABLE_DS3231     CONFIG_SA_ENABLE_DS3231
+#define SA_ENABLE_CO_SENSOR  CONFIG_SA_ENABLE_CO_SENSOR
+#define SA_ENABLE_NO2_SENSOR CONFIG_SA_ENABLE_NO2_SENSOR
+#define SA_ENABLE_ILI9225    CONFIG_SA_ENABLE_ILI9225
+#define SA_ENABLE_SD_CARD    CONFIG_SA_ENABLE_SD_CARD
+#define SA_ENABLE_BUZZER     CONFIG_SA_ENABLE_BUZZER
 #endif
 
 /** Sensor polling interval (in seconds) */
@@ -78,6 +79,20 @@
 /* NVS credential API */
 
 /**
+ * @brief Shared guard for NVS writes and factory reset erase coordination.
+ *
+ * Call config_nvs_write_begin() before any NVS write/erase and
+ * config_nvs_write_end() afterwards. Factory reset uses the matching
+ * config_factory_reset_begin()/end() pair to block writers while the full
+ * default NVS partition is erased.
+ */
+esp_err_t config_nvs_write_begin(void);
+void config_nvs_write_end(void);
+bool config_factory_reset_in_progress(void);
+esp_err_t config_factory_reset_begin(void);
+void config_factory_reset_end(void);
+
+/**
  * @brief Read MQTT credentials from NVS (namespace "device").
  *
  * @param broker_uri_buf  Output buffer for broker URI — at least 128 bytes.
@@ -108,7 +123,7 @@ esp_err_t config_get_device_id(char *out, size_t out_len);
 /**
  * @brief Write MQTT broker override and secret key to NVS and commit.
  *
- * @param broker_uri  Optional broker URI override. Pass NULL or "" to keep the existing/default URI.
+ * @param broker_uri  Optional broker URI override. Pass NULL or "" to clear any stored override and use Kconfig default.
  * @param device_id   Null-terminated device ID string in MAC format. Must match the device STA MAC.
  * @param secret_key  Null-terminated per-device MQTT secret from the server.
  *

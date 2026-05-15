@@ -132,10 +132,16 @@ static esp_err_t publish_mode_on_shadow(void)
 
 static esp_err_t persist_mode(bool on)
 {
+    esp_err_t guard_err = config_nvs_write_begin();
+    if (guard_err != ESP_OK) {
+        return guard_err;
+    }
+
     nvs_handle_t h;
     esp_err_t err = nvs_open(DEVICE_MODE_NVS_NAMESPACE, NVS_READWRITE, &h);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "nvs_open(%s) failed: %s", DEVICE_MODE_NVS_NAMESPACE, esp_err_to_name(err));
+        config_nvs_write_end();
         return err;
     }
 
@@ -143,6 +149,7 @@ static esp_err_t persist_mode(bool on)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "nvs_set_u8(%s) failed: %s", DEVICE_MODE_NVS_KEY, esp_err_to_name(err));
         nvs_close(h);
+        config_nvs_write_end();
         return err;
     }
 
@@ -152,6 +159,7 @@ static esp_err_t persist_mode(bool on)
     }
 
     nvs_close(h);
+    config_nvs_write_end();
     return err;
 }
 
