@@ -60,6 +60,14 @@ Skip it for:
 - Quick factual answers
 - Tiny changes that do not need persistent tracking
 
+## Task Intake
+
+Classify the work before execution:
+
+- `tiny`: skip this skill and patch directly unless the user explicitly wants persistent tracking
+- `normal`: use the standard plan/progress/findings workflow
+- `high-risk`: require locked decisions, validation evidence, and explicit exit criteria before implementation
+
 ## Required Workflow
 
 Apply this workflow only when file writes are allowed.
@@ -67,10 +75,12 @@ Apply this workflow only when file writes are allowed.
 1. Create `task_plan.md` first
 2. Create `findings.md`
 3. Create `progress.md`
-4. Re-read the plan before major decisions
-5. Update `progress.md` after meaningful work
-6. Update phase status in `task_plan.md`
-7. Log errors instead of retrying the same failed action silently
+4. Lock key assumptions and decisions for ambiguous or high-risk work
+5. Validate the approach against real repo evidence before execution starts
+6. Re-read the plan before major decisions
+7. Update `progress.md` after meaningful work
+8. Update phase status in `task_plan.md`
+9. Log errors instead of retrying the same failed action silently
 
 ## Rules
 
@@ -81,6 +91,24 @@ Do not start a complex task without a plan.
 ### Read before deciding
 
 Before major changes or direction shifts, read the active `task_plan.md`.
+
+### Validate before executing
+
+For ambiguous, cross-stack, or high-risk work, record:
+
+- locked decisions
+- validation evidence from code, docs, tests, or runtime checks
+- exit criteria for the current phase or story
+
+Do not begin implementation until those items are clear enough to execute without guessing.
+
+### Close cleanly
+
+Before considering the task complete, make sure:
+
+- the current phase outcome is clear
+- validation run or validation gaps are recorded
+- docs or contracts changed by the work are updated or explicitly called out
 
 ### Update after acting
 

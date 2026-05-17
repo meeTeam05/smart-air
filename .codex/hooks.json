@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh .codex/hooks/session-start.sh 2>/dev/null || true",
+            "command": "sh .codex/hooks/run-hook.sh SessionStart sh .codex/hooks/session-start.sh",
             "statusMessage": "Loading planning context"
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh .codex/hooks/user-prompt-submit.sh 2>/dev/null || true"
+            "command": "sh .codex/hooks/run-hook.sh UserPromptSubmit sh .codex/hooks/user-prompt-submit.sh"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .codex/hooks/pre_tool_use.py 2>/dev/null || true",
+            "command": "sh .codex/hooks/run-hook.sh PreToolUse python3 .codex/hooks/pre_tool_use.py",
             "statusMessage": "Checking plan before Bash"
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .codex/hooks/post_tool_use.py 2>/dev/null || true",
+            "command": "sh .codex/hooks/run-hook.sh PostToolUse python3 .codex/hooks/post_tool_use.py",
             "statusMessage": "Reviewing Bash against plan"
           }
         ]
@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .codex/hooks/stop.py 2>/dev/null || true",
+            "command": "sh .codex/hooks/run-hook.sh Stop python3 .codex/hooks/stop.py",
             "timeout": 30
           }
         ]

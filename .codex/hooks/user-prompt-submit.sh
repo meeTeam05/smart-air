@@ -1,24 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 
-HOOK_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
-PLAN_DIR="$(sh "${HOOK_DIR}/resolve-plan-dir.sh" 2>/dev/null)"
-PLAN_FILE="${PLAN_DIR:+${PLAN_DIR}/}task_plan.md"
-PROGRESS_FILE="${PLAN_DIR:+${PLAN_DIR}/}progress.md"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
 
-if [ -d ".planning/sessions" ]; then
-    SESSION_ID="${PWF_SESSION_ID:-}"
-    if [ -z "$SESSION_ID" ] || [ ! -f ".planning/sessions/${SESSION_ID}.attached" ]; then
-        exit 0
-    fi
-fi
+[ -n "$PYTHON_BIN" ] || exit 0
 
-if [ -f "$PLAN_FILE" ]; then
-    echo "[planning-with-files] ACTIVE PLAN - current state:"
-    head -50 "$PLAN_FILE"
-    echo ""
-    echo "=== recent progress ==="
-    tail -20 "$PROGRESS_FILE" 2>/dev/null
-    echo ""
-    echo "[planning-with-files] Read findings.md for research context. Continue from the current phase."
-fi
+"$PYTHON_BIN" "$SCRIPT_DIR/render-planning-context.py" --mode user-prompt "$(pwd)"
 exit 0
