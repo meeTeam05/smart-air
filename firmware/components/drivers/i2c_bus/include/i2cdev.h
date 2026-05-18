@@ -76,7 +76,11 @@ typedef struct {
  * @param[in] scl_gpio GPIO pin for SCL
  * @param[in] clk_speed I2C clock speed in Hz
  *
- * @return ESP_OK on success, otherwise error code
+ * @return ESP_OK on success.
+ *         Repeated calls with the same configuration are idempotent.
+ *         Repeated calls with a different configuration return
+ *         ESP_ERR_INVALID_STATE because this driver currently supports one
+ *         active bus instance.
  */
 esp_err_t i2c_bus_init(int port, gpio_num_t sda_gpio, gpio_num_t scl_gpio, uint32_t clk_speed);
 
