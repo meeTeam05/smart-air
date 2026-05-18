@@ -219,6 +219,16 @@ esp_err_t device_mode_init(const char *device_id)
     s_mode_on = persisted_mode_on;
     sensor_task_set_enabled(s_mode_on);
 
+#if SA_ENABLE_RELAYS
+    if (!persisted_mode_on) {
+        err = relay_force_all_off();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "relay_force_all_off failed during OFF-mode init: %s", esp_err_to_name(err));
+            return err;
+        }
+    }
+#endif
+
     ESP_LOGI(TAG, "init OK (mode=%s)", s_mode_on ? "on" : "off");
     return ESP_OK;
 }
@@ -230,13 +240,10 @@ esp_err_t device_mode_set(bool on)
     }
 
     esp_err_t first_err = ESP_OK;
+    esp_err_t err;
 
     if (!on) {
-        s_mode_on = false;
-
-        sensor_task_set_enabled(false);
-
-        esp_err_t err = publish_final_null_telemetry();
+        err = publish_final_null_telemetry();
         if (err != ESP_OK && first_err == ESP_OK) {
             first_err = err;
         }
@@ -258,21 +265,27 @@ esp_err_t device_mode_set(bool on)
             first_err = err;
         }
 
+        if (first_err == ESP_OK) {
+            s_mode_on = false;
+            sensor_task_set_enabled(false);
+        }
+
         return first_err;
     }
 
-    s_mode_on = true;
-
-    esp_err_t err = persist_mode(true);
+    err = persist_mode(true);
     if (err != ESP_OK && first_err == ESP_OK) {
         first_err = err;
     }
-
-    sensor_task_set_enabled(true);
 
     err = publish_mode_on_shadow();
     if (err != ESP_OK && first_err == ESP_OK) {
         first_err = err;
+    }
+
+    if (first_err == ESP_OK) {
+        s_mode_on = true;
+        sensor_task_set_enabled(true);
     }
 
     return first_err;

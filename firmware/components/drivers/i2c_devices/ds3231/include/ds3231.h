@@ -17,6 +17,9 @@
 
 #define DS3231_ADDR 0x68  //!< I2C address
 
+#define ESP_ERR_DS3231_BASE            0x7000
+#define ESP_ERR_DS3231_OSCILLATOR_STOP (ESP_ERR_DS3231_BASE + 0x01)
+
 /* Exported types ----------------------------------------------------------- */
 
 /**
@@ -108,7 +111,8 @@ esp_err_t ds3231_set_time(ds3231_t *dev, struct tm *time);
  * @param[in] dev Device descriptor
  * @param[out] time Pointer to tm struct to populate with RTC time
  *
- * @return ESP_OK on success, error code otherwise
+ * @return ESP_OK on success, ESP_ERR_DS3231_OSCILLATOR_STOP if the RTC lost
+ *         time validity, or another error code otherwise
  */
 esp_err_t ds3231_get_time(ds3231_t *dev, struct tm *time);
 

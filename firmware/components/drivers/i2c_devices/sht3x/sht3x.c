@@ -439,11 +439,13 @@ static esp_err_t get_raw_data_nolock(sht3x_t *dev, sht3x_raw_data_t raw_data)
         return ESP_ERR_INVALID_STATE;
     }
 
-    /* send fetch data command first */
-    uint16_t cmd = shuffle(SHT3X_FETCH_DATA_CMD);
-    CHECK(i2c_dev_write(&dev->i2c_dev, &cmd, 2));
+    if (dev->mode != SHT3X_SINGLE_SHOT) {
+        /* Periodic mode requires FETCH_DATA before readout. */
+        uint16_t cmd = shuffle(SHT3X_FETCH_DATA_CMD);
+        CHECK(i2c_dev_write(&dev->i2c_dev, &cmd, 2));
+    }
 
-    /* then read raw data */
+    /* Single-shot reads data directly after conversion delay. */
     CHECK(i2c_dev_read(&dev->i2c_dev, raw_data, sizeof(sht3x_raw_data_t)));
 
     /* reset first measurement flag */

@@ -119,6 +119,29 @@ esp_err_t i2c_dev_create_mutex(i2c_dev_t *dev)
 }
 
 /**
+ * @brief Take mutex for I2C device
+ */
+esp_err_t i2c_dev_take_mutex(i2c_dev_t *dev)
+{
+    if (!dev) {
+        ESP_LOGE(TAG, "Device descriptor is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (dev->mutex == NULL) {
+        ESP_LOGE(TAG, "Mutex not initialized for device 0x%02x", dev->addr);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (xSemaphoreTake(dev->mutex, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to take mutex for device 0x%02x", dev->addr);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return ESP_OK;
+}
+
+/**
  * @brief Delete mutex for I2C device
  */
 esp_err_t i2c_dev_delete_mutex(i2c_dev_t *dev)

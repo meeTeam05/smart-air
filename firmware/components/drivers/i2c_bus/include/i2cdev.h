@@ -22,10 +22,12 @@
 /**
  * @brief Mutex management macros
  */
-#define I2C_DEV_TAKE_MUTEX(dev)                          \
-    do {                                                 \
-        if ((dev)->mutex)                                \
-            xSemaphoreTake((dev)->mutex, portMAX_DELAY); \
+#define I2C_DEV_TAKE_MUTEX(dev)                   \
+    do {                                          \
+        esp_err_t __err = i2c_dev_take_mutex(dev); \
+        if (__err != ESP_OK) {                    \
+            return __err;                         \
+        }                                         \
     } while (0)
 
 /**
@@ -95,6 +97,15 @@ esp_err_t i2c_dev_init(i2c_dev_t *dev);
  * @return ESP_OK on success
  */
 esp_err_t i2c_dev_create_mutex(i2c_dev_t *dev);
+
+/**
+ * @brief Take mutex for I2C device
+ *
+ * @param[in] dev Device descriptor
+ *
+ * @return ESP_OK on success, otherwise error code
+ */
+esp_err_t i2c_dev_take_mutex(i2c_dev_t *dev);
 
 /**
  * @brief Delete mutex for I2C device

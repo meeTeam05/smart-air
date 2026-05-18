@@ -252,6 +252,11 @@ bool sensor_task_get_enabled(void)
 
 esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231, gm702b_t *co, gm102b_t *no2, const char *device_id)
 {
+    if (device_id == NULL || device_id[0] == '\0') {
+        ESP_LOGE(TAG, "sensor_task_start requires non-empty device_id");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     static sensor_task_arg_t ctx;
     ctx.sht3x = sht3x;
     ctx.ds3231 = ds3231;

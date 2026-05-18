@@ -122,6 +122,16 @@ static inline int days_since_january_1st(int year, int month, int day);
 static esp_err_t ds3231_get_flag(ds3231_t *dev, uint8_t addr, uint8_t mask, uint8_t *flag);
 
 /**
+ * @brief Check whether the RTC oscillator-stop flag is set
+ *
+ * @param[in] dev Device descriptor
+ *
+ * @return ESP_OK when RTC time is valid, ESP_ERR_DS3231_OSCILLATOR_STOP when
+ *         the RTC lost time validity, or another error code otherwise
+ */
+static esp_err_t ds3231_check_oscillator_stop(ds3231_t *dev);
+
+/**
  * @brief Set or clear specific bits in a register
  *
  * @param[in] dev Device descriptor
@@ -226,6 +236,7 @@ esp_err_t ds3231_set_time(ds3231_t *dev, struct tm *time)
              time->tm_sec);
 
     CHECK(i2c_dev_write_reg(&dev->i2c_dev, DS3231_ADDR_TIME, data, 7));
+    CHECK(ds3231_set_flag(dev, DS3231_ADDR_STATUS, DS3231_STAT_OSCILLATOR, DS3231_CLEAR));
 
     ESP_LOGD(TAG, "Time set successfully");
     return ESP_OK;
@@ -381,6 +392,7 @@ esp_err_t ds3231_disable_alarm_ints(ds3231_t *dev, ds3231_alarm_t alarms)
 esp_err_t ds3231_get_time(ds3231_t *dev, struct tm *time)
 {
     CHECK_ARG(dev && time);
+    CHECK(ds3231_check_oscillator_stop(dev));
 
     uint8_t data[7];
 
@@ -555,6 +567,21 @@ static esp_err_t ds3231_get_flag(ds3231_t *dev, uint8_t addr, uint8_t mask, uint
     /* return only requested flag */
     *flag = (data & mask);
     ESP_LOGD(TAG, "Read flag from addr 0x%02x: 0x%02x (mask 0x%02x)", addr, *flag, mask);
+    return ESP_OK;
+}
+
+static esp_err_t ds3231_check_oscillator_stop(ds3231_t *dev)
+{
+    uint8_t flag = 0;
+    esp_err_t res = ds3231_get_flag(dev, DS3231_ADDR_STATUS, DS3231_STAT_OSCILLATOR, &flag);
+    if (res != ESP_OK) {
+        return res;
+    }
+    if (flag != 0) {
+        ESP_LOGW(TAG, "RTC oscillator-stop flag is set; time data is invalid until rewritten");
+        return ESP_ERR_DS3231_OSCILLATOR_STOP;
+    }
+
     return ESP_OK;
 }
 
