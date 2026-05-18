@@ -167,7 +167,7 @@ esp_err_t httpd_server_start(const char *device_id, const char *ip)
     /* HTTP server */
     httpd_handle_t server = NULL;
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-    cfg.server_port = CONFIG_SA_HTTPD_PORT;
+    cfg.server_port = SA_HTTPD_PORT;
 
     esp_err_t err = httpd_start(&server, &cfg);
     if (err != ESP_OK) {
@@ -178,6 +178,6 @@ esp_err_t httpd_server_start(const char *device_id, const char *ip)
     httpd_register_uri_handler(server, &uri_info);
     httpd_register_uri_handler(server, &uri_config);
 
-    ESP_LOGI(TAG, "HTTP server started on port %d (device: %s)", CONFIG_SA_HTTPD_PORT, device_id);
+    ESP_LOGI(TAG, "HTTP server started on port %d (device: %s)", SA_HTTPD_PORT, device_id);
     return ESP_OK;
 }

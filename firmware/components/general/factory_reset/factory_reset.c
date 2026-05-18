@@ -116,11 +116,10 @@ static void factory_reset_task(void *arg)
             saved_state = led_get_state();
             was_holding = true;
             led_set_state(LED_STATE_FACTORY_RESET);
-            ESP_LOGI(
-                TAG, "Hold detected — keep holding for factory reset (%d ms total)", CONFIG_SA_FACTORY_RESET_HOLD_MS);
+            ESP_LOGI(TAG, "Hold detected — keep holding for factory reset (%d ms total)", SA_FACTORY_RESET_HOLD_MS);
         }
 
-        if (hold_ms >= (uint32_t)CONFIG_SA_FACTORY_RESET_HOLD_MS) {
+        if (hold_ms >= (uint32_t)SA_FACTORY_RESET_HOLD_MS) {
             esp_err_t err = factory_reset_run();
             if (err != ESP_OK) {
                 hold_ms = 0;
@@ -160,7 +159,7 @@ esp_err_t factory_reset_init(gpio_num_t gpio)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "init OK (GPIO%d, hold=%d ms)", gpio, CONFIG_SA_FACTORY_RESET_HOLD_MS);
+    ESP_LOGI(TAG, "init OK (GPIO%d, hold=%d ms)", gpio, SA_FACTORY_RESET_HOLD_MS);
     return ESP_OK;
 #else
     (void)gpio;

@@ -289,10 +289,10 @@ static void on_sync(void)
 {
     ble_hs_id_infer_auto(0, &s_own_addr_type);
 
-    /* Build name: DEVICE_NAME + last 3 MAC bytes */
+    /* Build name: SA_PROV_NAME_PREFIX + last 3 MAC bytes */
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    snprintf(s_device_name, sizeof(s_device_name), DEVICE_NAME "_%02X%02X%02X", mac[3], mac[4], mac[5]);
+    snprintf(s_device_name, sizeof(s_device_name), SA_PROV_NAME_PREFIX "_%02X%02X%02X", mac[3], mac[4], mac[5]);
     ble_svc_gap_device_name_set(s_device_name);
 
     start_advertise();

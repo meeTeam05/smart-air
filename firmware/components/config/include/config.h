@@ -15,18 +15,24 @@
 
 /* Compile-time constants */
 
-/** BLE advertising name (base, without MAC suffix) */
-#define DEVICE_NAME "SMART_AIR"
-
 /** Firmware version string */
-#define FIRMWARE_VERSION     CONFIG_FIRMWARE_VERSION
+#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
+
+/** BLE advertising name prefix (without MAC suffix) */
+#define SA_PROV_NAME_PREFIX CONFIG_SA_PROV_NAME_PREFIX
+
+/** MQTT configuration */
 #define SA_MQTT_BROKER_URI   CONFIG_SA_MQTT_BROKER_URI
 #define SA_MQTT_SECRET_KEY   CONFIG_SA_MQTT_SECRET_KEY
 #define SA_CUSTOM_DNS_SERVER CONFIG_SA_CUSTOM_DNS_SERVER
+#define SA_HTTPD_PORT        CONFIG_SA_HTTPD_PORT
 
 #define SA_ENABLE_LED           CONFIG_SA_ENABLE_LED
 #define SA_ENABLE_FACTORY_RESET CONFIG_SA_ENABLE_FACTORY_RESET
 #define SA_ENABLE_RELAYS        CONFIG_SA_ENABLE_RELAYS
+
+#define SA_FACTORY_RESET_PIN     CONFIG_SA_FACTORY_RESET_PIN
+#define SA_FACTORY_RESET_HOLD_MS CONFIG_SA_FACTORY_RESET_HOLD_MS
 
 #define SA_DEMO_NO_PERIPHERALS CONFIG_SA_DEMO_NO_PERIPHERALS
 
@@ -67,7 +73,7 @@
 #define SA_GAS_SENSOR_RL_OHM 10000.0f
 #define SA_GAS_SENSOR_VC_V   3.3f
 
-/** Onboard RGB LED (WS2812 at GPIO38 on DevKitC-1) */
+/** Onboard RGB LED */
 #define SA_LED_PIN CONFIG_SA_LED_PIN
 
 /** NVS namespace + keys for Wi-Fi provisioning (shared with ble_prov.c) */

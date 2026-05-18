@@ -28,7 +28,7 @@ bool ble_prov_is_provisioned(void);
  * 
  * @note Start BLE GATT provisioning server and block until done.
  *
- * - Advertises as "SMART_AIR_<AABBCC>" (last 3 bytes of the Wi-Fi STA MAC)
+ * - Advertises as "<SA_PROV_NAME_PREFIX>_<AABBCC>" (last 3 bytes of the Wi-Fi STA MAC)
  * - Waits for client to write SSID + password
  * - Connects to Wi-Fi and notifies the result to the client
  * - On success: saves credentials to NVS namespace "wifi_prov"
