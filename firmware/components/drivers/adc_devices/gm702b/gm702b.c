@@ -186,7 +186,7 @@ esp_err_t gm702b_read(gm702b_t *dev, float *co_ppm)
     CHECK_ARG(dev && co_ppm);
 
     if (!dev->calibrated) {
-        ESP_LOGW(TAG, "Sensor not calibrated — returning raw ratio as ppm estimate");
+        ESP_LOGW(TAG, "Sensor not calibrated — ppm output will remain 0 until calibration completes");
     }
 
     int mv;
