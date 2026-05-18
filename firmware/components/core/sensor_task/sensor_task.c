@@ -28,6 +28,7 @@ static uint32_t s_telemetry_json_failures = 0;
 static uint32_t s_shadow_json_failures = 0;
 static uint32_t s_telemetry_publish_failures = 0;
 static uint32_t s_shadow_publish_failures = 0;
+static UBaseType_t s_sensor_task_min_stack_words = 0;
 
 typedef struct {
     bool has_payload;
@@ -93,6 +94,20 @@ static void flush_pending_payload(const char *stream, const char *topic, pending
         pending->payload[0] = '\0';
         ESP_LOGI(TAG, "%s retry flush succeeded", stream);
     }
+}
+
+static void log_stack_watermark_if_lower(void)
+{
+    UBaseType_t stack_words = uxTaskGetStackHighWaterMark(NULL);
+    if (s_sensor_task_min_stack_words != 0 && stack_words >= s_sensor_task_min_stack_words) {
+        return;
+    }
+
+    s_sensor_task_min_stack_words = stack_words;
+    ESP_LOGI(TAG,
+             "sensor_task stack watermark: %u words (%u bytes) free",
+             (unsigned)stack_words,
+             (unsigned)(stack_words * sizeof(StackType_t)));
 }
 
 #if SA_DEMO_NO_PERIPHERALS
@@ -298,6 +313,8 @@ static void sensor_task_fn(void *arg)
         } else {
             log_json_failure("shadow", "allocation", &s_shadow_json_failures);
         }
+
+        log_stack_watermark_if_lower();
     }
 }
 
