@@ -21,6 +21,9 @@
 static const char *TAG = "sensor_task";
 
 #define PENDING_PAYLOAD_MAX 256
+#define SENSOR_TASK_NAME     "sensor_task"
+#define SENSOR_TASK_STACK_SIZE 4096
+#define SENSOR_TASK_PRIORITY 5
 
 static portMUX_TYPE s_enabled_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_enabled = true;
@@ -361,8 +364,9 @@ esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231, gm702b_t *co, gm10
     ctx.no2 = no2;
     strlcpy(ctx.device_id, device_id, sizeof(ctx.device_id));
 
-    /* Per firmware task map: Core 1, Priority 5, 4096 B */
-    BaseType_t rc = xTaskCreatePinnedToCore(sensor_task_fn, "sensor_task", 4096, &ctx, 5, NULL, APP_CPU_NUM);
+    /* Per firmware task map: Core 1, named constants keep the intent explicit. */
+    BaseType_t rc = xTaskCreatePinnedToCore(
+        sensor_task_fn, SENSOR_TASK_NAME, SENSOR_TASK_STACK_SIZE, &ctx, SENSOR_TASK_PRIORITY, NULL, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed");
         return ESP_FAIL;

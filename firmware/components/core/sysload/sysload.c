@@ -45,6 +45,13 @@
 static const char *TAG = "sysload";
 static const uint32_t MIN_VALID_UNIX_TS = 946684800UL;
 
+#define SYSLOAD_BOOT_RESTART_DELAY_MS      2000
+#define SYSLOAD_PROVISION_RESTART_DELAY_MS 5000
+#define CALIBRATION_TASK_QUEUE_LEN         2
+#define CALIBRATION_TASK_STACK_SIZE        4096
+#define CALIBRATION_TASK_PRIORITY          3
+#define CALIBRATION_TASK_NAME              "calibration_task"
+
 static int build_month_index(const char *month)
 {
     static const char *months[] = {
@@ -204,13 +211,14 @@ static esp_err_t calibration_task_start(void)
         return ESP_OK;
     }
 
-    s_calibration_queue = xQueueCreate(2, sizeof(calibration_request_t));
+    s_calibration_queue = xQueueCreate(CALIBRATION_TASK_QUEUE_LEN, sizeof(calibration_request_t));
     if (s_calibration_queue == NULL) {
         ESP_LOGE(TAG, "xQueueCreate failed for calibration task");
         return ESP_FAIL;
     }
 
-    BaseType_t rc = xTaskCreatePinnedToCore(calibration_task_fn, "calibration_task", 4096, NULL, 3, NULL, APP_CPU_NUM);
+    BaseType_t rc = xTaskCreatePinnedToCore(
+        calibration_task_fn, CALIBRATION_TASK_NAME, CALIBRATION_TASK_STACK_SIZE, NULL, CALIBRATION_TASK_PRIORITY, NULL, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed for calibration task");
         return ESP_FAIL;
@@ -373,7 +381,7 @@ static void reboot_after_boot_error(const char *step, esp_err_t err)
 {
     led_set_state(LED_STATE_ERROR);
     ESP_LOGE(TAG, "%s failed (%s) — rebooting", step, esp_err_to_name(err));
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    vTaskDelay(pdMS_TO_TICKS(SYSLOAD_BOOT_RESTART_DELAY_MS));
     esp_restart();
 }
 
@@ -381,7 +389,7 @@ static void reboot_after_provision_failure(void)
 {
     led_set_state(LED_STATE_ERROR);
     ESP_LOGE(TAG, "Provisioning failed — rebooting in 5 s");
-    vTaskDelay(pdMS_TO_TICKS(5000));
+    vTaskDelay(pdMS_TO_TICKS(SYSLOAD_PROVISION_RESTART_DELAY_MS));
     esp_restart();
 }
 
