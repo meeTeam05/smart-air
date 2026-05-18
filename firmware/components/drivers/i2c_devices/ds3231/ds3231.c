@@ -469,7 +469,7 @@ esp_err_t ds3231_get_time(ds3231_t *dev, struct tm *time)
     time->tm_mon = bcd2dec(data[5] & DS3231_MONTH_MASK) - 1;
     time->tm_year = bcd2dec(data[6]) + 100;
     time->tm_isdst = 0;
-    time->tm_yday = days_since_january_1st(time->tm_year, time->tm_mon, time->tm_mday);
+    time->tm_yday = days_since_january_1st(time->tm_year + 1900, time->tm_mon, time->tm_mday);
 
     ESP_LOGD(TAG,
              "Read time: %04d-%02d-%02d %02d:%02d:%02d",
