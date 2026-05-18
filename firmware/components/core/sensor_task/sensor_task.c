@@ -10,6 +10,7 @@
 
 #include "cJSON.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mqtt.h"
@@ -21,6 +22,20 @@ static const char *TAG = "sensor_task";
 
 static portMUX_TYPE s_enabled_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_enabled = true;
+static uint32_t s_telemetry_json_failures = 0;
+static uint32_t s_shadow_json_failures = 0;
+
+static void log_json_failure(const char *stream, const char *stage, uint32_t *counter)
+{
+    (*counter)++;
+    ESP_LOGE(TAG,
+             "%s JSON %s failed (count=%lu free_heap=%lu min_free_heap=%lu)",
+             stream,
+             stage,
+             (unsigned long)*counter,
+             (unsigned long)esp_get_free_heap_size(),
+             (unsigned long)esp_get_minimum_free_heap_size());
+}
 
 #if SA_DEMO_NO_PERIPHERALS
 typedef struct {
@@ -182,8 +197,12 @@ static void sensor_task_fn(void *arg)
                     ESP_LOGW(TAG, "mqtt_publish failed — MQTT not ready yet");
                 }
                 cJSON_free(payload);
+            } else {
+                log_json_failure("telemetry", "serialization", &s_telemetry_json_failures);
             }
             cJSON_Delete(root);
+        } else {
+            log_json_failure("telemetry", "allocation", &s_telemetry_json_failures);
         }
 
         /* Shadow report — same shape as telemetry minus device_id */
@@ -215,8 +234,12 @@ static void sensor_task_fn(void *arg)
                     ESP_LOGW(TAG, "shadow mqtt_publish failed — MQTT not ready yet");
                 }
                 cJSON_free(shadow_str);
+            } else {
+                log_json_failure("shadow", "serialization", &s_shadow_json_failures);
             }
             cJSON_Delete(shadow);
+        } else {
+            log_json_failure("shadow", "allocation", &s_shadow_json_failures);
         }
     }
 }
