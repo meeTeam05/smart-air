@@ -101,11 +101,30 @@ static uint8_t dec2bcd(uint8_t val);
 /**
  * @brief Check if a year is a leap year
  *
- * @param[in] year Year (full year, e.g., 2024)
- * @param[in] month Month (1-12)
- * @param[in] day Day of the month (1-31)
+ * @param[in] year Full year (e.g., 2024)
  *
  * @return true if leap year, false otherwise
+ */
+static inline bool is_leap_year(int year);
+
+/**
+ * @brief Convert UTC time structure to Unix timestamp
+ *
+ * @param[in] time UTC time structure
+ * @param[out] timestamp Unix timestamp in seconds
+ *
+ * @return ESP_OK on success, error code otherwise
+ */
+static esp_err_t utc_tm_to_timestamp(const struct tm *time, uint32_t *timestamp);
+
+/**
+ * @brief Calculate days since January 1st of given year
+ *
+ * @param[in] year Full year (e.g., 2024)
+ * @param[in] month Month (0-11)
+ * @param[in] day Day of the month (1-31)
+ *
+ * @return Number of elapsed days since January 1st
  */
 static inline int days_since_january_1st(int year, int month, int day);
 
@@ -494,14 +513,12 @@ esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp)
         return res;
     }
 
-    /* Convert tm struct to Unix timestamp */
-    time_t ts = mktime(&time);
-    if (ts == -1) {
-        ESP_LOGE(TAG, "Failed to convert time to timestamp");
-        return ESP_FAIL;
+    res = utc_tm_to_timestamp(&time, timestamp);
+    if (res != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert UTC time to timestamp: %s", esp_err_to_name(res));
+        return res;
     }
 
-    *timestamp = (uint32_t)ts;
     ESP_LOGD(TAG,
              "Timestamp: %lu (%04d-%02d-%02d %02d:%02d:%02d)",
              *timestamp,
@@ -530,6 +547,47 @@ static uint8_t dec2bcd(uint8_t val)
     return ((val / 10) << 4) + (val % 10);
 }
 
+static inline bool is_leap_year(int year)
+{
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static esp_err_t utc_tm_to_timestamp(const struct tm *time, uint32_t *timestamp)
+{
+    if (!time || !timestamp) {
+        ESP_LOGE(TAG, "Invalid UTC conversion arguments");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    int year = time->tm_year + 1900;
+    if (year < 1970 || time->tm_mon < 0 || time->tm_mon > 11 || time->tm_mday < 1 || time->tm_hour < 0 || time->tm_hour > 23 ||
+        time->tm_min < 0 || time->tm_min > 59 || time->tm_sec < 0 || time->tm_sec > 59) {
+        ESP_LOGE(TAG, "Invalid UTC time fields");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const int *days_in_month = is_leap_year(year) ? days_per_month_leap_year : days_per_month;
+    if (time->tm_mday > days_in_month[time->tm_mon]) {
+        ESP_LOGE(TAG, "Invalid UTC day %d for month %d in year %d", time->tm_mday, time->tm_mon + 1, year);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint64_t days = 0;
+    for (int current_year = 1970; current_year < year; current_year++) {
+        days += is_leap_year(current_year) ? 366 : 365;
+    }
+    days += days_since_january_1st(year, time->tm_mon, time->tm_mday);
+
+    uint64_t seconds = days * 86400ULL + (uint64_t)time->tm_hour * 3600ULL + (uint64_t)time->tm_min * 60ULL + (uint64_t)time->tm_sec;
+    if (seconds > UINT32_MAX) {
+        ESP_LOGE(TAG, "UTC timestamp overflow for year %d", year);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *timestamp = (uint32_t)seconds;
+    return ESP_OK;
+}
+
 /**
  * @brief Calculate days since January 1st of the given year
  */
@@ -539,7 +597,7 @@ static inline int days_since_january_1st(int year, int month, int day)
     const int *ptr = days_per_month;
 
     /* Handle leap year */
-    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))
+    if (is_leap_year(year))
         ptr = days_per_month_leap_year;
 
     /* Add days from previous months */
