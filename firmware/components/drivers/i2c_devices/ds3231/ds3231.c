@@ -108,6 +108,17 @@ static uint8_t dec2bcd(uint8_t val);
 static inline bool is_leap_year(int year);
 
 /**
+ * @brief Check whether year/month/day form a valid calendar date
+ *
+ * @param[in] year Full year (e.g., 2026)
+ * @param[in] month Month (0-11)
+ * @param[in] day Day of month (1-31)
+ *
+ * @return true if the date exists in the Gregorian calendar
+ */
+static bool is_valid_calendar_date(int year, int month, int day);
+
+/**
  * @brief Convert UTC time structure to Unix timestamp
  *
  * @param[in] time UTC time structure
@@ -229,6 +240,14 @@ esp_err_t ds3231_set_time(ds3231_t *dev, struct tm *time)
     }
     if (time->tm_year < 100) {
         ESP_LOGE(TAG, "Invalid year: %d (must be >= 100 for year 2000+)", time->tm_year);
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!is_valid_calendar_date(time->tm_year + 1900, time->tm_mon, time->tm_mday)) {
+        ESP_LOGE(TAG,
+                 "Invalid calendar date: %04d-%02d-%02d",
+                 time->tm_year + 1900,
+                 time->tm_mon + 1,
+                 time->tm_mday);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -550,6 +569,16 @@ static uint8_t dec2bcd(uint8_t val)
 static inline bool is_leap_year(int year)
 {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static bool is_valid_calendar_date(int year, int month, int day)
+{
+    if (month < 0 || month > 11 || day < 1) {
+        return false;
+    }
+
+    const int *days_in_month = is_leap_year(year) ? days_per_month_leap_year : days_per_month;
+    return day <= days_in_month[month];
 }
 
 static esp_err_t utc_tm_to_timestamp(const struct tm *time, uint32_t *timestamp)
