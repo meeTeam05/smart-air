@@ -19,6 +19,18 @@ static adc_oneshot_unit_handle_t s_adc_handle = NULL;
 static adc_cali_handle_t s_cali_handle = NULL;
 static SemaphoreHandle_t s_mutex = NULL;
 
+static void adc_bus_cleanup_init_failure(void)
+{
+    if (s_adc_handle) {
+        adc_oneshot_del_unit(s_adc_handle);
+        s_adc_handle = NULL;
+    }
+    if (s_mutex) {
+        vSemaphoreDelete(s_mutex);
+        s_mutex = NULL;
+    }
+}
+
 /* Error-handling macros (same pattern as i2c_bus) */
 
 #define CHECK(x)                                                                     \
@@ -59,7 +71,12 @@ esp_err_t adc_bus_init(void)
         .unit_id = ADC_UNIT_1,
         .ulp_mode = ADC_ULP_MODE_DISABLE,
     };
-    CHECK(adc_oneshot_new_unit(&unit_cfg, &s_adc_handle));
+    esp_err_t err = adc_oneshot_new_unit(&unit_cfg, &s_adc_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "%s:%d (%s)", __FILE__, __LINE__, esp_err_to_name(err));
+        adc_bus_cleanup_init_failure();
+        return err;
+    }
 
     /* Initialize calibration (curve fitting for ESP32-S3) */
     adc_cali_curve_fitting_config_t cali_cfg = {
