@@ -37,7 +37,7 @@ static mqtt_time_sync_cb_t s_time_sync_cb = NULL;
 
 #define MAX_CMD_HANDLERS 8
 typedef struct {
-    char type[32];
+    char type[MQTT_MAX_COMMAND_TYPE_LEN + 1];
     mqtt_command_cb_t cb;
 } cmd_handler_entry_t;
 static cmd_handler_entry_t s_cmd_handlers[MAX_CMD_HANDLERS];
@@ -284,18 +284,31 @@ void mqtt_register_time_sync_cb(mqtt_time_sync_cb_t cb)
     s_time_sync_cb = cb;
 }
 
-void mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb)
+esp_err_t mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb)
 {
-    if (!type || !cb)
-        return;
+    if (type == NULL || type[0] == '\0' || cb == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    size_t type_len = strlen(type);
+    if (type_len > MQTT_MAX_COMMAND_TYPE_LEN) {
+        ESP_LOGW(TAG,
+                 "mqtt_register_command_handler: type '%s' too long (%zu > %d)",
+                 type,
+                 type_len,
+                 MQTT_MAX_COMMAND_TYPE_LEN);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
     if (s_cmd_handler_count >= MAX_CMD_HANDLERS) {
         ESP_LOGW(TAG, "mqtt_register_command_handler: table full (max %d)", MAX_CMD_HANDLERS);
-        return;
+        return ESP_ERR_NO_MEM;
     }
-    strlcpy(s_cmd_handlers[s_cmd_handler_count].type, type, sizeof(s_cmd_handlers[s_cmd_handler_count].type));
+    memcpy(s_cmd_handlers[s_cmd_handler_count].type, type, type_len + 1);
     s_cmd_handlers[s_cmd_handler_count].cb = cb;
     s_cmd_handler_count++;
     ESP_LOGI(TAG, "Command handler registered: type=%s", type);
+    return ESP_OK;
 }
 
 esp_err_t mqtt_publish_command_ack(const char *command_id, bool success)

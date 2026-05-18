@@ -385,6 +385,15 @@ static void reboot_after_boot_error(const char *step, esp_err_t err)
     esp_restart();
 }
 
+static void register_command_handler_or_reboot(const char *type, mqtt_command_cb_t cb)
+{
+    esp_err_t err = mqtt_register_command_handler(type, cb);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "mqtt_register_command_handler(%s) failed (%s)", type, esp_err_to_name(err));
+        reboot_after_boot_error("mqtt_register_command_handler", err);
+    }
+}
+
 static void reboot_after_provision_failure(void)
 {
     led_set_state(LED_STATE_ERROR);
@@ -539,9 +548,9 @@ static void init_runtime_control_stage(const char *resolved_id)
     }
 
 #if SA_ENABLE_RELAYS
-    mqtt_register_command_handler("relay_set", handle_relay_set);
+    register_command_handler_or_reboot("relay_set", handle_relay_set);
 #endif
-    mqtt_register_command_handler("device_mode", handle_device_mode);
+    register_command_handler_or_reboot("device_mode", handle_device_mode);
 }
 
 static void start_mqtt_stage(const char *broker_uri, const char *resolved_id, const char *secret_key)
@@ -647,7 +656,7 @@ void sysload_init(void)
         if (!s_co_dev.calibrated) {
             ESP_LOGW(TAG, "CO sensor not calibrated — send type:calibrate_co to calibrate");
         }
-        mqtt_register_command_handler("calibrate_co", handle_calibrate_co);
+        register_command_handler_or_reboot("calibrate_co", handle_calibrate_co);
     } else {
         ESP_LOGW(TAG, "GM702B CO init failed (%s) — CO unavailable", esp_err_to_name(co_err));
     }
@@ -662,7 +671,7 @@ void sysload_init(void)
         if (!s_no2_dev.calibrated) {
             ESP_LOGW(TAG, "NO2 sensor not calibrated — send type:calibrate_no2 to calibrate");
         }
-        mqtt_register_command_handler("calibrate_no2", handle_calibrate_no2);
+        register_command_handler_or_reboot("calibrate_no2", handle_calibrate_no2);
     } else {
         ESP_LOGW(TAG, "GM102B NO2 init failed (%s) — NO2 unavailable", esp_err_to_name(no2_err));
     }

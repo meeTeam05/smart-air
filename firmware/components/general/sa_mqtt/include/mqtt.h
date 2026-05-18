@@ -12,6 +12,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define MQTT_MAX_COMMAND_TYPE_LEN 31
+
 /**
  * @brief Callback invoked when a set_time command is received from the app.
  *        The implementation should write the timestamp to the DS3231 RTC.
@@ -46,11 +48,15 @@ typedef esp_err_t (*mqtt_command_cb_t)(const char *type, const char *json_payloa
  * Up to 8 handlers may be registered. Call from sysload_init() before mqtt_start().
  * The handler is invoked synchronously inside the MQTT event callback — keep it short
  * (write to queue or set a flag; do not block).
+ * Command type names must fit within @c MQTT_MAX_COMMAND_TYPE_LEN characters.
  *
  * @param type  Command type string to match against the "type" JSON field.
  * @param cb    Handler function.
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG for NULL/empty input,
+ *         ESP_ERR_INVALID_SIZE if @p type is too long, ESP_ERR_NO_MEM if the
+ *         fixed registration table is full.
  */
-void mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb);
+esp_err_t mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb);
 
 /**
  * @brief Publish a command ack to device/{id}/response.
