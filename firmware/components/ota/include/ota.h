@@ -15,7 +15,8 @@
  *
  * @param device_id  Device identifier used to build the ota/progress topic.
  * 
- * @return ESP_OK on success, ESP_FAIL if task creation fails.
+ * @return ESP_OK on success, ESP_ERR_INVALID_STATE if already started,
+ *         ESP_FAIL if queue/task creation fails.
  * 
  * @note The task waits for a trigger from ota_trigger(). Must be called after
  *       mqtt_start() so progress messages can be published.

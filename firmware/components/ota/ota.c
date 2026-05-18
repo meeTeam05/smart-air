@@ -43,6 +43,7 @@ typedef struct {
 
 static QueueHandle_t s_ota_queue = NULL;
 static char s_progress_topic[96]; /* device/{id}/ota/progress */
+static bool s_ota_started = false;
 
 /* ── Internal helpers ────────────────────────────────────────────────────── */
 
@@ -160,6 +161,11 @@ static void ota_task_fn(void *arg)
 
 esp_err_t ota_task_start(const char *device_id)
 {
+    if (s_ota_started) {
+        ESP_LOGW(TAG, "ota_task already started");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     snprintf(s_progress_topic, sizeof(s_progress_topic), "device/%s/ota/progress", device_id != NULL ? device_id : "");
 
     s_ota_queue = xQueueCreate(1, sizeof(ota_msg_t));
@@ -172,9 +178,12 @@ esp_err_t ota_task_start(const char *device_id)
     BaseType_t rc = xTaskCreatePinnedToCore(ota_task_fn, "ota_task", 8192, NULL, 3, NULL, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed");
+        vQueueDelete(s_ota_queue);
+        s_ota_queue = NULL;
         return ESP_FAIL;
     }
 
+    s_ota_started = true;
     ESP_LOGI(TAG, "ota_task started (topic: %s)", s_progress_topic);
     return ESP_OK;
 }
