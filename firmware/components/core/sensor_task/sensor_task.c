@@ -20,10 +20,22 @@
 
 static const char *TAG = "sensor_task";
 
+#define PENDING_PAYLOAD_MAX 256
+
 static portMUX_TYPE s_enabled_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_enabled = true;
 static uint32_t s_telemetry_json_failures = 0;
 static uint32_t s_shadow_json_failures = 0;
+static uint32_t s_telemetry_publish_failures = 0;
+static uint32_t s_shadow_publish_failures = 0;
+
+typedef struct {
+    bool has_payload;
+    char payload[PENDING_PAYLOAD_MAX];
+} pending_payload_t;
+
+static pending_payload_t s_pending_telemetry = {0};
+static pending_payload_t s_pending_shadow = {0};
 
 static void log_json_failure(const char *stream, const char *stage, uint32_t *counter)
 {
@@ -35,6 +47,52 @@ static void log_json_failure(const char *stream, const char *stage, uint32_t *co
              (unsigned long)*counter,
              (unsigned long)esp_get_free_heap_size(),
              (unsigned long)esp_get_minimum_free_heap_size());
+}
+
+static void store_pending_payload(const char *stream, pending_payload_t *pending, const char *payload)
+{
+    if (payload == NULL) {
+        return;
+    }
+
+    size_t copied = strlcpy(pending->payload, payload, sizeof(pending->payload));
+    if (copied >= sizeof(pending->payload)) {
+        pending->has_payload = false;
+        ESP_LOGE(TAG, "%s retry payload too large (%u bytes)", stream, (unsigned)(copied + 1U));
+        return;
+    }
+
+    pending->has_payload = true;
+    ESP_LOGW(TAG, "%s payload queued for retry", stream);
+}
+
+static bool publish_payload_now(const char *stream, const char *topic, const char *payload, uint32_t *counter)
+{
+    int msg_id = mqtt_publish(topic, payload, 1, false);
+    if (msg_id < 0) {
+        (*counter)++;
+        ESP_LOGW(TAG,
+                 "%s mqtt_publish failed (count=%lu) — MQTT not ready yet",
+                 stream,
+                 (unsigned long)*counter);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "%s published (msg_id=%d): %s", stream, msg_id, payload);
+    return true;
+}
+
+static void flush_pending_payload(const char *stream, const char *topic, pending_payload_t *pending, uint32_t *counter)
+{
+    if (!pending->has_payload) {
+        return;
+    }
+
+    if (publish_payload_now(stream, topic, pending->payload, counter)) {
+        pending->has_payload = false;
+        pending->payload[0] = '\0';
+        ESP_LOGI(TAG, "%s retry flush succeeded", stream);
+    }
 }
 
 #if SA_DEMO_NO_PERIPHERALS
@@ -102,6 +160,9 @@ static void sensor_task_fn(void *arg)
         if (!sensor_task_get_enabled()) {
             continue;
         }
+
+        flush_pending_payload("telemetry", telemetry_topic, &s_pending_telemetry, &s_telemetry_publish_failures);
+        flush_pending_payload("shadow", shadow_topic, &s_pending_shadow, &s_shadow_publish_failures);
 
         float temperature = 0.0f;
         float humidity = 0.0f;
@@ -190,11 +251,8 @@ static void sensor_task_fn(void *arg)
             }
             char *payload = cJSON_PrintUnformatted(root);
             if (payload != NULL) {
-                int msg_id = mqtt_publish(telemetry_topic, payload, 1, false);
-                if (msg_id >= 0) {
-                    ESP_LOGI(TAG, "Telemetry published (msg_id=%d): %s", msg_id, payload);
-                } else {
-                    ESP_LOGW(TAG, "mqtt_publish failed — MQTT not ready yet");
+                if (!publish_payload_now("telemetry", telemetry_topic, payload, &s_telemetry_publish_failures)) {
+                    store_pending_payload("telemetry", &s_pending_telemetry, payload);
                 }
                 cJSON_free(payload);
             } else {
@@ -229,9 +287,8 @@ static void sensor_task_fn(void *arg)
             cJSON_AddNumberToObject(shadow, "ts", (double)timestamp);
             char *shadow_str = cJSON_PrintUnformatted(shadow);
             if (shadow_str != NULL) {
-                int shadow_id = mqtt_publish(shadow_topic, shadow_str, 1, false);
-                if (shadow_id < 0) {
-                    ESP_LOGW(TAG, "shadow mqtt_publish failed — MQTT not ready yet");
+                if (!publish_payload_now("shadow", shadow_topic, shadow_str, &s_shadow_publish_failures)) {
+                    store_pending_payload("shadow", &s_pending_shadow, shadow_str);
                 }
                 cJSON_free(shadow_str);
             } else {
