@@ -369,6 +369,189 @@ static esp_err_t handle_device_mode(const char *type, const char *json_payload)
     return err;
 }
 
+static void reboot_after_boot_error(const char *step, esp_err_t err)
+{
+    led_set_state(LED_STATE_ERROR);
+    ESP_LOGE(TAG, "%s failed (%s) — rebooting", step, esp_err_to_name(err));
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    esp_restart();
+}
+
+static void reboot_after_provision_failure(void)
+{
+    led_set_state(LED_STATE_ERROR);
+    ESP_LOGE(TAG, "Provisioning failed — rebooting in 5 s");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    esp_restart();
+}
+
+static void init_factory_reset_stage(void)
+{
+#if SA_ENABLE_FACTORY_RESET
+    esp_err_t err = factory_reset_init((gpio_num_t)CONFIG_SA_FACTORY_RESET_PIN);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("factory_reset_init", err);
+    }
+#endif
+}
+
+static void init_nvs_stage(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) {
+        reboot_after_boot_error("nvs_flash_init", err);
+    }
+}
+
+static void init_network_stack_stage(void)
+{
+    esp_err_t err = esp_netif_init();
+    if (err != ESP_OK) {
+        reboot_after_boot_error("esp_netif_init", err);
+    }
+
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK) {
+        reboot_after_boot_error("esp_event_loop_create_default", err);
+    }
+}
+
+static void init_i2c_bus_stage(void)
+{
+#if SA_ENABLE_SHT3X || SA_ENABLE_DS3231
+    esp_err_t err = i2c_bus_init(I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN, SA_I2C_FREQ_HZ);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("i2c_bus_init", err);
+    }
+#endif
+}
+
+static void init_wifi_stage(void)
+{
+    esp_err_t err = wifi_sta_init();
+    if (err != ESP_OK) {
+        reboot_after_boot_error("wifi_sta_init", err);
+    }
+}
+
+static void run_ble_provisioning_stage(void)
+{
+    if (ble_prov_is_provisioned()) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Not provisioned — starting BLE provisioning");
+    led_set_state(LED_STATE_BLE);
+
+    esp_err_t err = ble_prov_start();
+    ble_prov_stop();
+    if (err != ESP_OK) {
+        reboot_after_provision_failure();
+    }
+}
+
+static void load_wifi_credentials_stage(char *ssid, size_t ssid_len, char *password, size_t password_len)
+{
+    esp_err_t err = ble_prov_load_credentials(ssid, ssid_len, password, password_len);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("ble_prov_load_credentials", err);
+    }
+}
+
+static void connect_wifi_stage(const char *ssid, const char *password)
+{
+    if (wifi_sta_is_connected()) {
+        led_set_state(LED_STATE_WIFI);
+        return;
+    }
+
+    led_set_state(LED_STATE_WIFI);
+    ESP_LOGI(TAG, "Connecting to Wi-Fi SSID: %s", ssid);
+
+    esp_err_t err = wifi_sta_connect(ssid, password, CONFIG_SA_WIFI_CONNECT_TIMEOUT_MS);
+    if (err != ESP_OK) {
+        led_set_state(LED_STATE_ERROR);
+        ESP_LOGE(TAG, "Wi-Fi connect failed (%s) — running full factory reset", esp_err_to_name(err));
+        esp_err_t reset_err = factory_reset_run();
+        if (reset_err != ESP_OK) {
+            ESP_LOGE(TAG, "factory_reset_run failed (%s) — rebooting anyway", esp_err_to_name(reset_err));
+        }
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();
+    }
+
+    led_set_state(LED_STATE_WIFI);
+}
+
+static void load_runtime_config_stage(char *broker_uri, size_t broker_uri_len, char *resolved_id, size_t resolved_id_len, char *secret_key, size_t secret_key_len)
+{
+    esp_err_t err = config_get_device_id(resolved_id, resolved_id_len);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("config_get_device_id", err);
+    }
+
+    err = config_get_mqtt_creds(broker_uri, broker_uri_len, secret_key, secret_key_len);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("config_get_mqtt_creds", err);
+    }
+}
+
+static void start_http_server_stage(const char *resolved_id)
+{
+    char ip_str[16] = {0};
+    wifi_sta_get_ip(ip_str, sizeof(ip_str));
+
+    esp_err_t err = httpd_server_start(resolved_id, ip_str);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("httpd_server_start", err);
+    }
+}
+
+static void init_runtime_control_stage(const char *resolved_id)
+{
+    esp_err_t err = buzzer_init();
+    if (err != ESP_OK) {
+        reboot_after_boot_error("buzzer_init", err);
+    }
+
+#if SA_ENABLE_RELAYS
+    err = relay_init(resolved_id);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("relay_init", err);
+    }
+#endif
+
+    err = device_mode_init(resolved_id);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("device_mode_init", err);
+    }
+
+#if SA_ENABLE_RELAYS
+    mqtt_register_command_handler("relay_set", handle_relay_set);
+#endif
+    mqtt_register_command_handler("device_mode", handle_device_mode);
+}
+
+static void start_mqtt_stage(const char *broker_uri, const char *resolved_id, const char *secret_key)
+{
+    esp_err_t err = mqtt_start(broker_uri, resolved_id, secret_key);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("mqtt_start", err);
+    }
+}
+
+static void start_ota_stage(const char *resolved_id)
+{
+    esp_err_t err = ota_task_start(resolved_id);
+    if (err != ESP_OK) {
+        reboot_after_boot_error("ota_task_start", err);
+    }
+}
+
 /* Time sync callback (app -> MQTT -> DS3231) */
 
 #if SA_ENABLE_DS3231
@@ -398,65 +581,18 @@ void sysload_init(void)
     led_set_state(LED_STATE_BOOT);
 
     /* 0.5 — Factory reset button (early so it works in every boot phase) */
-#if SA_ENABLE_FACTORY_RESET
-    {
-        esp_err_t err = factory_reset_init((gpio_num_t)CONFIG_SA_FACTORY_RESET_PIN);
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "factory_reset_init failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
-#endif
+    init_factory_reset_stage();
 
     /* 1 — NVS init (required by Wi-Fi and BLE provisioning) */
-    {
-        esp_err_t err = nvs_flash_init();
-        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-            ESP_ERROR_CHECK(nvs_flash_erase());
-            err = nvs_flash_init();
-        }
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "nvs_flash_init failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
+    init_nvs_stage();
 
     /* 2 — Network stack (must precede wifi_sta_init) */
-    {
-        esp_err_t err = esp_netif_init();
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "esp_netif_init failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-        err = esp_event_loop_create_default();
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "esp_event_loop_create_default failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
+    init_network_stack_stage();
 
     /* 3 — I2C bus (shared by SHT3x and DS3231, HW-01: 400 kHz) */
     /* Only init bus if at least one I2C device is enabled. Add to this guard
      * when new I2C devices are added. */
-#if SA_ENABLE_SHT3X || SA_ENABLE_DS3231
-    {
-        esp_err_t err = i2c_bus_init(I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN, SA_I2C_FREQ_HZ);
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "i2c_bus_init failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
-#endif
+    init_i2c_bus_stage();
 
     /* 4 — SHT3x temperature/humidity sensor (addr 0x44, ADDR pin low — HW-04) */
 #if SA_ENABLE_SHT3X
@@ -528,107 +664,33 @@ void sysload_init(void)
     if (calibration_worker_needed) {
         esp_err_t err = calibration_task_start();
         if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "calibration_task_start failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
+            reboot_after_boot_error("calibration_task_start", err);
         }
     }
 #endif
 
     /* 6 — Wi-Fi station (no connect yet) */
-    {
-        esp_err_t err = wifi_sta_init();
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "wifi_sta_init failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
+    init_wifi_stage();
 
     /* 7 — BLE provisioning on first boot */
-    if (!ble_prov_is_provisioned()) {
-        ESP_LOGI(TAG, "Not provisioned — starting BLE provisioning");
-        led_set_state(LED_STATE_BLE);
-        esp_err_t err = ble_prov_start();
-        ble_prov_stop();
-
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "Provisioning failed — rebooting in 5 s");
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            esp_restart();
-        }
-    }
+    run_ble_provisioning_stage();
 
     /* 8 — Load stored credentials and connect Wi-Fi (skip if already connected via ble_prov) */
     char ssid[64] = {0};
     char password[64] = {0};
-    {
-        esp_err_t err = ble_prov_load_credentials(ssid, sizeof(ssid), password, sizeof(password));
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "ble_prov_load_credentials failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
-
-    if (!wifi_sta_is_connected()) {
-        led_set_state(LED_STATE_WIFI);
-        ESP_LOGI(TAG, "Connecting to Wi-Fi SSID: %s", ssid);
-        esp_err_t err = wifi_sta_connect(ssid, password, CONFIG_SA_WIFI_CONNECT_TIMEOUT_MS);
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "Wi-Fi connect failed (%s) — running full factory reset", esp_err_to_name(err));
-            err = factory_reset_run();
-            if (err != ESP_OK) {
-                ESP_LOGE(TAG, "factory_reset_run failed (%s) — rebooting anyway", esp_err_to_name(err));
-            }
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
-
-    led_set_state(LED_STATE_WIFI);
+    load_wifi_credentials_stage(ssid, sizeof(ssid), password, sizeof(password));
+    connect_wifi_stage(ssid, password);
 
     /* 9 — Resolve immutable device ID and runtime config */
     char broker_uri[128] = {0};
     char resolved_id[18] = {0};
     char secret_key[64] = {0};
-    {
-        esp_err_t err = config_get_device_id(resolved_id, sizeof(resolved_id));
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "config_get_device_id failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-
-        err = config_get_mqtt_creds(broker_uri, sizeof(broker_uri), secret_key, sizeof(secret_key));
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "config_get_mqtt_creds failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
+    load_runtime_config_stage(
+        broker_uri, sizeof(broker_uri), resolved_id, sizeof(resolved_id), secret_key, sizeof(secret_key));
     ensure_system_clock_seeded();
 
     /* 9.1 — Local provisioning HTTP API (must exist before first MQTT login) */
-    {
-        char ip_str[16] = {0};
-        wifi_sta_get_ip(ip_str, sizeof(ip_str));
-
-        esp_err_t err = httpd_server_start(resolved_id, ip_str);
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "httpd_server_start failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
+    start_http_server_stage(resolved_id);
 
     if (secret_key[0] == '\0') {
         ESP_LOGW(TAG, "MQTT secret_key not provisioned yet — waiting for local POST /api/config");
@@ -636,64 +698,17 @@ void sysload_init(void)
     }
 
     /* 9.2 — Runtime control bootstrap (buzzer -> relay -> mode -> MQTT handlers) */
-    {
-        esp_err_t err = buzzer_init();
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "buzzer_init failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-
-#if SA_ENABLE_RELAYS
-        err = relay_init(resolved_id);
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "relay_init failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-#endif
-
-        err = device_mode_init(resolved_id);
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "device_mode_init failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-
-#if SA_ENABLE_RELAYS
-        mqtt_register_command_handler("relay_set", handle_relay_set);
-#endif
-        mqtt_register_command_handler("device_mode", handle_device_mode);
-    }
+    init_runtime_control_stage(resolved_id);
 
     /* 9.3 — Register time sync callback before mqtt_start to avoid race:
      *        broker may deliver a queued set_time command immediately on connect */
     mqtt_register_time_sync_cb(on_time_sync);
 
     /* 9.4 — Start MQTT */
-    {
-        esp_err_t err = mqtt_start(broker_uri, resolved_id, secret_key);
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "mqtt_start failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
+    start_mqtt_stage(broker_uri, resolved_id, secret_key);
 
     /* 9.5 — OTA task */
-    {
-        esp_err_t err = ota_task_start(resolved_id);
-        if (err != ESP_OK) {
-            led_set_state(LED_STATE_ERROR);
-            ESP_LOGE(TAG, "ota_task_start failed (%s) — rebooting", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            esp_restart();
-        }
-    }
+    start_ota_stage(resolved_id);
 
     /* 10 — Sensor polling task (publishes telemetry every SA_SENSOR_POLLING_INTERVAL ms) */
 #if SA_DEMO_NO_PERIPHERALS
