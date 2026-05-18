@@ -30,6 +30,7 @@ static volatile bool s_factory_reset_in_progress = false;
 
 /* Device / MQTT namespace */
 #define NS_DEVICE      "device"     /* 6 chars — within 15-char NVS limit */
+#define KEY_DEVICE_ID  "device_id"  /* 9 chars */
 #define KEY_SECRET_KEY "secret_key" /* 10 chars */
 #define KEY_BROKER_URI "broker_uri" /* 10 chars */
 
@@ -228,7 +229,7 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
         }
     }
 
-    err = nvs_erase_key(h, "device_id");
+    err = nvs_erase_key(h, KEY_DEVICE_ID);
     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGE(TAG, "erase legacy device_id failed: %s", esp_err_to_name(err));
         nvs_close(h);
