@@ -136,10 +136,14 @@ static esp_err_t config_post_handler(httpd_req_t *req)
         return send_json_error(req, "500 Internal Server Error", "config write failed");
     }
 
+    BaseType_t restart_rc = xTaskCreate(restart_task, "config_reboot", 2048, NULL, 5, NULL);
+    if (restart_rc != pdPASS) {
+        ESP_LOGE(TAG, "failed to create config_reboot task");
+        return send_json_error(req, "500 Internal Server Error", "config saved but reboot failed");
+    }
+
     httpd_resp_set_type(req, "application/json");
-    esp_err_t send_err = httpd_resp_sendstr(req, "{\"ok\":true,\"rebooting\":true}");
-    xTaskCreate(restart_task, "config_reboot", 2048, NULL, 5, NULL);
-    return send_err;
+    return httpd_resp_sendstr(req, "{\"ok\":true,\"rebooting\":true}");
 }
 
 static const httpd_uri_t uri_info = {
