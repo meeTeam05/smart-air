@@ -28,6 +28,8 @@ static const char *TAG = "wifi_sta";
 
 static EventGroupHandle_t s_wifi_eg;
 static esp_netif_t *s_netif;
+static esp_event_handler_instance_t s_wifi_event_handler;
+static esp_event_handler_instance_t s_ip_event_handler;
 static char s_ip[16];
 static bool s_initialized;
 static int s_reconnect_count;
@@ -64,6 +66,10 @@ static esp_err_t wifi_apply_custom_dns(void)
 
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
+    if (s_wifi_eg == NULL) {
+        return;
+    }
+
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         xEventGroupClearBits(s_wifi_eg, WIFI_CONNECTED_BIT);
 
@@ -109,12 +115,20 @@ esp_err_t wifi_sta_init(void)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
-        return err;
+        goto fail;
     }
 
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
-    ESP_ERROR_CHECK(
-        esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
+    err = esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &s_wifi_event_handler);
+    if (err != ESP_OK) {
+        goto fail;
+    }
+
+    err = esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &s_ip_event_handler);
+    if (err != ESP_OK) {
+        goto fail;
+    }
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -122,6 +136,25 @@ esp_err_t wifi_sta_init(void)
     s_initialized = true;
     ESP_LOGI(TAG, "Wi-Fi station initialized");
     return ESP_OK;
+
+fail:
+    if (s_wifi_event_handler != NULL) {
+        esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, s_wifi_event_handler);
+        s_wifi_event_handler = NULL;
+    }
+    if (s_ip_event_handler != NULL) {
+        esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, s_ip_event_handler);
+        s_ip_event_handler = NULL;
+    }
+    if (s_netif != NULL) {
+        esp_netif_destroy(s_netif);
+        s_netif = NULL;
+    }
+    if (s_wifi_eg != NULL) {
+        vEventGroupDelete(s_wifi_eg);
+        s_wifi_eg = NULL;
+    }
+    return err;
 }
 
 esp_err_t wifi_sta_connect(const char *ssid, const char *password, uint32_t timeout_ms)
@@ -185,6 +218,14 @@ esp_err_t wifi_sta_deinit(void)
     ESP_ERROR_CHECK(esp_wifi_disconnect());
     ESP_ERROR_CHECK(esp_wifi_stop());
     ESP_ERROR_CHECK(esp_wifi_deinit());
+    if (s_wifi_event_handler != NULL) {
+        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, s_wifi_event_handler));
+        s_wifi_event_handler = NULL;
+    }
+    if (s_ip_event_handler != NULL) {
+        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, s_ip_event_handler));
+        s_ip_event_handler = NULL;
+    }
     esp_netif_destroy(s_netif);
     s_netif = NULL;
     vEventGroupDelete(s_wifi_eg);
