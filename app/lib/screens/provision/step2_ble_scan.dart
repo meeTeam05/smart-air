@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/app_config.dart';
 import '../../design/icons.dart';
 import '../../design/palette.dart';
 import '../../design/tokens.dart';
@@ -72,10 +73,7 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
     _scanSub = _ble.scan(timeout: const Duration(seconds: 12)).listen(
       (device) {
         if (!mounted) return;
-        final name = device.name.trim();
-        final accepted =
-            name.contains('SMART_AIR_') || name.startsWith('SmartAir-');
-        if (!accepted) return;
+        if (!BleConfig.matchesProvisioningName(device.name)) return;
         setState(() {
           if (_devices.every((d) => d.remoteId != device.remoteId)) {
             _devices.add(device);

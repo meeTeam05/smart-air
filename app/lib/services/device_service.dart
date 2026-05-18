@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/app_config.dart';
 import '../core/app_exception.dart';
 import '../models/command.dart';
 import '../models/device.dart';
@@ -20,7 +21,8 @@ class DeviceService {
   String _normalizeDeviceId(String value) => value.trim().toLowerCase();
   String _normalizeProvisioningHost(String value) {
     final trimmed = value.trim();
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    if (trimmed.startsWith('${ApiConfig.localProvisioningScheme}://') ||
+        trimmed.startsWith('https://')) {
       return Uri.parse(trimmed).host;
     }
     return trimmed;
@@ -39,7 +41,7 @@ class DeviceService {
 
     while (DateTime.now().isBefore(deadline)) {
       try {
-        final res = await localDio.get('/api/info');
+        final res = await localDio.get(ApiConfig.localInfoPath);
         final data = res.data;
         if (data is Map<String, dynamic>) {
           final actualDeviceId = _normalizeDeviceId(
@@ -123,7 +125,7 @@ class DeviceService {
     final normalizedHost = _normalizeProvisioningHost(host);
     final localDio = Dio(
       BaseOptions(
-        baseUrl: 'http://$normalizedHost',
+        baseUrl: '${ApiConfig.localProvisioningScheme}://$normalizedHost',
         connectTimeout: const Duration(seconds: 2),
         sendTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 2),
@@ -134,7 +136,7 @@ class DeviceService {
     await _waitForProvisioningApiReady(localDio, normalizedDeviceId);
 
     try {
-      await localDio.post('/api/config', data: {
+      await localDio.post(ApiConfig.localConfigPath, data: {
         'device_id': normalizedDeviceId,
         'secret_key': secretKey,
         if (brokerUri != null && brokerUri.trim().isNotEmpty)

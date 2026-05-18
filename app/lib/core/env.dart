@@ -1,13 +1,15 @@
+import 'app_config.dart';
+
 class Env {
   Env._();
 
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://minhnhat05.xyz/api',
+    defaultValue: ApiConfig.defaultApiBaseUrl,
   );
 
   static const mqttBrokerUri = String.fromEnvironment(
     'MQTT_BROKER_URI',
-    defaultValue: 'wss://minhnhat05.xyz/mqtt',
+    defaultValue: ApiConfig.defaultMqttBrokerUri,
   );
 }
