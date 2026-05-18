@@ -114,97 +114,107 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         /* FW-04: copy topic + payload before returning from handler */
         char *topic = strndup(ev->topic, (size_t)ev->topic_len);
         char *payload = strndup(ev->data, (size_t)ev->data_len);
-        if (topic && payload) {
-            ESP_LOGI(TAG, "RX [%s]: %s", topic, payload);
+        if (topic == NULL || payload == NULL) {
+            ESP_LOGE(TAG,
+                     "dropping MQTT message: alloc failed (topic=%s payload=%s, topic_len=%d data_len=%d)",
+                     topic == NULL ? "null" : "ok",
+                     payload == NULL ? "null" : "ok",
+                     ev->topic_len,
+                     ev->data_len);
+            free(topic);
+            free(payload);
+            break;
+        }
 
-            /* Route: command → dispatch handler → ack with actual result */
-            if (strstr(topic, "/command") != NULL) {
-                cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
-                if (root != NULL) {
-                    bool cmd_ok = true;
-                    bool ack_deferred = false;
-                    bool command_handled = false;
+        ESP_LOGI(TAG, "RX [%s]: %s", topic, payload);
 
-                    /* Dispatch command handlers */
-                    cJSON *j_type = cJSON_GetObjectItemCaseSensitive(root, "type");
-                    cJSON *j_ts = cJSON_GetObjectItemCaseSensitive(root, "ts");
-                    if (!cJSON_IsString(j_type)) {
-                        cmd_ok = false;
-                        ESP_LOGW(TAG, "command message missing string type");
-                    } else if (strcmp(j_type->valuestring, "set_time") == 0) {
-                        command_handled = true;
-                        if (cJSON_IsNumber(j_ts) && s_time_sync_cb != NULL) {
-                            s_time_sync_cb((uint32_t)j_ts->valuedouble);
-                            ESP_LOGI(TAG, "set_time dispatched: ts=%lu", (unsigned long)(uint32_t)j_ts->valuedouble);
-                        } else {
-                            cmd_ok = false;
-                            ESP_LOGW(TAG, "set_time command missing ts or callback");
-                        }
-                    } else if (strcmp(j_type->valuestring, "set_config") == 0) {
-                        command_handled = true;
-                        cmd_ok = false;
-                        ESP_LOGW(TAG,
-                                 "set_config is not accepted over MQTT; use local POST /api/config before first login");
+        /* Route: command → dispatch handler → ack with actual result */
+        if (strstr(topic, "/command") != NULL) {
+            cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
+            if (root != NULL) {
+                bool cmd_ok = true;
+                bool ack_deferred = false;
+                bool command_handled = false;
+
+                /* Dispatch command handlers */
+                cJSON *j_type = cJSON_GetObjectItemCaseSensitive(root, "type");
+                cJSON *j_ts = cJSON_GetObjectItemCaseSensitive(root, "ts");
+                if (!cJSON_IsString(j_type)) {
+                    cmd_ok = false;
+                    ESP_LOGW(TAG, "command message missing string type");
+                } else if (strcmp(j_type->valuestring, "set_time") == 0) {
+                    command_handled = true;
+                    if (cJSON_IsNumber(j_ts) && s_time_sync_cb != NULL) {
+                        s_time_sync_cb((uint32_t)j_ts->valuedouble);
+                        ESP_LOGI(TAG, "set_time dispatched: ts=%lu", (unsigned long)(uint32_t)j_ts->valuedouble);
                     } else {
-                        for (int i = 0; i < s_cmd_handler_count; i++) {
-                            if (strcmp(j_type->valuestring, s_cmd_handlers[i].type) == 0) {
-                                command_handled = true;
-                                esp_err_t hr = s_cmd_handlers[i].cb(j_type->valuestring, payload);
-                                if (hr == ESP_ERR_NOT_FINISHED) {
-                                    ack_deferred = true;
-                                } else if (hr != ESP_OK) {
-                                    cmd_ok = false;
-                                    ESP_LOGW(TAG,
-                                             "Command '%s' handler returned %s",
-                                             j_type->valuestring,
-                                             esp_err_to_name(hr));
-                                }
-                                break;
-                            }
-                        }
-                        if (!command_handled) {
-                            cmd_ok = false;
-                            ESP_LOGW(TAG, "unsupported command type: %s", j_type->valuestring);
-                        }
+                        cmd_ok = false;
+                        ESP_LOGW(TAG, "set_time command missing ts or callback");
                     }
-
-                    if (!ack_deferred) {
-                        /* Send ack AFTER execution with actual status */
-                        cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
-                        if (cJSON_IsString(j_cmd_id)) {
-                            esp_err_t ack_err = mqtt_publish_command_ack_internal(j_cmd_id->valuestring, cmd_ok);
-                            if (ack_err != ESP_OK) {
+                } else if (strcmp(j_type->valuestring, "set_config") == 0) {
+                    command_handled = true;
+                    cmd_ok = false;
+                    ESP_LOGW(TAG,
+                             "set_config is not accepted over MQTT; use local POST /api/config before first login");
+                } else {
+                    for (int i = 0; i < s_cmd_handler_count; i++) {
+                        if (strcmp(j_type->valuestring, s_cmd_handlers[i].type) == 0) {
+                            command_handled = true;
+                            esp_err_t hr = s_cmd_handlers[i].cb(j_type->valuestring, payload);
+                            if (hr == ESP_ERR_NOT_FINISHED) {
+                                ack_deferred = true;
+                            } else if (hr != ESP_OK) {
+                                cmd_ok = false;
                                 ESP_LOGW(TAG,
-                                         "Command ack publish failed for '%s': %s",
-                                         j_cmd_id->valuestring,
-                                         esp_err_to_name(ack_err));
+                                         "Command '%s' handler returned %s",
+                                         j_type->valuestring,
+                                         esp_err_to_name(hr));
                             }
-                        } else {
-                            ESP_LOGW(TAG, "command message missing command_id");
+                            break;
                         }
                     }
-
-                    cJSON_Delete(root);
-                } else {
-                    ESP_LOGW(TAG, "command message is not valid JSON");
-                }
-            }
-
-            /* Route: OTA update trigger */
-            if (strstr(topic, "/ota/update") != NULL) {
-                cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
-                if (root != NULL) {
-                    cJSON *j_url = cJSON_GetObjectItemCaseSensitive(root, "url");
-                    cJSON *j_sha = cJSON_GetObjectItemCaseSensitive(root, "sha256");
-                    if (cJSON_IsString(j_url) && cJSON_IsString(j_sha)) {
-                        ota_trigger(j_url->valuestring, j_sha->valuestring);
-                    } else {
-                        ESP_LOGW(TAG, "OTA update message missing url or sha256");
+                    if (!command_handled) {
+                        cmd_ok = false;
+                        ESP_LOGW(TAG, "unsupported command type: %s", j_type->valuestring);
                     }
-                    cJSON_Delete(root);
-                } else {
-                    ESP_LOGW(TAG, "OTA update message is not valid JSON");
                 }
+
+                if (!ack_deferred) {
+                    /* Send ack AFTER execution with actual status */
+                    cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
+                    if (cJSON_IsString(j_cmd_id)) {
+                        esp_err_t ack_err = mqtt_publish_command_ack_internal(j_cmd_id->valuestring, cmd_ok);
+                        if (ack_err != ESP_OK) {
+                            ESP_LOGW(TAG,
+                                     "Command ack publish failed for '%s': %s",
+                                     j_cmd_id->valuestring,
+                                     esp_err_to_name(ack_err));
+                        }
+                    } else {
+                        ESP_LOGW(TAG, "command message missing command_id");
+                    }
+                }
+
+                cJSON_Delete(root);
+            } else {
+                ESP_LOGW(TAG, "command message is not valid JSON");
+            }
+        }
+
+        /* Route: OTA update trigger */
+        if (strstr(topic, "/ota/update") != NULL) {
+            cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
+            if (root != NULL) {
+                cJSON *j_url = cJSON_GetObjectItemCaseSensitive(root, "url");
+                cJSON *j_sha = cJSON_GetObjectItemCaseSensitive(root, "sha256");
+                if (cJSON_IsString(j_url) && cJSON_IsString(j_sha)) {
+                    ota_trigger(j_url->valuestring, j_sha->valuestring);
+                } else {
+                    ESP_LOGW(TAG, "OTA update message missing url or sha256");
+                }
+                cJSON_Delete(root);
+            } else {
+                ESP_LOGW(TAG, "OTA update message is not valid JSON");
             }
         }
         free(topic);
