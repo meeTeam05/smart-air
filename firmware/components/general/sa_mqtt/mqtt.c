@@ -53,6 +53,33 @@ static char s_response_topic[96]; /* device/{id}/response */
 static char s_shadow_topic[128];  /* device/{id}/shadow/get_response */
 static char s_ota_topic[96];      /* device/{id}/ota/update */
 
+static esp_err_t mqtt_publish_command_ack_internal(const char *command_id, bool success)
+{
+    if (command_id == NULL || command_id[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (s_client == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    char response[128];
+    int written = snprintf(response,
+                           sizeof(response),
+                           "{\"command_id\":\"%s\",\"status\":\"%s\"}",
+                           command_id,
+                           success ? "done" : "error");
+    if (written < 0 || written >= (int)sizeof(response)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    if (esp_mqtt_client_publish(s_client, s_response_topic, response, 0, 1, 0) < 0) {
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Command ack → %s", s_response_topic);
+    return ESP_OK;
+}
+
 /* ── MQTT event handler ──────────────────────────────────────────────────── */
 
 static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_id, void *event_data)
@@ -94,14 +121,15 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
             if (strstr(topic, "/command") != NULL) {
                 cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
                 if (root != NULL) {
-                    const char *cmd_status = "done";
+                    bool cmd_ok = true;
+                    bool ack_deferred = false;
                     bool command_handled = false;
 
                     /* Dispatch command handlers */
                     cJSON *j_type = cJSON_GetObjectItemCaseSensitive(root, "type");
                     cJSON *j_ts = cJSON_GetObjectItemCaseSensitive(root, "ts");
                     if (!cJSON_IsString(j_type)) {
-                        cmd_status = "error";
+                        cmd_ok = false;
                         ESP_LOGW(TAG, "command message missing string type");
                     } else if (strcmp(j_type->valuestring, "set_time") == 0) {
                         command_handled = true;
@@ -109,12 +137,12 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                             s_time_sync_cb((uint32_t)j_ts->valuedouble);
                             ESP_LOGI(TAG, "set_time dispatched: ts=%lu", (unsigned long)(uint32_t)j_ts->valuedouble);
                         } else {
-                            cmd_status = "error";
+                            cmd_ok = false;
                             ESP_LOGW(TAG, "set_time command missing ts or callback");
                         }
                     } else if (strcmp(j_type->valuestring, "set_config") == 0) {
                         command_handled = true;
-                        cmd_status = "error";
+                        cmd_ok = false;
                         ESP_LOGW(TAG,
                                  "set_config is not accepted over MQTT; use local POST /api/config before first login");
                     } else {
@@ -122,8 +150,10 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                             if (strcmp(j_type->valuestring, s_cmd_handlers[i].type) == 0) {
                                 command_handled = true;
                                 esp_err_t hr = s_cmd_handlers[i].cb(j_type->valuestring, payload);
-                                if (hr != ESP_OK) {
-                                    cmd_status = "error";
+                                if (hr == ESP_ERR_NOT_FINISHED) {
+                                    ack_deferred = true;
+                                } else if (hr != ESP_OK) {
+                                    cmd_ok = false;
                                     ESP_LOGW(TAG,
                                              "Command '%s' handler returned %s",
                                              j_type->valuestring,
@@ -133,24 +163,25 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                             }
                         }
                         if (!command_handled) {
-                            cmd_status = "error";
+                            cmd_ok = false;
                             ESP_LOGW(TAG, "unsupported command type: %s", j_type->valuestring);
                         }
                     }
 
-                    /* Send ack AFTER execution with actual status */
-                    cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
-                    if (cJSON_IsString(j_cmd_id)) {
-                        char response[128];
-                        snprintf(response,
-                                 sizeof(response),
-                                 "{\"command_id\":\"%s\",\"status\":\"%s\"}",
-                                 j_cmd_id->valuestring,
-                                 cmd_status);
-                        esp_mqtt_client_publish(s_client, s_response_topic, response, 0, 1, 0);
-                        ESP_LOGI(TAG, "Command ack → %s", s_response_topic);
-                    } else {
-                        ESP_LOGW(TAG, "command message missing command_id");
+                    if (!ack_deferred) {
+                        /* Send ack AFTER execution with actual status */
+                        cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
+                        if (cJSON_IsString(j_cmd_id)) {
+                            esp_err_t ack_err = mqtt_publish_command_ack_internal(j_cmd_id->valuestring, cmd_ok);
+                            if (ack_err != ESP_OK) {
+                                ESP_LOGW(TAG,
+                                         "Command ack publish failed for '%s': %s",
+                                         j_cmd_id->valuestring,
+                                         esp_err_to_name(ack_err));
+                            }
+                        } else {
+                            ESP_LOGW(TAG, "command message missing command_id");
+                        }
                     }
 
                     cJSON_Delete(root);
@@ -265,6 +296,11 @@ void mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb)
     s_cmd_handlers[s_cmd_handler_count].cb = cb;
     s_cmd_handler_count++;
     ESP_LOGI(TAG, "Command handler registered: type=%s", type);
+}
+
+esp_err_t mqtt_publish_command_ack(const char *command_id, bool success)
+{
+    return mqtt_publish_command_ack_internal(command_id, success);
 }
 
 esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *secret_key)

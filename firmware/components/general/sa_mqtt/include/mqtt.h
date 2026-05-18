@@ -33,7 +33,10 @@ void mqtt_register_time_sync_cb(mqtt_time_sync_cb_t cb);
  *
  * @param type         The "type" field value from the command JSON.
  * @param json_payload Full command JSON string (FW-04: already copied, valid for call duration).
- * @return ESP_OK on success → MQTT ack reports "done". Any other value → ack reports "error".
+ * @return ESP_OK on success → MQTT ack reports "done".
+ *         ESP_ERR_NOT_FINISHED if the handler accepted the command and will
+ *         publish the final ack asynchronously.
+ *         Any other value → MQTT ack reports "error".
  */
 typedef esp_err_t (*mqtt_command_cb_t)(const char *type, const char *json_payload);
 
@@ -48,6 +51,19 @@ typedef esp_err_t (*mqtt_command_cb_t)(const char *type, const char *json_payloa
  * @param cb    Handler function.
  */
 void mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb);
+
+/**
+ * @brief Publish a command ack to device/{id}/response.
+ *
+ * Use this when a command is completed asynchronously outside the MQTT event
+ * callback.
+ *
+ * @param command_id Original command_id from device/{id}/command.
+ * @param success    true → "done", false → "error".
+ *
+ * @return ESP_OK if publish was queued, error otherwise.
+ */
+esp_err_t mqtt_publish_command_ack(const char *command_id, bool success);
 
 /**
  * @brief Start the MQTT client and connect to the broker asynchronously.

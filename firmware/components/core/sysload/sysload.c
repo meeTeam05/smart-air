@@ -7,6 +7,7 @@
  */
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
@@ -137,22 +138,139 @@ static gm702b_t s_co_dev;
 static gm102b_t s_no2_dev;
 #endif
 
+#if SA_ENABLE_CO_SENSOR || SA_ENABLE_NO2_SENSOR
+typedef enum {
+    CALIBRATION_KIND_CO = 0,
+    CALIBRATION_KIND_NO2,
+} calibration_kind_t;
+
+typedef struct {
+    calibration_kind_t kind;
+    char command_id[40];
+} calibration_request_t;
+
+static QueueHandle_t s_calibration_queue = NULL;
+
+static esp_err_t run_calibration_request(const calibration_request_t *req)
+{
+    switch (req->kind) {
+#if SA_ENABLE_CO_SENSOR
+    case CALIBRATION_KIND_CO: {
+        esp_err_t err = gm702b_calibrate(&s_co_dev);
+        if (err == ESP_OK) {
+            return config_save_gas_r0("co", s_co_dev.r0);
+        }
+        ESP_LOGE(TAG, "CO calibration failed: %s", esp_err_to_name(err));
+        return err;
+    }
+#endif
+#if SA_ENABLE_NO2_SENSOR
+    case CALIBRATION_KIND_NO2: {
+        esp_err_t err = gm102b_calibrate(&s_no2_dev);
+        if (err == ESP_OK) {
+            return config_save_gas_r0("no2", s_no2_dev.r0);
+        }
+        ESP_LOGE(TAG, "NO2 calibration failed: %s", esp_err_to_name(err));
+        return err;
+    }
+#endif
+    default:
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+}
+
+static void calibration_task_fn(void *arg)
+{
+    (void)arg;
+
+    calibration_request_t req;
+    while (1) {
+        xQueueReceive(s_calibration_queue, &req, portMAX_DELAY);
+
+        esp_err_t err = run_calibration_request(&req);
+        esp_err_t ack_err = mqtt_publish_command_ack(req.command_id, err == ESP_OK);
+        if (ack_err != ESP_OK) {
+            ESP_LOGW(TAG,
+                     "Calibration ack publish failed for '%s': %s",
+                     req.command_id,
+                     esp_err_to_name(ack_err));
+        }
+    }
+}
+
+static esp_err_t calibration_task_start(void)
+{
+    if (s_calibration_queue != NULL) {
+        return ESP_OK;
+    }
+
+    s_calibration_queue = xQueueCreate(2, sizeof(calibration_request_t));
+    if (s_calibration_queue == NULL) {
+        ESP_LOGE(TAG, "xQueueCreate failed for calibration task");
+        return ESP_FAIL;
+    }
+
+    BaseType_t rc = xTaskCreatePinnedToCore(calibration_task_fn, "calibration_task", 4096, NULL, 3, NULL, APP_CPU_NUM);
+    if (rc != pdPASS) {
+        ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed for calibration task");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "calibration_task started");
+    return ESP_OK;
+}
+
+static esp_err_t queue_calibration_request(calibration_kind_t kind, const char *json_payload)
+{
+    if (s_calibration_queue == NULL) {
+        ESP_LOGW(TAG, "Calibration queue not initialised");
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (json_payload == NULL) {
+        ESP_LOGW(TAG, "Calibration command: missing payload");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    cJSON *root = cJSON_ParseWithLength(json_payload, strlen(json_payload));
+    if (root == NULL) {
+        ESP_LOGW(TAG, "Calibration command: invalid JSON payload");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
+    if (!cJSON_IsString(j_cmd_id) || j_cmd_id->valuestring[0] == '\0') {
+        cJSON_Delete(root);
+        ESP_LOGW(TAG, "Calibration command: missing command_id");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    calibration_request_t req = {
+        .kind = kind,
+    };
+    size_t copied = strlcpy(req.command_id, j_cmd_id->valuestring, sizeof(req.command_id));
+    cJSON_Delete(root);
+    if (copied >= sizeof(req.command_id)) {
+        ESP_LOGW(TAG, "Calibration command_id too long");
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    if (xQueueSend(s_calibration_queue, &req, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "Calibration request dropped — queue full");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Calibration queued: type=%d command_id=%s", (int)req.kind, req.command_id);
+    return ESP_ERR_NOT_FINISHED;
+}
+#endif
+
 /* Gas sensor calibration MQTT command callbacks */
-/* NOTE: Blocks ~1s (20 ADC samples × 50 ms) inside MQTT event thread.
- * Acceptable because calibration is rare, manual, user-initiated.
- * Future refactor: post to queue -> dedicated calibrate task. */
 
 #if SA_ENABLE_CO_SENSOR
 static esp_err_t handle_calibrate_co(const char *type, const char *json_payload)
 {
     (void)type;
-    (void)json_payload;
-    esp_err_t err = gm702b_calibrate(&s_co_dev);
-    if (err == ESP_OK) {
-        return config_save_gas_r0("co", s_co_dev.r0);
-    }
-    ESP_LOGE(TAG, "CO calibration failed: %s", esp_err_to_name(err));
-    return err;
+    return queue_calibration_request(CALIBRATION_KIND_CO, json_payload);
 }
 #endif
 
@@ -160,13 +278,7 @@ static esp_err_t handle_calibrate_co(const char *type, const char *json_payload)
 static esp_err_t handle_calibrate_no2(const char *type, const char *json_payload)
 {
     (void)type;
-    (void)json_payload;
-    esp_err_t err = gm102b_calibrate(&s_no2_dev);
-    if (err == ESP_OK) {
-        return config_save_gas_r0("no2", s_no2_dev.r0);
-    }
-    ESP_LOGE(TAG, "NO2 calibration failed: %s", esp_err_to_name(err));
-    return err;
+    return queue_calibration_request(CALIBRATION_KIND_NO2, json_payload);
 }
 #endif
 
@@ -378,12 +490,15 @@ void sysload_init(void)
             ESP_LOGW(TAG, "adc_bus_init failed (%s) — gas sensors unavailable", esp_err_to_name(err));
         }
     }
+
+    bool calibration_worker_needed = false;
 #endif
 
 #if SA_ENABLE_CO_SENSOR
     esp_err_t co_err =
         gm702b_init(&s_co_dev, (adc_channel_t)SA_CO_ADC_CHANNEL, SA_GAS_SENSOR_RL_OHM, SA_GAS_SENSOR_VC_V);
     if (co_err == ESP_OK) {
+        calibration_worker_needed = true;
         config_load_gas_r0("co", &s_co_dev.r0, &s_co_dev.calibrated);
         if (!s_co_dev.calibrated) {
             ESP_LOGW(TAG, "CO sensor not calibrated — send type:calibrate_co to calibrate");
@@ -398,6 +513,7 @@ void sysload_init(void)
     esp_err_t no2_err =
         gm102b_init(&s_no2_dev, (adc_channel_t)SA_NO2_ADC_CHANNEL, SA_GAS_SENSOR_RL_OHM, SA_GAS_SENSOR_VC_V);
     if (no2_err == ESP_OK) {
+        calibration_worker_needed = true;
         config_load_gas_r0("no2", &s_no2_dev.r0, &s_no2_dev.calibrated);
         if (!s_no2_dev.calibrated) {
             ESP_LOGW(TAG, "NO2 sensor not calibrated — send type:calibrate_no2 to calibrate");
@@ -405,6 +521,18 @@ void sysload_init(void)
         mqtt_register_command_handler("calibrate_no2", handle_calibrate_no2);
     } else {
         ESP_LOGW(TAG, "GM102B NO2 init failed (%s) — NO2 unavailable", esp_err_to_name(no2_err));
+    }
+#endif
+
+#if SA_ENABLE_CO_SENSOR || SA_ENABLE_NO2_SENSOR
+    if (calibration_worker_needed) {
+        esp_err_t err = calibration_task_start();
+        if (err != ESP_OK) {
+            led_set_state(LED_STATE_ERROR);
+            ESP_LOGE(TAG, "calibration_task_start failed (%s) — rebooting", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
+        }
     }
 #endif
 

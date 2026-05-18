@@ -207,8 +207,9 @@ Không có field phụ. Firmware chạy calibration sensor tương ứng và pub
 
 ### 3.4 `device/{id}/response` — Kết quả lệnh
 
-Firmware hiện đã publish response sau khi command handler chạy xong. `status` được map từ `esp_err_t` của handler:
+Firmware publish response sau khi command thực sự hoàn tất. Handler ngắn có thể ACK ngay trong MQTT callback; handler dài có thể defer sang worker task rồi ACK sau. `status` vẫn map theo kết quả cuối cùng:
 - `ESP_OK` → `"status":"done"`
+- `ESP_ERR_NOT_FINISHED` → handler đã nhận command và sẽ publish response cuối cùng bất đồng bộ
 - lỗi khác `ESP_OK` → `"status":"error"`
 - command type không hỗ trợ trong build hiện tại → `"status":"error"`
 
@@ -416,7 +417,7 @@ Nhận message trên device/{id}/command
     │       │
     │       ├─ ĐÃ xử lý rồi → publish response cũ (status: duplicate_cmd) → bỏ qua
     │       │
-    │       └─ CHƯA xử lý → thực thi action → lưu command_id vào processed_cmds[] → publish response
+    │       └─ CHƯA xử lý → thực thi action (inline hoặc qua worker) → lưu command_id vào processed_cmds[] → publish response
 ```
 
 > Tại sao cần: MQTT QoS 1 đảm bảo "at least once" — broker có thể gửi lại cùng 1 message nếu không nhận được PUBACK. Không có idempotency, lệnh "bật đèn" có thể chạy 2 lần.

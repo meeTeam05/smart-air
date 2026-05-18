@@ -414,7 +414,7 @@ Behavioral notes:
 - `set_config` is explicitly rejected over MQTT; local `/api/config` is the supported path
 - OTA does not use the generic command topic; it uses `device/{id}/ota/update`
 
-Responses are published to `device/{id}/response` after handler execution.
+Responses are published to `device/{id}/response` after command execution completes, either inline in the MQTT callback or later from a worker task for longer operations.
 
 ### 3.8 Sensors and telemetry
 
