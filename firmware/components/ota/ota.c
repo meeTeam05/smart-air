@@ -58,6 +58,25 @@ static void publish_progress(int pct, const char *status)
     mqtt_publish(s_progress_topic, msg, 1, false);
 }
 
+static esp_err_t format_hex_string(const uint8_t *bytes, size_t byte_count, char *out, size_t out_size)
+{
+    if (bytes == NULL || out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (out_size < (byte_count * 2U) + 1U) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    for (size_t i = 0; i < byte_count; i++) {
+        int written = snprintf(&out[i * 2U], out_size - (i * 2U), "%02x", bytes[i]);
+        if (written != 2) {
+            return ESP_FAIL;
+        }
+    }
+
+    return ESP_OK;
+}
+
 /* ── FreeRTOS task ───────────────────────────────────────────────────────── */
 
 static void ota_task_fn(void *arg)
@@ -129,8 +148,12 @@ static void ota_task_fn(void *arg)
                 continue;
             }
             char actual_hex[65];
-            for (int i = 0; i < 32; i++) {
-                sprintf(&actual_hex[i * 2], "%02x", digest[i]);
+            err = format_hex_string(digest, sizeof(digest), actual_hex, sizeof(actual_hex));
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "SHA256 hex formatting failed (%s)", esp_err_to_name(err));
+                esp_https_ota_abort(ota_handle);
+                publish_progress(0, "failed");
+                continue;
             }
             if (strcasecmp(actual_hex, msg.sha256) != 0) {
                 ESP_LOGE(TAG, "SHA256 mismatch — expected %s, got %s", msg.sha256, actual_hex);
