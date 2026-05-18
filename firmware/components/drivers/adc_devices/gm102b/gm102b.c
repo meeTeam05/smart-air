@@ -57,6 +57,7 @@ static const int NO2_CURVE_LEN = sizeof(NO2_CURVE) / sizeof(NO2_CURVE[0]);
 
 #define CALIBRATION_SAMPLES 20
 #define CALIBRATION_DELAY_MS 50
+#define CALIBRATION_MIN_VALID_SAMPLES ((CALIBRATION_SAMPLES * 3) / 4)
 
 /**
  * @brief Linear interpolation between two points.
@@ -133,13 +134,22 @@ esp_err_t gm102b_calibrate(gm102b_t *dev)
 
     float rs_sum = 0.0f;
     int valid = 0;
+    esp_err_t last_err = ESP_FAIL;
 
     ESP_LOGI(TAG, "Calibrating R0 in clean air (%d samples)...", CALIBRATION_SAMPLES);
 
     for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
         int mv;
         esp_err_t err = adc_bus_read_voltage(dev->channel, &mv);
-        if (err != ESP_OK) continue;
+        if (err != ESP_OK) {
+            last_err = err;
+            ESP_LOGW(TAG,
+                     "Calibration sample %d/%d failed: %s",
+                     i + 1,
+                     CALIBRATION_SAMPLES,
+                     esp_err_to_name(err));
+            continue;
+        }
 
         float vout = (float)mv / 1000.0f;
         float rs = voltage_to_rs(vout, dev->rl, dev->vc);
@@ -151,7 +161,16 @@ esp_err_t gm102b_calibrate(gm102b_t *dev)
 
     if (valid == 0) {
         ESP_LOGE(TAG, "Calibration failed — no valid readings");
-        return ESP_FAIL;
+        return last_err;
+    }
+
+    if (valid < CALIBRATION_MIN_VALID_SAMPLES) {
+        ESP_LOGE(TAG,
+                 "Calibration failed — insufficient valid readings (%d/%d, need at least %d)",
+                 valid,
+                 CALIBRATION_SAMPLES,
+                 CALIBRATION_MIN_VALID_SAMPLES);
+        return ESP_ERR_INVALID_STATE;
     }
 
     dev->r0 = rs_sum / (float)valid;
