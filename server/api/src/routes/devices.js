@@ -126,8 +126,11 @@ export default async function devicesRoutes(fastify) {
     // Returns {announced: true} when MQTT bridge saw the device come online.
     // The record disappears after 5 minutes so stale announcements don't linger.
     fastify.get('/devices/announce/:mac', auth, async (request, reply) => {
+        const userId = request.user.sub;
         const deviceId = normalizeDeviceId(request.params.mac);
         if (!deviceId) return reply.code(400).send({ error: 'Invalid mac' });
+        const allowed = await checkDeviceAccess(fastify, deviceId, userId);
+        if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
         const announced = await fastify.redis.get(`announce:${deviceId}`);
         return { announced: !!announced };
     });
