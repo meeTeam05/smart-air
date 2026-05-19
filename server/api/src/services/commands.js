@@ -42,6 +42,27 @@ export function commandMessage(commandId, payload) {
     return JSON.stringify({ command_id: commandId, ...payload });
 }
 
+async function revertSentCommand(fastify, deviceId, command) {
+    const { rowCount } = await fastify.db.query(
+        `UPDATE commands
+         SET status = 'pending'
+         WHERE id = $1 AND device_id = $2 AND status = 'sent' AND executed_at IS NULL`,
+        [command.id, deviceId]
+    );
+    if (rowCount === 0) return false;
+
+    await createRealtimeEvent(fastify, {
+        type: 'command.updated',
+        deviceId,
+        payload: {
+            command_id: command.id,
+            status: 'pending',
+            payload: command.payload,
+        },
+    });
+    return true;
+}
+
 async function tryAcquireFlushLock(client, deviceId) {
     const { rows } = await client.query(
         'SELECT pg_try_advisory_lock(hashtext($1)) AS locked',
@@ -105,12 +126,6 @@ export async function flushPending(fastify, deviceId) {
                     continue;
                 }
 
-                await fastify.mqttPublish(
-                    `device/${deviceId}/command`,
-                    commandMessage(command.id, command.payload),
-                    { qos: 1 }
-                );
-
                 await client.query(
                     "UPDATE commands SET status = 'sent' WHERE id = $1 AND device_id = $2 AND status = 'pending'",
                     [command.id, deviceId]
@@ -128,6 +143,34 @@ export async function flushPending(fastify, deviceId) {
             } catch (err) {
                 await client.query('ROLLBACK');
                 fastify.log.warn({ err, deviceId, commandId: command?.id }, 'pending command publish failed; leaving DB row pending');
+                break;
+            }
+
+            try {
+                await fastify.mqttPublish(
+                    `device/${deviceId}/command`,
+                    commandMessage(command.id, command.payload),
+                    { qos: 1 }
+                );
+            } catch (err) {
+                try {
+                    const reverted = await revertSentCommand(fastify, deviceId, command);
+                    fastify.log.warn(
+                        { err, deviceId, commandId: command.id, reverted },
+                        reverted
+                            ? 'pending command publish failed after dispatch commit; command reverted to pending'
+                            : 'pending command publish failed after dispatch commit; command state already advanced'
+                    );
+                } catch (revertErr) {
+                    fastify.log.error(
+                        { err: revertErr, deviceId, commandId: command.id },
+                        'failed to revert sent command after publish failure'
+                    );
+                    fastify.log.warn(
+                        { err, deviceId, commandId: command.id },
+                        'pending command publish failed after dispatch commit; command left as sent'
+                    );
+                }
                 break;
             }
         }

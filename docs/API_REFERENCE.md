@@ -681,8 +681,9 @@ curl -X POST https://minhnhat05.xyz/api/devices/dc:b4:d9:13:ed:8c/command \
 **Internal (device online):**
 1. INSERT `commands` status=`pending`
 2. `flushPending()` lấy pending commands từ PostgreSQL theo FIFO
-3. MQTT publish `device/{id}/command`: `{ command_id, ...payload }`
-4. UPDATE status=`sent`
+3. UPDATE status=`sent` + COMMIT dispatch record
+4. MQTT publish `device/{id}/command`: `{ command_id, ...payload }`
+5. Nếu publish call fail đồng bộ, server revert row về `pending`
 
 **Internal (device offline):**
 1. INSERT `commands` status=`pending`

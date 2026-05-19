@@ -393,8 +393,10 @@ App                   API / PostgreSQL     EMQX               ESP32
  │                        │                   │    (boot + connect)
  │                        │                   │←─status online───┤
  │                        ├─DB FIFO flush pending commands       │
- │                        ├─publish command───→│─────────────────→│
  │                        ├─UPDATE status=sent │                  │
+ │                        ├─COMMIT dispatch    │                  │
+ │                        ├─publish command───→│─────────────────→│
+ │                        ├─publish fail? → revert status=pending │
  │                        │                   │                  ├─execute
  │                        │                   │←─response────────┤
  │                        ├─UPDATE status done/error             │
