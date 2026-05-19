@@ -1,5 +1,17 @@
 import { REDIS_TTL_SHADOW } from '../constants.js';
 
+const SHADOW_CACHE_SET_SCRIPT = `
+local existing = redis.call('GET', KEYS[1])
+if existing then
+    local ok, decoded = pcall(cjson.decode, existing)
+    if ok and decoded and decoded.updatedAt and decoded.updatedAt > ARGV[2] then
+        return 0
+    end
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
+return 1
+`;
+
 function deepEqual(left, right) {
     if (Object.is(left, right)) return true;
     if (left == null || right == null) return false;
@@ -69,10 +81,25 @@ async function readCachedShadow(fastify, deviceId) {
 }
 
 async function writeCachedShadow(fastify, deviceId, shadow) {
+    const key = shadowKey(deviceId);
+    const serialized = JSON.stringify(shadow);
+    const version = new Date(shadow.updatedAt).toISOString();
     try {
-        await fastify.redis.set(shadowKey(deviceId), JSON.stringify(shadow), 'EX', REDIS_TTL_SHADOW);
+        await fastify.redis.eval(
+            SHADOW_CACHE_SET_SCRIPT,
+            1,
+            key,
+            serialized,
+            version,
+            String(REDIS_TTL_SHADOW)
+        );
     } catch (err) {
         fastify.log.warn({ err, deviceId }, 'Redis shadow cache write failed; DB remains source of truth');
+        try {
+            await fastify.redis.del(key);
+        } catch (delErr) {
+            fastify.log.warn({ err: delErr, deviceId }, 'failed to clear shadow cache after write failure');
+        }
     }
 }
 

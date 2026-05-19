@@ -26,11 +26,13 @@ test('getShadow ignores malformed Redis JSON, deletes cache key, and falls back 
                 assert.equal(key, `shadow:${DEVICE_ID}`);
                 return '{bad json';
             },
+            async eval() {
+                return 1;
+            },
             async del(key) {
                 deletedKeys.push(key);
                 return 1;
             },
-            async set() {},
         },
         db: {
             async query(sql, params) {
@@ -83,11 +85,16 @@ test('getShadow falls back to DB when Redis read fails', async () => {
 test('shadow DB updates succeed when Redis write-through cache fails', async () => {
     const log = createLogger();
     let updateCount = 0;
+    const deletedKeys = [];
     const fastify = {
         log,
         redis: {
-            async set() {
+            async eval() {
                 throw new Error('redis write failed');
+            },
+            async del(key) {
+                deletedKeys.push(key);
+                return 1;
             },
         },
         db: {
@@ -114,6 +121,7 @@ test('shadow DB updates succeed when Redis write-through cache fails', async () 
     assert.equal(reported.applied, true);
     assert.deepEqual(reported.shadow.reported, { relay_1: false });
     assert.equal(log.warnCalls.length, 2);
+    assert.deepEqual(deletedKeys, [`shadow:${DEVICE_ID}`, `shadow:${DEVICE_ID}`]);
 });
 
 test('updateReported guards stale shadow reports by payload ts', async () => {
@@ -128,8 +136,9 @@ test('updateReported guards stale shadow reports by payload ts', async () => {
     const fastify = {
         log: createLogger(),
         redis: {
-            async set(key, value) {
-                redisWrites.push({ key, value: JSON.parse(value) });
+            async eval(script, keyCount, key, value) {
+                redisWrites.push({ script, keyCount, key, value: JSON.parse(value) });
+                return 1;
             },
         },
         db: {
@@ -157,5 +166,42 @@ test('updateReported guards stale shadow reports by payload ts', async () => {
     assert.equal(result.applied, false);
     assert.deepEqual(result.shadow.reported, currentRow.reported);
     assert.equal(redisWrites.length, 1);
+    assert.equal(redisWrites[0].keyCount, 1);
     assert.deepEqual(redisWrites[0].value.reported, currentRow.reported);
+});
+
+test('shadow cache writes use updatedAt compare-and-set semantics', async () => {
+    const evalCalls = [];
+    const fastify = {
+        log: createLogger(),
+        redis: {
+            async eval(script, keyCount, key, serialized, version, ttl) {
+                evalCalls.push({ script, keyCount, key, serialized: JSON.parse(serialized), version, ttl });
+                return 1;
+            },
+        },
+        db: {
+            async query(sql, params) {
+                assert.match(sql, /INSERT INTO device_shadows/);
+                assert.equal(params[0], DEVICE_ID);
+                return {
+                    rows: [{
+                        reported: {},
+                        desired: { relay_1: true },
+                        updated_at: new Date('2026-05-02T03:04:05.000Z'),
+                    }],
+                };
+            },
+        },
+    };
+
+    await setDesired(fastify, DEVICE_ID, { relay_1: true });
+
+    assert.equal(evalCalls.length, 1);
+    assert.match(evalCalls[0].script, /decoded\.updatedAt > ARGV\[2\]/);
+    assert.equal(evalCalls[0].keyCount, 1);
+    assert.equal(evalCalls[0].key, `shadow:${DEVICE_ID}`);
+    assert.deepEqual(evalCalls[0].serialized.desired, { relay_1: true });
+    assert.equal(evalCalls[0].version, '2026-05-02T03:04:05.000Z');
+    assert.equal(evalCalls[0].ttl, String(60 * 60));
 });

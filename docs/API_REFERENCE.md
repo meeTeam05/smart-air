@@ -586,7 +586,7 @@ Shadow = snapshot state gồm:
 - **`desired`**: App set (fan_speed, led, timer...)
 
 Cache: Redis `shadow:{deviceId}` TTL 1h (`REDIS_TTL_SHADOW`), fallback DB `device_shadows`.
-Malformed Redis JSON or Redis read/write failures are logged and ignored; DB remains the source of truth.
+Malformed Redis JSON is deleted. Cache writes are versioned by `updatedAt`, and a failed write clears the key so stale Redis state cannot outrun Postgres.
 For `device/{id}/shadow/report`, top-level `reported.ts` is the ordering key: older reports are ignored so out-of-order MQTT delivery cannot overwrite newer state.
 
 ### `GET /api/devices/:id/shadow` 🔒
