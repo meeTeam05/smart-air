@@ -21,7 +21,7 @@ Use flash/monitor when hardware behavior changed:
 
 ```bash
 idf.py flash monitor
-idf.py -p /dev/ttyUSB0 flash monitor
+idf.py -p /dev/ttyACM0 flash monitor
 ```
 
 ## Flutter App
