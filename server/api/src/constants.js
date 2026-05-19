@@ -9,9 +9,22 @@ export const REFRESH_COOKIE_PATH = '/api/auth/refresh';
 export const SECONDS_PER_DAY     = 86_400;
 
 // ── CORS ────────────────────────────────────────────────────────
-export const ALLOWED_ORIGINS = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
-    : ['https://minhnhat05.xyz'];
+function parseAllowedOrigins() {
+    const origins = process.env.CORS_ORIGINS
+        ? process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
+        : ['https://minhnhat05.xyz'];
+
+    if (process.env.NODE_ENV === 'production') {
+        const hasInvalidOrigin = origins.length === 0 || origins.some((origin) => origin === '*' || !origin.startsWith('https://'));
+        if (hasInvalidOrigin) {
+            throw new Error('CORS_ORIGINS must contain explicit HTTPS origins in production');
+        }
+    }
+
+    return origins;
+}
+
+export const ALLOWED_ORIGINS = parseAllowedOrigins();
 
 // ── Rate limits ─────────────────────────────────────────────────
 export const RATE_LIMIT_COMMAND = { max: 30, timeWindow: '1 minute' };
