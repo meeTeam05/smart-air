@@ -90,29 +90,7 @@ async function ensureDeviceExists(fastify, deviceId, handler) {
     return true;
 }
 
-function normalizeTelemetryTimestamp(fastify, deviceId, payload) {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const minSec = 946684800;
-    const maxSec = nowSec + 300;
-    const candidateTs = payload?.ts;
-
-    if (typeof candidateTs !== 'number' || !Number.isFinite(candidateTs)) {
-        fastify.log.warn({ deviceId, ts: candidateTs }, 'invalid telemetry ts normalized');
-        return new Date(nowSec * 1000).toISOString();
-    }
-
-    if (candidateTs < minSec) {
-        fastify.log.warn({ deviceId, ts: candidateTs, normalizedTs: minSec }, 'old telemetry ts clamped');
-        return new Date(minSec * 1000).toISOString();
-    }
-
-    if (candidateTs > maxSec) {
-        fastify.log.warn({ deviceId, ts: candidateTs, normalizedTs: nowSec }, 'future telemetry ts clamped');
-        return new Date(nowSec * 1000).toISOString();
-    }
-
-    return new Date(candidateTs * 1000).toISOString();
-}
+const MIN_TELEMETRY_TS_SEC = 946684800;
 
 function telemetryEventPayload(payload, ts) {
     return {
@@ -206,16 +184,33 @@ export async function handleTelemetry(fastify, deviceId, payload, packet = null)
         return;
     }
 
-    const ts = normalizeTelemetryTimestamp(fastify, deviceId, payload);
     const messageId = telemetryMessageId(packet);
     try {
         const insertResult = await fastify.db.query(
-            `INSERT INTO telemetry (device_id, ts, payload, mqtt_message_id)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT DO NOTHING`,
-            [deviceId, ts, JSON.stringify(payload), messageId]
+            `WITH normalized AS (
+                 SELECT CASE
+                     WHEN $2 < $3 THEN to_timestamp($3)
+                     WHEN $2 > EXTRACT(EPOCH FROM NOW()) + 300 THEN NOW()
+                     ELSE to_timestamp($2)
+                 END AS ts
+             )
+             INSERT INTO telemetry (device_id, ts, payload, mqtt_message_id)
+             SELECT $1, normalized.ts, $4, $5
+             FROM normalized
+             ON CONFLICT DO NOTHING
+             RETURNING ts`,
+            [deviceId, payload.ts, MIN_TELEMETRY_TS_SEC, JSON.stringify(payload), messageId]
         );
         if (insertResult.rowCount === 0) return;
+        const ts = new Date(insertResult.rows[0].ts).toISOString();
+        if (payload.ts < MIN_TELEMETRY_TS_SEC) {
+            fastify.log.warn({ deviceId, ts: payload.ts, normalizedTs: MIN_TELEMETRY_TS_SEC }, 'old telemetry ts clamped');
+        } else {
+            const normalizedSec = Math.floor(new Date(insertResult.rows[0].ts).getTime() / 1000);
+            if (normalizedSec !== payload.ts) {
+                fastify.log.warn({ deviceId, ts: payload.ts, normalizedTs: normalizedSec }, 'future telemetry ts clamped');
+            }
+        }
         await createRealtimeEvent(fastify, {
             type: 'telemetry.point',
             deviceId,

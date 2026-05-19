@@ -71,7 +71,9 @@ test('handleTelemetry emits realtime event after telemetry insert succeeds', asy
             async query(sql, params) {
                 calls.push({ sql, params });
                 if (sql.includes('FROM devices')) return { rows: [{}] };
-                if (sql.includes('INSERT INTO telemetry')) return { rows: [], rowCount: 1 };
+                if (sql.includes('INSERT INTO telemetry')) {
+                    return { rows: [{ ts: new Date('2026-05-01T10:36:01.000Z') }], rowCount: 1 };
+                }
                 if (sql.includes('INSERT INTO realtime_events')) {
                     return {
                         rows: [{
@@ -123,7 +125,10 @@ test('handleTelemetry suppresses duplicate QoS1 redelivery by ts and messageId',
                 if (sql.includes('FROM devices')) return { rows: [{}] };
                 if (sql.includes('INSERT INTO telemetry')) {
                     telemetryInsertCount += 1;
-                    return { rows: [], rowCount: telemetryInsertCount === 1 ? 1 : 0 };
+                    return {
+                        rows: telemetryInsertCount === 1 ? [{ ts: new Date('2026-05-01T10:36:01.000Z') }] : [],
+                        rowCount: telemetryInsertCount === 1 ? 1 : 0,
+                    };
                 }
                 if (sql.includes('INSERT INTO realtime_events')) {
                     realtimeInsertCount += 1;
@@ -154,9 +159,60 @@ test('handleTelemetry suppresses duplicate QoS1 redelivery by ts and messageId',
 
     const telemetryCall = calls.find((call) => call.sql.includes('INSERT INTO telemetry'));
     assert.ok(telemetryCall, 'telemetry insert missing');
-    assert.equal(telemetryCall.params[2], JSON.stringify(payload));
-    assert.equal(telemetryCall.params[3], 7);
+    assert.equal(telemetryCall.params[1], 1777631761);
+    assert.equal(telemetryCall.params[3], JSON.stringify(payload));
+    assert.equal(telemetryCall.params[4], 7);
     assert.equal(realtimeInsertCount, 1);
+});
+
+test('handleTelemetry clamps future telemetry against database NOW()', async () => {
+    const calls = [];
+    const normalizedTs = new Date('2026-05-15T10:00:00Z');
+    const fastify = {
+        log: createLogger(),
+        db: {
+            async query(sql, params) {
+                calls.push({ sql, params });
+                if (sql.includes('FROM devices')) return { rows: [{}] };
+                if (sql.includes('INSERT INTO telemetry')) {
+                    return { rows: [{ ts: normalizedTs }], rowCount: 1 };
+                }
+                if (sql.includes('INSERT INTO realtime_events')) {
+                    return {
+                        rows: [{
+                            id: '77',
+                            type: 'telemetry.point',
+                            device_id: 'aa:bb:cc:dd:ee:ff',
+                            occurred_at: normalizedTs,
+                            payload: JSON.parse(params[3]),
+                        }],
+                    };
+                }
+                return { rows: [], rowCount: 0 };
+            },
+        },
+    };
+
+    await handleTelemetry(fastify, 'aa:bb:cc:dd:ee:ff', {
+        device_id: 'aa:bb:cc:dd:ee:ff',
+        mode: 'on',
+        ts: 4_102_444_800,
+        temperature: 25,
+    });
+
+    const telemetryCall = calls.find((call) => call.sql.includes('INSERT INTO telemetry'));
+    const realtimeCall = calls.find((call) => call.sql.includes('INSERT INTO realtime_events'));
+    assert.ok(telemetryCall, 'telemetry insert missing');
+    assert.match(telemetryCall.sql, /EXTRACT\(EPOCH FROM NOW\(\)\)/);
+    assert.equal(telemetryCall.params[1], 4_102_444_800);
+    assert.deepEqual(JSON.parse(realtimeCall.params[3]), {
+        ts: '2026-05-15T10:00:00.000Z',
+        temperature: 25,
+        humidity: null,
+        co_ppm: null,
+        no2_ppm: null,
+        mode: 'on',
+    });
 });
 
 test('handleStatus ignores malformed status payloads without DB update', async () => {

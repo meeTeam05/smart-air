@@ -105,6 +105,7 @@ Direction: Broker → ESP32   ký hiệu: ←
 > Khi `mode="off"`: sensor gate tắt; firmware publish final null telemetry khi chuyển OFF, sensor task dừng publish cho đến khi ON lại.
 > Khi `CONFIG_SA_DEMO_NO_PERIPHERALS=y`: firmware publish các field sensor từ mảng dữ liệu ảo nội bộ, vẫn giữ nguyên JSON schema và topics hiện tại.
 > Server INSERT vào TimescaleDB hypertable `telemetry` (JSON blob — field mới tự xuất hiện). QoS-1 redelivery cùng `messageId` được dedupe theo `(device_id, ts, mqtt_message_id)` trước khi emit realtime event.
+> Telemetry `ts` được clamp theo Postgres `NOW()`: giá trị quá cũ bị kéo lên `2000-01-01T00:00:00Z`, giá trị quá tương lai bị kéo về clock của DB thay vì clock Node.js.
 
 ---
 
