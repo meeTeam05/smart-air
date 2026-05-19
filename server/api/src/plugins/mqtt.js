@@ -3,6 +3,7 @@ import mqtt from 'mqtt';
 import { handleStatus, handleTelemetry, handleResponse, handleShadowReport, handleShadowGet, handleOtaProgress } from '../services/mqtt-handlers.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
 import { ensureBridgeUser } from '../services/emqx.js';
+import { parsePositiveIntEnv } from '../utils/parse.js';
 
 const DEFAULT_PUBLISH_TIMEOUT_MS = 5_000;
 const DEFAULT_PROVISION_RETRY_MS = 5_000;
@@ -14,11 +15,6 @@ const SUBSCRIPTIONS = Object.freeze([
     'device/+/shadow/get',
     'device/+/ota/progress',
 ]);
-
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
 
 async function mqttPlugin(fastify) {
     const clientId = process.env.EMQX_MQTT_CLIENT_ID || 'sa-api-bridge';

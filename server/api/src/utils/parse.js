@@ -12,6 +12,11 @@ export function parsePositiveInt(s, fallback, max) {
     return max !== undefined ? Math.min(n, max) : n;
 }
 
+export function parsePositiveIntEnv(name, fallback) {
+    const value = Number.parseInt(process.env[name] || '', 10);
+    return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function parseUuid(value) {

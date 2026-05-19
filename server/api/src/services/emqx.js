@@ -1,10 +1,7 @@
+import { parsePositiveIntEnv } from '../utils/parse.js';
+
 const EMQX_API_URL = process.env.EMQX_API_URL || 'http://emqx:18083';
 const DEFAULT_EMQX_API_TIMEOUT_MS = 5_000;
-
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
 
 const EMQX_API_TIMEOUT_MS = parsePositiveIntEnv('EMQX_API_TIMEOUT_MS', DEFAULT_EMQX_API_TIMEOUT_MS);
 

@@ -4,6 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
 
 import { ALLOWED_ORIGINS } from './constants.js';
+import { parsePositiveIntEnv } from './utils/parse.js';
 import dbPlugin from './plugins/db.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -35,11 +36,6 @@ const REQUIRED_RUNTIME_ENV_VARS = [
 ];
 
 const DEFAULT_BODY_LIMIT_BYTES = 65_536;
-
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
 
 function getMissingRequiredEnvVars(requiredVars) {
     return requiredVars.filter((name) => {

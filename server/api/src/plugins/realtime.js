@@ -9,16 +9,12 @@ import {
     parseLastEventId,
     userCanReplayFromEventId,
 } from '../services/realtime-events.js';
+import { parsePositiveIntEnv } from '../utils/parse.js';
 
 const DEFAULT_HEARTBEAT_MS = 25_000;
 const DEFAULT_MAX_CLIENTS = 1_000;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
-
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
 
 function eventIsNewer(eventId, lastSentEventId) {
     return BigInt(eventId) > BigInt(lastSentEventId || '0');

@@ -1,13 +1,9 @@
+import { parsePositiveIntEnv } from '../utils/parse.js';
 import { registerNonOverlappingIntervalJob } from './scheduler.js';
 
 const DEFAULT_COMMAND_RETENTION_DAYS = 30;
 const DEFAULT_REFRESH_TOKEN_RETENTION_DAYS = 30;
 const DEFAULT_SWEEP_INTERVAL_MS = 3_600_000;
-
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
 
 export async function runDataRetentionCleanup(
     fastify,
