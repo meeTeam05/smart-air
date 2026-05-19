@@ -2,16 +2,14 @@
  * @file ds3231.c
  *
  * @brief DS3231 Real-Time Clock (RTC) Driver Implementation
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
-
-/* ── Includes ───────────────────────────────────────────────────────────── */
 
 #include "ds3231.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <string.h>
-
-/* ── Private defines macro ──────────────────────────────────────────────── */
 
 #define CHECK(x)                                                           \
     do {                                                                   \
@@ -29,8 +27,6 @@
             return ESP_ERR_INVALID_ARG;        \
         }                                      \
     } while (0)
-
-/* ── Private defines ────────────────────────────────────────────────────── */
 
 /* Status register bits */
 #define DS3231_STAT_OSCILLATOR 0x80 /**< Oscillator stop flag */
@@ -67,18 +63,12 @@
 /* I2C configuration */
 #define I2C_FREQ_HZ SA_I2C_FREQ_HZ
 
-/* ── Private types ──────────────────────────────────────────────────────── */
-
 enum { DS3231_SET = 0, DS3231_CLEAR, DS3231_REPLACE };
-
-/* ── Private variables ──────────────────────────────────────────────────── */
 
 static const char *TAG = "ds3231";
 
 static const int days_per_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 static const int days_per_month_leap_year[] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-
-/* ── Private function prototypes ────────────────────────────────────────── */
 
 /**
  * @brief Convert BCD to decimal
@@ -173,8 +163,6 @@ static esp_err_t ds3231_check_oscillator_stop(ds3231_t *dev);
  */
 static esp_err_t ds3231_set_flag(ds3231_t *dev, uint8_t addr, uint8_t bits, uint8_t mode);
 
-/* ── Exported functions ─────────────────────────────────────────────────── */
-
 /**
  * @brief Initialize device descriptor
  */
@@ -243,11 +231,7 @@ esp_err_t ds3231_set_time(ds3231_t *dev, struct tm *time)
         return ESP_ERR_INVALID_ARG;
     }
     if (!is_valid_calendar_date(time->tm_year + 1900, time->tm_mon, time->tm_mday)) {
-        ESP_LOGE(TAG,
-                 "Invalid calendar date: %04d-%02d-%02d",
-                 time->tm_year + 1900,
-                 time->tm_mon + 1,
-                 time->tm_mday);
+        ESP_LOGE(TAG, "Invalid calendar date: %04d-%02d-%02d", time->tm_year + 1900, time->tm_mon + 1, time->tm_mday);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -551,8 +535,6 @@ esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp)
     return ESP_OK;
 }
 
-/* ── Private functions ──────────────────────────────────────────────────── */
-
 /**
  * @brief Convert BCD to decimal
  */
@@ -589,8 +571,8 @@ static esp_err_t utc_tm_to_timestamp(const struct tm *time, uint32_t *timestamp)
     }
 
     int year = time->tm_year + 1900;
-    if (year < 1970 || time->tm_mon < 0 || time->tm_mon > 11 || time->tm_mday < 1 || time->tm_hour < 0 || time->tm_hour > 23 ||
-        time->tm_min < 0 || time->tm_min > 59 || time->tm_sec < 0 || time->tm_sec > 59) {
+    if (year < 1970 || time->tm_mon < 0 || time->tm_mon > 11 || time->tm_mday < 1 || time->tm_hour < 0 ||
+        time->tm_hour > 23 || time->tm_min < 0 || time->tm_min > 59 || time->tm_sec < 0 || time->tm_sec > 59) {
         ESP_LOGE(TAG, "Invalid UTC time fields");
         return ESP_ERR_INVALID_ARG;
     }
@@ -607,7 +589,8 @@ static esp_err_t utc_tm_to_timestamp(const struct tm *time, uint32_t *timestamp)
     }
     days += days_since_january_1st(year, time->tm_mon, time->tm_mday);
 
-    uint64_t seconds = days * 86400ULL + (uint64_t)time->tm_hour * 3600ULL + (uint64_t)time->tm_min * 60ULL + (uint64_t)time->tm_sec;
+    uint64_t seconds =
+        days * 86400ULL + (uint64_t)time->tm_hour * 3600ULL + (uint64_t)time->tm_min * 60ULL + (uint64_t)time->tm_sec;
     if (seconds > UINT32_MAX) {
         ESP_LOGE(TAG, "UTC timestamp overflow for year %d", year);
         return ESP_ERR_INVALID_ARG;

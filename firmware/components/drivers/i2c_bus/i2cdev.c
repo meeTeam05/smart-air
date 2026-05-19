@@ -2,9 +2,9 @@
  * @file i2cdev.c
  *
  * @brief I2C Device Abstraction Implementation
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
-
-/* ── Includes ───────────────────────────────────────────────────────────── */
 
 #include "i2cdev.h"
 #include "esp_log.h"
@@ -12,8 +12,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include <string.h>
-
-/* ── Private defines ────────────────────────────────────────────────────── */
 
 #define I2C_TIMEOUT_MS       SA_I2C_TIMEOUT_MS
 #define I2C_MUTEX_TIMEOUT_MS SA_I2C_TIMEOUT_MS
@@ -24,8 +22,6 @@ static int s_i2c_port = -1;
 static gpio_num_t s_i2c_sda_gpio = GPIO_NUM_NC;
 static gpio_num_t s_i2c_scl_gpio = GPIO_NUM_NC;
 static uint32_t s_i2c_clk_speed = 0;
-
-/* ── Exported functions ─────────────────────────────────────────────────── */
 
 /**
  * @brief Initialize I2C bus using new I2C Master API
@@ -41,21 +37,23 @@ esp_err_t i2c_bus_init(int port, gpio_num_t sda_gpio, gpio_num_t scl_gpio, uint3
 
     /* Check if already initialized */
     if (i2c_bus_handle != NULL) {
-        if (s_i2c_port == port && s_i2c_sda_gpio == sda_gpio && s_i2c_scl_gpio == scl_gpio && s_i2c_clk_speed == clk_speed) {
+        if (s_i2c_port == port && s_i2c_sda_gpio == sda_gpio && s_i2c_scl_gpio == scl_gpio &&
+            s_i2c_clk_speed == clk_speed) {
             ESP_LOGW(TAG, "I2C bus already initialized on port %d", port);
             return ESP_OK;
         }
 
-        ESP_LOGE(TAG,
-                 "I2C bus already initialized on port %d (SDA: GPIO%d, SCL: GPIO%d, Speed: %lu Hz); rejecting reinit for port %d (SDA: GPIO%d, SCL: GPIO%d, Speed: %lu Hz)",
-                 s_i2c_port,
-                 s_i2c_sda_gpio,
-                 s_i2c_scl_gpio,
-                 s_i2c_clk_speed,
-                 port,
-                 sda_gpio,
-                 scl_gpio,
-                 clk_speed);
+        ESP_LOGE(
+            TAG,
+            "I2C bus already initialized on port %d (SDA: GPIO%d, SCL: GPIO%d, Speed: %lu Hz); rejecting reinit for port %d (SDA: GPIO%d, SCL: GPIO%d, Speed: %lu Hz)",
+            s_i2c_port,
+            s_i2c_sda_gpio,
+            s_i2c_scl_gpio,
+            s_i2c_clk_speed,
+            port,
+            sda_gpio,
+            scl_gpio,
+            clk_speed);
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -104,15 +102,16 @@ esp_err_t i2c_dev_init(i2c_dev_t *dev)
     }
 
     if (dev->port != s_i2c_port || dev->sda_io_num != s_i2c_sda_gpio || dev->scl_io_num != s_i2c_scl_gpio) {
-        ESP_LOGE(TAG,
-                 "Device 0x%02x requests I2C port %d (SDA: GPIO%d, SCL: GPIO%d), but active bus is port %d (SDA: GPIO%d, SCL: GPIO%d)",
-                 dev->addr,
-                 dev->port,
-                 dev->sda_io_num,
-                 dev->scl_io_num,
-                 s_i2c_port,
-                 s_i2c_sda_gpio,
-                 s_i2c_scl_gpio);
+        ESP_LOGE(
+            TAG,
+            "Device 0x%02x requests I2C port %d (SDA: GPIO%d, SCL: GPIO%d), but active bus is port %d (SDA: GPIO%d, SCL: GPIO%d)",
+            dev->addr,
+            dev->port,
+            dev->sda_io_num,
+            dev->scl_io_num,
+            s_i2c_port,
+            s_i2c_sda_gpio,
+            s_i2c_scl_gpio);
         return ESP_ERR_INVALID_STATE;
     }
 

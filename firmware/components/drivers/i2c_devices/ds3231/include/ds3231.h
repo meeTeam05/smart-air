@@ -2,10 +2,10 @@
  * @file ds3231.h
  *
  * @brief DS3231 Real-Time Clock (RTC) Driver API
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
 #pragma once
-
-/* Includes ------------------------------------------------------------------*/
 
 #include "i2cdev.h"
 #include <time.h>
@@ -13,14 +13,10 @@
 #include <stdint.h>
 #include <esp_err.h>
 
-/* Exported defines --------------------------------------------------------- */
-
 #define DS3231_ADDR 0x68  //!< I2C address
 
 #define ESP_ERR_DS3231_BASE            0x7000
 #define ESP_ERR_DS3231_OSCILLATOR_STOP (ESP_ERR_DS3231_BASE + 0x01)
-
-/* Exported types ----------------------------------------------------------- */
 
 /**
  * @brief Alarm selection
@@ -71,8 +67,6 @@ typedef enum {
 typedef struct {
     i2c_dev_t i2c_dev;  //!< I2C device descriptor
 } ds3231_t;
-
-/* Exported functions ------------------------------------------------------- */
 
 /**
  * @brief Initialize device descriptor

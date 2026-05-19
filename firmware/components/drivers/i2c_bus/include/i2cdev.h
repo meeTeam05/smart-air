@@ -2,11 +2,11 @@
  * @file i2cdev.h
  *
  * @brief I2C Device Abstraction API
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
 #pragma once
-
-/* Includes ------------------------------------------------------------------*/
 
 #include "config.h"
 #include "driver/gpio.h"
@@ -17,17 +17,15 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-/* Exported macros -----------------------------------------------------------*/
-
 /**
  * @brief Mutex management macros
  */
-#define I2C_DEV_TAKE_MUTEX(dev)                   \
-    do {                                          \
+#define I2C_DEV_TAKE_MUTEX(dev)                    \
+    do {                                           \
         esp_err_t __err = i2c_dev_take_mutex(dev); \
-        if (__err != ESP_OK) {                    \
-            return __err;                         \
-        }                                         \
+        if (__err != ESP_OK) {                     \
+            return __err;                          \
+        }                                          \
     } while (0)
 
 /**
@@ -51,8 +49,6 @@
         }                            \
     } while (0)
 
-/* Exported types ------------------------------------------------------------*/
-
 /**
  * @brief I2C device descriptor
  */
@@ -65,8 +61,6 @@ typedef struct {
     SemaphoreHandle_t mutex;  //!< Mutex for thread-safe access
     void *dev_handle;         //!< I2C device handle (i2c_master_dev_handle_t)
 } i2c_dev_t;
-
-/* Exported functions --------------------------------------------------------*/
 
 /**
  * @brief Initialize I2C bus

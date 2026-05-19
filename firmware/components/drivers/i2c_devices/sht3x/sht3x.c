@@ -2,9 +2,9 @@
  * @file sht3x.c
  *
  * @brief SHT3x Temperature and Humidity Sensor Driver Implementation
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
-
-/* ── Includes ───────────────────────────────────────────────────────────── */
 
 #include "sht3x.h"
 #include "esp_log.h"
@@ -13,8 +13,6 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include <string.h>
-
-/* ── Private defines macro ──────────────────────────────────────────────── */
 
 #define TIME_TO_TICKS(ms) (1 + ((ms) + (portTICK_PERIOD_MS - 1) + portTICK_PERIOD_MS / 2) / portTICK_PERIOD_MS)
 
@@ -35,30 +33,26 @@
         }                                      \
     } while (0)
 
-/* ── Private defines ────────────────────────────────────────────────────── */
-
 /* SHT3x command codes */
-#define SHT3X_STATUS_CMD 0xF32D              //!< Read status register
-#define SHT3X_CLEAR_STATUS_CMD 0x3041        //!< Clear status register
-#define SHT3X_RESET_CMD 0x30A2               //!< Soft reset
-#define SHT3X_FETCH_DATA_CMD 0xE000          //!< Fetch measurement data
+#define SHT3X_STATUS_CMD             0xF32D  //!< Read status register
+#define SHT3X_CLEAR_STATUS_CMD       0x3041  //!< Clear status register
+#define SHT3X_RESET_CMD              0x30A2  //!< Soft reset
+#define SHT3X_FETCH_DATA_CMD         0xE000  //!< Fetch measurement data
 #define SHT3X_STOP_PERIODIC_MEAS_CMD 0x3093  //!< Stop periodic measurement
-#define SHT3X_HEATER_ON_CMD 0x306D           //!< Turn heater on
-#define SHT3X_HEATER_OFF_CMD 0x3066          //!< Turn heater off
+#define SHT3X_HEATER_ON_CMD          0x306D  //!< Turn heater on
+#define SHT3X_HEATER_OFF_CMD         0x3066  //!< Turn heater off
 
 /* Measurement durations in milliseconds */
-#define SHT3X_MEAS_DURATION_REP_HIGH 15   //!< High repeatability
-#define SHT3X_MEAS_DURATION_REP_MEDIUM 6  //!< Medium repeatability
-#define SHT3X_MEAS_DURATION_REP_LOW 4     //!< Low repeatability
+#define SHT3X_MEAS_DURATION_REP_HIGH   15  //!< High repeatability
+#define SHT3X_MEAS_DURATION_REP_MEDIUM 6   //!< Medium repeatability
+#define SHT3X_MEAS_DURATION_REP_LOW    4   //!< Low repeatability
 
 /* CRC-8 polynomial */
 #define G_POLYNOM 0x31
 
 /* I2C configuration */
-#define I2C_FREQ_HZ SA_I2C_FREQ_HZ
+#define I2C_FREQ_HZ    SA_I2C_FREQ_HZ
 #define I2C_TIMEOUT_MS SA_I2C_TIMEOUT_MS
-
-/* ── Private variables ──────────────────────────────────────────────────── */
 
 static const char *TAG = "sht3x";
 
@@ -80,8 +74,6 @@ static const uint16_t SHT3X_MEAS_DURATION_US[3] = {
 static const uint8_t SHT3X_MEAS_DURATION_TICKS[3] = {TIME_TO_TICKS(SHT3X_MEAS_DURATION_REP_HIGH),
                                                      TIME_TO_TICKS(SHT3X_MEAS_DURATION_REP_MEDIUM),
                                                      TIME_TO_TICKS(SHT3X_MEAS_DURATION_REP_LOW)};
-
-/* ── Private function prototypes ────────────────────────────────────────── */
 
 /**
  * @brief Shuffle bytes in a 16-bit value
@@ -325,7 +317,7 @@ esp_err_t sht3x_measure(sht3x_t *dev, float *temperature, float *humidity)
  */
 uint8_t sht3x_get_measurement_duration(sht3x_repeat_t repeat)
 {
-    return SHT3X_MEAS_DURATION_TICKS[repeat];  /* in RTOS ticks */
+    return SHT3X_MEAS_DURATION_TICKS[repeat]; /* in RTOS ticks */
 }
 
 /**

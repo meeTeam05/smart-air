@@ -1,6 +1,9 @@
 /**
  * @file gm702b.c
+ * 
  * @brief Winsen GM-702B CO Gas Sensor driver implementation.
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  *
  * Reads analog voltage from DFRobot SEN0564 breakout board via ADC1.
  * Converts voltage → resistance → Rs/R0 ratio → CO ppm via lookup table.
@@ -55,8 +58,8 @@ static const ratio_point_t CO_CURVE[] = {
 };
 static const int CO_CURVE_LEN = sizeof(CO_CURVE) / sizeof(CO_CURVE[0]);
 
-#define CALIBRATION_SAMPLES  20
-#define CALIBRATION_DELAY_MS 50
+#define CALIBRATION_SAMPLES           20
+#define CALIBRATION_DELAY_MS          50
 #define CALIBRATION_MIN_VALID_SAMPLES ((CALIBRATION_SAMPLES * 3) / 4)
 
 /**
@@ -144,11 +147,7 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
         esp_err_t err = adc_bus_read_voltage(dev->channel, &mv);
         if (err != ESP_OK) {
             last_err = err;
-            ESP_LOGW(TAG,
-                     "Calibration sample %d/%d failed: %s",
-                     i + 1,
-                     CALIBRATION_SAMPLES,
-                     esp_err_to_name(err));
+            ESP_LOGW(TAG, "Calibration sample %d/%d failed: %s", i + 1, CALIBRATION_SAMPLES, esp_err_to_name(err));
             continue;
         }
 
