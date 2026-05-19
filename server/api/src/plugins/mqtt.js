@@ -124,7 +124,7 @@ async function mqttPlugin(fastify) {
     client.on('disconnect', setNotReady);
     client.on('error', (err) => fastify.log.error({ err }, 'MQTT bridge error'));
 
-    async function handleInboundMessage(topic, buf) {
+    async function handleInboundMessage(topic, buf, packet = null) {
         const parts = topic.split('/');
         const deviceId = normalizeDeviceId(parts[1]);
         if (!deviceId) {
@@ -143,7 +143,7 @@ async function mqttPlugin(fastify) {
         if (parts[2] === 'status') {
             await handleStatus(fastify, deviceId, payload);
         } else if (parts[2] === 'telemetry') {
-            await handleTelemetry(fastify, deviceId, payload);
+            await handleTelemetry(fastify, deviceId, payload, packet);
         } else if (parts[2] === 'response') {
             await handleResponse(fastify, deviceId, payload);
         } else if (parts[2] === 'shadow' && parts[3] === 'report') {
@@ -164,7 +164,7 @@ async function mqttPlugin(fastify) {
     client.handleMessage = async (packet, callback) => {
         const topic = packet.topic;
         try {
-            await handleInboundMessage(topic, packet.payload);
+            await handleInboundMessage(topic, packet.payload, packet);
             callback();
         } catch (err) {
             fastify.log.error({ err, topic }, 'MQTT message handler error; message left unacked for redelivery');

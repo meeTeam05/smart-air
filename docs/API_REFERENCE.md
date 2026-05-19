@@ -745,7 +745,7 @@ Lịch sử command, mới nhất trước. Authorization: `checkDeviceAccess()`
 
 ## 8. Telemetry — Dữ liệu cảm biến
 
-ESP32 publish mỗi 5s lên `device/{id}/telemetry`. Server `handleTelemetry()` INSERT vào TimescaleDB hypertable. Retention: 1 year.
+ESP32 publish mỗi 5s lên `device/{id}/telemetry`. Server `handleTelemetry()` INSERT vào TimescaleDB hypertable. QoS-1 redelivery được dedupe theo `(device_id, ts, mqtt_message_id)` khi packet metadata có sẵn. Retention: 1 year.
 
 ### `GET /api/devices/:id/telemetry` 🔒
 
@@ -889,7 +889,7 @@ EMQX Admin API provisioning/cleanup dùng `EMQX_API_URL` và timeout `EMQX_API_T
 | Topic                    | Handler               | Xử lý                                                                                         |
 | ------------------------ | --------------------- | --------------------------------------------------------------------------------------------- |
 | `device/+/status`        | `handleStatus()`      | Validate `{online:boolean}`; UPDATE `devices.online` + `last_seen`; emit `device.status`; SET `announce:`; `flushPending()`; push desired shadow |
-| `device/+/telemetry`     | `handleTelemetry()`   | Validate device/topic, mode, sensor fields, ts; INSERT TimescaleDB; emit `telemetry.point`    |
+| `device/+/telemetry`     | `handleTelemetry()`   | Validate device/topic, mode, sensor fields, ts; INSERT TimescaleDB with QoS-1 dedupe; emit `telemetry.point` |
 | `device/+/response`      | `handleResponse()`    | UPDATE `commands.status` + `executed_at`; emit `command.updated`. Status whitelist: `done`/`error` |
 | `device/+/shadow/report` | `handleShadowReport()`| Drop unknown devices, validate known fields, UPSERT `device_shadows`; emit `shadow.reported`  |
 | `device/+/shadow/get`    | `handleShadowGet()`   | Load shadow and publish `shadow/get_response`                                                  |

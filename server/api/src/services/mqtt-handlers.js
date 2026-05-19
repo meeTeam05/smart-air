@@ -124,6 +124,12 @@ function telemetryEventPayload(payload, ts) {
     };
 }
 
+function telemetryMessageId(packet) {
+    if (packet?.qos !== 1) return null;
+    const messageId = Number(packet.messageId);
+    return Number.isInteger(messageId) && messageId > 0 ? messageId : null;
+}
+
 export async function publishShadowGetResponse(fastify, deviceId, shadow, logMessage = 'shadow get_response publish failed') {
     try {
         await fastify.mqttPublish(
@@ -181,7 +187,7 @@ export async function handleStatus(fastify, deviceId, payload) {
     }
 }
 
-export async function handleTelemetry(fastify, deviceId, payload) {
+export async function handleTelemetry(fastify, deviceId, payload, packet = null) {
     if (!await ensureDeviceExists(fastify, deviceId, 'telemetry')) {
         return;
     }
@@ -196,11 +202,15 @@ export async function handleTelemetry(fastify, deviceId, payload) {
     }
 
     const ts = normalizeTelemetryTimestamp(fastify, deviceId, payload);
+    const messageId = telemetryMessageId(packet);
     try {
-        await fastify.db.query(
-            'INSERT INTO telemetry (device_id, ts, payload) VALUES ($1, $2, $3)',
-            [deviceId, ts, JSON.stringify(payload)]
+        const insertResult = await fastify.db.query(
+            `INSERT INTO telemetry (device_id, ts, payload, mqtt_message_id)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT DO NOTHING`,
+            [deviceId, ts, JSON.stringify(payload), messageId]
         );
+        if (insertResult.rowCount === 0) return;
         await createRealtimeEvent(fastify, {
             type: 'telemetry.point',
             deviceId,

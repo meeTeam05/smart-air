@@ -111,6 +111,54 @@ test('handleTelemetry emits realtime event after telemetry insert succeeds', asy
     });
 });
 
+test('handleTelemetry suppresses duplicate QoS1 redelivery by ts and messageId', async () => {
+    const calls = [];
+    let telemetryInsertCount = 0;
+    let realtimeInsertCount = 0;
+    const fastify = {
+        log: createLogger(),
+        db: {
+            async query(sql, params) {
+                calls.push({ sql, params });
+                if (sql.includes('FROM devices')) return { rows: [{}] };
+                if (sql.includes('INSERT INTO telemetry')) {
+                    telemetryInsertCount += 1;
+                    return { rows: [], rowCount: telemetryInsertCount === 1 ? 1 : 0 };
+                }
+                if (sql.includes('INSERT INTO realtime_events')) {
+                    realtimeInsertCount += 1;
+                    return {
+                        rows: [{
+                            id: '42',
+                            type: 'telemetry.point',
+                            device_id: 'aa:bb:cc:dd:ee:ff',
+                            occurred_at: new Date('2026-05-15T10:00:00Z'),
+                            payload: JSON.parse(params[3]),
+                        }],
+                    };
+                }
+                return { rows: [], rowCount: 0 };
+            },
+        },
+    };
+    const payload = {
+        device_id: 'aa:bb:cc:dd:ee:ff',
+        mode: 'on',
+        ts: 1777631761,
+        temperature: 25,
+        humidity: 60,
+    };
+
+    await handleTelemetry(fastify, 'aa:bb:cc:dd:ee:ff', payload, { messageId: 7, qos: 1 });
+    await handleTelemetry(fastify, 'aa:bb:cc:dd:ee:ff', payload, { messageId: 7, qos: 1 });
+
+    const telemetryCall = calls.find((call) => call.sql.includes('INSERT INTO telemetry'));
+    assert.ok(telemetryCall, 'telemetry insert missing');
+    assert.equal(telemetryCall.params[2], JSON.stringify(payload));
+    assert.equal(telemetryCall.params[3], 7);
+    assert.equal(realtimeInsertCount, 1);
+});
+
 test('handleStatus ignores malformed status payloads without DB update', async () => {
     const log = createLogger();
     let queryCount = 0;
