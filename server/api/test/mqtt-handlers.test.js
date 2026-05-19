@@ -301,6 +301,51 @@ test('handleShadowReport skips realtime event for stale payload ts', async () =>
     assert.equal(realtimeCount, 0);
 });
 
+test('handleShadowReport uses idempotency key derived from payload ts and body', async () => {
+    const calls = [];
+    const fastify = {
+        log: createLogger(),
+        redis: {
+            async set() {},
+        },
+        db: {
+            async query(sql, params) {
+                calls.push({ sql, params });
+                if (sql.includes('FROM devices')) return { rows: [{}] };
+                if (sql.includes('INSERT INTO device_shadows')) {
+                    return {
+                        rows: [{
+                            reported: { mode: 'on', relay_1: true, ts: 1777631761 },
+                            desired: {},
+                            updated_at: new Date('2026-05-15T10:00:00Z'),
+                        }],
+                        rowCount: 1,
+                    };
+                }
+                if (sql.includes('INSERT INTO realtime_events')) {
+                    return {
+                        rows: [{
+                            id: '45',
+                            type: 'shadow.reported',
+                            device_id: 'aa:bb:cc:dd:ee:ff',
+                            occurred_at: new Date('2026-05-15T10:00:00Z'),
+                            payload: JSON.parse(params[3]),
+                        }],
+                    };
+                }
+                if (sql.includes('pg_notify')) return { rows: [] };
+                return { rows: [], rowCount: 0 };
+            },
+        },
+    };
+
+    await handleShadowReport(fastify, 'aa:bb:cc:dd:ee:ff', { mode: 'on', relay_1: true, ts: 1777631761 });
+
+    const realtimeCall = calls.find((call) => call.sql.includes('INSERT INTO realtime_events'));
+    assert.ok(realtimeCall, 'realtime event insert missing');
+    assert.match(realtimeCall.params[4], /^shadow\.reported:aa:bb:cc:dd:ee:ff:1777631761:/);
+});
+
 test('handleResponse emits command.updated when command transitions to terminal status', async () => {
     const calls = [];
     const fastify = {
@@ -352,4 +397,5 @@ test('handleResponse emits command.updated when command transitions to terminal 
         status: 'done',
         error_message: null,
     });
+    assert.equal(realtimeCall.params[4], 'command.updated:cmd-1:done');
 });

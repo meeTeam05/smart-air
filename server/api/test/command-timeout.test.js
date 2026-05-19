@@ -99,11 +99,13 @@ test('command timeout sweep emits command.updated events for timed-out commands'
             status: 'timeout',
             payload: { type: 'relay_set', relay: 1, state: true },
         });
+        assert.equal(eventInserts[0].params[4], 'command.updated:cmd-1:timeout');
         assert.deepEqual(JSON.parse(eventInserts[1].params[3]), {
             command_id: 'cmd-2',
             status: 'timeout',
             payload: { type: 'device_mode', mode: 'off' },
         });
+        assert.equal(eventInserts[1].params[4], 'command.updated:cmd-2:timeout');
         assert.ok(queryLog.some((call) => call.sql === 'COMMIT'));
         assert.equal(client.released, true);
         assert.equal(fastify.log.infoCalls.length, 1);

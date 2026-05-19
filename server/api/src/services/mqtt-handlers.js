@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { getShadow, computeDelta, updateReported } from './shadow.js';
 import { flushPending } from './commands.js';
 import { createRealtimeEvent } from './realtime-events.js';
@@ -130,6 +131,10 @@ function telemetryMessageId(packet) {
     return Number.isInteger(messageId) && messageId > 0 ? messageId : null;
 }
 
+function payloadHash(payload) {
+    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
 export async function publishShadowGetResponse(fastify, deviceId, shadow, logMessage = 'shadow get_response publish failed') {
     try {
         await fastify.mqttPublish(
@@ -249,6 +254,7 @@ export async function handleShadowReport(fastify, deviceId, payload) {
             reported: shadow.reported ?? {},
             patch: payload,
         },
+        idempotencyKey: `shadow.reported:${deviceId}:${payload.ts}:${payloadHash(payload)}`,
     });
 }
 
@@ -318,6 +324,7 @@ export async function handleResponse(fastify, deviceId, payload) {
                 status: command.status,
                 error_message: command.error_message ?? null,
             },
+            idempotencyKey: `command.updated:${command.id}:${command.status}`,
         });
         return;
     }
@@ -362,5 +369,8 @@ export async function handleOtaProgress(fastify, deviceId, payload) {
         type: 'ota.progress',
         deviceId,
         payload,
+        idempotencyKey: Object.hasOwn(payload, 'ts')
+            ? `ota.progress:${deviceId}:${payload.ts}:${payloadHash(payload)}`
+            : null,
     });
 }

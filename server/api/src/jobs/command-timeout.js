@@ -38,6 +38,7 @@ export function registerCommandTimeoutJob(fastify, options = {}) {
                         status: 'timeout',
                         payload: command.payload,
                     },
+                    idempotencyKey: `command.updated:${command.id}:timeout`,
                 });
             }
 

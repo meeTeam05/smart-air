@@ -844,6 +844,7 @@ data: {"id":"12345","type":"telemetry.point","device_id":"aa:bb:cc:dd:ee:ff","oc
 
 REST remains canonical for initial snapshots, history, reconnect backfill beyond the SSE replay window, and fallback.
 Realtime events are retained for short reconnect replay (`REALTIME_EVENT_RETENTION_HOURS`, default 24h).
+When an event source provides a stable idempotency key, retried inserts reuse the existing `realtime_events` row and do not emit duplicate SSE replay/history entries.
 
 ### MQTT WebSocket — broker clients
 

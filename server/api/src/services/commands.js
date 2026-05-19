@@ -120,6 +120,7 @@ export async function flushPending(fastify, deviceId) {
                             status: 'timeout',
                             payload: command.payload,
                         },
+                        idempotencyKey: `command.updated:${command.id}:timeout`,
                     });
                     await client.query('COMMIT');
                     fastify.log.warn({ deviceId, commandId: command.id }, 'expired pending command dropped before publish');
