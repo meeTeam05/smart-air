@@ -1,6 +1,13 @@
 import fp from 'fastify-plugin';
 import mqtt from 'mqtt';
-import { handleStatus, handleTelemetry, handleResponse, handleShadowReport, handleShadowGet, handleOtaProgress } from '../services/mqtt-handlers.js';
+import {
+    handleStatus,
+    handleTelemetry,
+    handleResponse,
+    handleShadowReport,
+    handleShadowGet,
+    handleOtaProgress,
+} from '../services/mqtt-handlers.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
 import { ensureBridgeUser } from '../services/emqx.js';
 import { parsePositiveIntEnv } from '../utils/parse.js';
