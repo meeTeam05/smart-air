@@ -11,6 +11,7 @@ import {
 } from '../services/realtime-events.js';
 
 const DEFAULT_HEARTBEAT_MS = 25_000;
+const DEFAULT_MAX_CLIENTS = 1_000;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
@@ -41,6 +42,7 @@ export async function sendRealtimeEventToClient(fastify, client, event) {
 async function realtimePlugin(fastify) {
     const clients = new Set();
     const heartbeatMs = parsePositiveIntEnv('REALTIME_HEARTBEAT_MS', DEFAULT_HEARTBEAT_MS);
+    const maxClients = parsePositiveIntEnv('REALTIME_MAX_CLIENTS', DEFAULT_MAX_CLIENTS);
     const replayLimit = parsePositiveIntEnv('REALTIME_REPLAY_LIMIT', 1000);
     let listener = null;
     let reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS;
@@ -67,6 +69,9 @@ async function realtimePlugin(fastify) {
         );
         if (lastEventId === null) {
             return reply.code(400).send({ error: 'Invalid Last-Event-ID' });
+        }
+        if (clients.size >= maxClients) {
+            return reply.code(503).send({ error: 'Realtime capacity exceeded' });
         }
 
         reply.hijack();

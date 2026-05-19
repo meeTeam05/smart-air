@@ -156,3 +156,83 @@ test('realtime plugin reconnects listener after connection error', async () => {
         await app.close();
     }
 });
+
+test('realtime plugin rejects new streams when max client capacity is reached', async () => {
+    function createListener() {
+        const listener = new EventEmitter();
+        listener.query = async () => ({ rows: [] });
+        listener.release = () => {};
+        return listener;
+    }
+
+    const app = Fastify({ logger: false });
+    app.decorate('db', {
+        async connect() {
+            return createListener();
+        },
+        async query() {
+            return { rows: [] };
+        },
+    });
+
+    process.env.REALTIME_MAX_CLIENTS = '1';
+
+    const firstReply = {
+        hijacked: false,
+        raw: {
+            destroyed: false,
+            headers: null,
+            writes: [],
+            writeHead(statusCode, headers) {
+                this.headers = { statusCode, headers };
+            },
+            write(chunk) {
+                this.writes.push(chunk);
+            },
+            end() {},
+        },
+        hijack() {
+            this.hijacked = true;
+        },
+    };
+    const firstRequest = {
+        user: { sub: 'user-1' },
+        headers: {},
+        query: {},
+        raw: { on() {} },
+    };
+
+    const secondReply = {
+        statusCode: null,
+        payload: null,
+        code(statusCode) {
+            this.statusCode = statusCode;
+            return this;
+        },
+        send(payload) {
+            this.payload = payload;
+            return payload;
+        },
+    };
+    const secondRequest = {
+        user: { sub: 'user-2' },
+        headers: {},
+        query: {},
+        raw: { on() {} },
+    };
+
+    try {
+        await app.register(realtimePlugin);
+
+        await app.realtime.openStream(firstRequest, firstReply);
+        const result = await app.realtime.openStream(secondRequest, secondReply);
+
+        assert.equal(firstReply.hijacked, true);
+        assert.equal(secondReply.statusCode, 503);
+        assert.deepEqual(result, { error: 'Realtime capacity exceeded' });
+        assert.equal(app.realtime.clientCount(), 1);
+    } finally {
+        delete process.env.REALTIME_MAX_CLIENTS;
+        await app.close();
+    }
+});
