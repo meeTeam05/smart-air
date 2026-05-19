@@ -1,3 +1,5 @@
+import { checkEmqxApiHealth } from '../services/emqx.js';
+
 export default async function healthRoutes(fastify) {
     // Liveness: server is up
     fastify.get('/health/live', async (request, reply) => {
@@ -22,6 +24,14 @@ export default async function healthRoutes(fastify) {
             checks.redis = 'ok';
         } catch {
             checks.redis = 'fail';
+            healthy = false;
+        }
+
+        try {
+            await checkEmqxApiHealth();
+            checks.emqx = 'ok';
+        } catch {
+            checks.emqx = 'fail';
             healthy = false;
         }
 
@@ -56,6 +66,14 @@ export default async function healthRoutes(fastify) {
             checks.redis = 'ok';
         } catch {
             checks.redis = 'fail';
+            healthy = false;
+        }
+
+        try {
+            await checkEmqxApiHealth();
+            checks.emqx = 'ok';
+        } catch {
+            checks.emqx = 'fail';
             healthy = false;
         }
 

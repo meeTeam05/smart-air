@@ -572,7 +572,7 @@ Important architectural properties:
 - access control is checked per home/device on server side
 - API startup is guarded by required environment variables
 - request logging redacts sensitive fields
-- readiness includes PostgreSQL, Redis, MQTT bridge, and realtime listener
+- readiness includes PostgreSQL, Redis, EMQX Admin API, MQTT bridge, and realtime listener
 
 ### 4.3 Persistent data model
 
@@ -845,6 +845,7 @@ The API readiness contract includes:
 
 - PostgreSQL
 - Redis
+- EMQX Admin API
 - MQTT bridge readiness
 - realtime listener readiness
 

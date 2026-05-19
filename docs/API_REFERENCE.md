@@ -34,7 +34,7 @@
 | Method | Path                              | Auth  | Rate Limit | Mô tả                                  |
 | ------ | --------------------------------- | :---: | :--------: | -------------------------------------- |
 | GET    | `/api/health/live`                |       |            | Liveness check (process up)             |
-| GET    | `/api/health/ready`               |       |            | Readiness check (DB + Redis + MQTT + realtime) |
+| GET    | `/api/health/ready`               |       |            | Readiness check (DB + Redis + EMQX API + MQTT + realtime) |
 | GET    | `/api/health`                     |       |            | Alias của readiness check               |
 | POST   | `/api/auth/register`              |       |   10/min   | Đăng ký                                |
 | POST   | `/api/auth/login`                 |       |   10/min   | Đăng nhập                              |

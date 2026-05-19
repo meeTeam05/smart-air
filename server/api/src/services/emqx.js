@@ -115,6 +115,10 @@ export async function ensureBridgeUser() {
     await clearAuthorizationCache();
 }
 
+export async function checkEmqxApiHealth() {
+    await emqxFetch('/status', 'GET');
+}
+
 export async function createDeviceUser(deviceId, secretKey) {
     const userRes = await createAuthUser(deviceId, secretKey);
 
