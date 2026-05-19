@@ -227,8 +227,9 @@ Lấy access token mới. Flutter Dio interceptor gọi tự động khi 401.
 **Internal:**
 1. Tìm token trong `refresh_tokens` (JOIN users), check `expires_at > NOW()`
 2. Trong cùng transaction: ghi `refresh_token_reuse_markers`, DELETE token cũ, INSERT token mới
-3. Nếu token cũ bị dùng lại, server tìm marker và revoke toàn bộ refresh sessions của user
-4. Issue access token mới
+3. Nếu duplicate refresh request tới gần như đồng thời, request thua sẽ nhận `401` nhưng không revoke token mới vừa rotate
+4. Nếu token cũ bị dùng lại sau grace window, server tìm marker và revoke toàn bộ refresh sessions của user
+5. Issue access token mới
 
 ---
 

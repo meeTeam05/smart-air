@@ -5,6 +5,7 @@ import { BCRYPT_ROUNDS, REFRESH_COOKIE_PATH, SECONDS_PER_DAY } from '../constant
 
 const REFRESH_EXPIRES_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '30');
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const REFRESH_RACE_GRACE_MS = 5_000;
 
 function hashRefreshToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
@@ -28,12 +29,19 @@ async function markRefreshTokenConsumed(client, tokenHash, userId, expiresAt) {
 
 async function findConsumedRefreshToken(client, tokenHash) {
     const { rows } = await client.query(
-        `SELECT user_id
+        `SELECT user_id, consumed_at
          FROM refresh_token_reuse_markers
          WHERE token_hash = $1 AND expires_at > NOW()`,
         [tokenHash]
     );
-    return rows[0]?.user_id ?? null;
+    return rows[0]
+        ? { userId: rows[0].user_id, consumedAt: rows[0].consumed_at }
+        : null;
+}
+
+function isRecentRefreshRace(consumedAt) {
+    const consumedMs = consumedAt instanceof Date ? consumedAt.getTime() : Date.parse(consumedAt);
+    return Number.isFinite(consumedMs) && (Date.now() - consumedMs) <= REFRESH_RACE_GRACE_MS;
 }
 
 function normalizeEmail(email) {
@@ -149,10 +157,13 @@ export default async function authRoutes(fastify) {
             );
 
             if (rows.length === 0) {
-                const reuseUserId = await findConsumedRefreshToken(client, tokenHash);
-                if (reuseUserId) {
-                    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [reuseUserId]);
-                    return { invalid: true, reuseUserId, replay: true };
+                const consumedToken = await findConsumedRefreshToken(client, tokenHash);
+                if (consumedToken) {
+                    if (isRecentRefreshRace(consumedToken.consumedAt)) {
+                        return { invalid: true, reuseUserId: consumedToken.userId, race: true };
+                    }
+                    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [consumedToken.userId]);
+                    return { invalid: true, reuseUserId: consumedToken.userId, replay: true };
                 }
                 return { invalid: true };
             }
@@ -177,6 +188,16 @@ export default async function authRoutes(fastify) {
 
         if (refreshResult.invalid) {
             if (refreshResult.reuseUserId) {
+                if (refreshResult.race) {
+                    fastify.log.info(
+                        {
+                            event: 'refresh_race_retry_ignored',
+                            userId: refreshResult.reuseUserId,
+                            tokenHashPrefix: tokenHash.slice(0, 12),
+                        },
+                        'Concurrent refresh retry rejected without revoking active sessions'
+                    );
+                } else {
                 fastify.log.warn(
                     {
                         event: refreshResult.replay ? 'refresh_reuse_detected' : 'refresh_race_or_reuse',
@@ -186,6 +207,7 @@ export default async function authRoutes(fastify) {
                     },
                     'Refresh token replay detected; revoked active refresh sessions'
                 );
+                }
             } else {
                 fastify.log.info(
                     {
