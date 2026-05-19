@@ -188,7 +188,7 @@ export default async function devicesRoutes(fastify) {
             `UPDATE devices SET
                name = CASE WHEN $1 THEN $2 ELSE name END,
                room_id = CASE WHEN $3 THEN $4 ELSE room_id END
-             WHERE id = $5 RETURNING id, name, home_id, room_id, online, last_seen, firmware_ver`,
+             WHERE id = $5 RETURNING id, name, home_id, room_id, online, last_seen, firmware_ver, created_at`,
             [name !== undefined, cleanName ?? null, roomProvided, roomId, deviceId]
         );
         if (rows.length === 0) return reply.code(404).send({ error: 'Not found' });
