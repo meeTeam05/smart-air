@@ -58,6 +58,7 @@ export function registerDataRetentionJob(fastify, options = {}) {
 
     registerNonOverlappingIntervalJob(fastify, {
         intervalMs: sweepIntervalMs,
+        jobName: 'data retention',
         runImmediately: true,
         task: () => runDataRetentionCleanup(fastify, {
             commandRetentionDays,

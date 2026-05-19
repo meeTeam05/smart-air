@@ -108,7 +108,10 @@ test('command timeout sweep emits command.updated events for timed-out commands'
         assert.equal(eventInserts[1].params[4], 'command.updated:cmd-2:timeout');
         assert.ok(queryLog.some((call) => call.sql === 'COMMIT'));
         assert.equal(client.released, true);
-        assert.equal(fastify.log.infoCalls.length, 1);
+        assert.equal(fastify.log.infoCalls.length, 3);
+        assert.equal(fastify.log.infoCalls[0][1], 'job sweep started');
+        assert.equal(fastify.log.infoCalls[1][1], 'command timeout sweep updated stale commands');
+        assert.equal(fastify.log.infoCalls[2][1], 'job sweep completed');
 
         await hooks.onClose();
         assert.equal(clearedIntervalId, 'interval-1');

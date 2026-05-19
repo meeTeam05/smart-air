@@ -22,7 +22,13 @@ test('registerNonOverlappingIntervalJob skips overlapping interval ticks', async
 
     try {
         const hooks = {};
+        const infoCalls = [];
         const fastify = {
+            log: {
+                info(...args) {
+                    infoCalls.push(args);
+                },
+            },
             addHook(name, callback) {
                 hooks[name] = callback;
             },
@@ -40,9 +46,13 @@ test('registerNonOverlappingIntervalJob skips overlapping interval ticks', async
         intervalCallback();
         await new Promise((resolve) => setImmediate(resolve));
         assert.equal(runCount, 1);
+        assert.equal(infoCalls.length, 1);
+        assert.equal(infoCalls[0][1], 'job sweep started');
 
         resolveTask();
         await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(infoCalls.length, 2);
+        assert.equal(infoCalls[1][1], 'job sweep completed');
 
         intervalCallback();
         await new Promise((resolve) => setImmediate(resolve));

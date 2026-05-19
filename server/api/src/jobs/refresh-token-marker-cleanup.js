@@ -29,6 +29,7 @@ export function registerRefreshTokenMarkerCleanupJob(fastify, options = {}) {
 
     registerNonOverlappingIntervalJob(fastify, {
         intervalMs: sweepIntervalMs,
+        jobName: 'refresh token marker cleanup',
         runImmediately: true,
         task: runSweep,
     });

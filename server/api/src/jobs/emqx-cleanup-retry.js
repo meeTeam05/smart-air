@@ -31,6 +31,7 @@ export function registerEmqxCleanupRetryJob(fastify, options = {}) {
 
     registerNonOverlappingIntervalJob(fastify, {
         intervalMs: retryIntervalMs,
+        jobName: 'emqx cleanup retry',
         runImmediately: true,
         task: () => runEmqxCleanupRetry(fastify, retryLimit),
     });

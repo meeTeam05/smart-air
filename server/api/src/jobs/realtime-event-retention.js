@@ -34,6 +34,7 @@ export function registerRealtimeEventRetentionJob(fastify, options = {}) {
 
     registerNonOverlappingIntervalJob(fastify, {
         intervalMs: sweepIntervalMs,
+        jobName: 'realtime event retention',
         runImmediately: true,
         task: () => runRealtimeEventRetention(fastify, retentionHours),
     });
