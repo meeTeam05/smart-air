@@ -76,17 +76,29 @@ async function writeCachedShadow(fastify, deviceId, shadow) {
     }
 }
 
-export async function getShadow(fastify, deviceId) {
-    const cached = await readCachedShadow(fastify, deviceId);
-    if (cached) return cached;
+function shadowFromRow(row) {
+    return {
+        reported: row.reported ?? {},
+        desired: row.desired ?? {},
+        updatedAt: row.updated_at,
+    };
+}
 
+async function readShadowFromDb(fastify, deviceId) {
     const { rows } = await fastify.db.query(
         'SELECT reported, desired, updated_at FROM device_shadows WHERE device_id = $1',
         [deviceId]
     );
-    if (rows.length === 0) return { reported: {}, desired: {}, updatedAt: null };
-    const row = rows[0];
-    const shadow = { reported: row.reported, desired: row.desired, updatedAt: row.updated_at };
+    if (rows.length === 0) return null;
+    return shadowFromRow(rows[0]);
+}
+
+export async function getShadow(fastify, deviceId) {
+    const cached = await readCachedShadow(fastify, deviceId);
+    if (cached) return cached;
+
+    const shadow = await readShadowFromDb(fastify, deviceId);
+    if (!shadow) return { reported: {}, desired: {}, updatedAt: null };
     await writeCachedShadow(fastify, deviceId, shadow);
     return shadow;
 }
@@ -106,15 +118,38 @@ async function _updateField(fastify, deviceId, field, value) {
     );
 
     const row = rows[0] || { reported: {}, desired: {}, updated_at: null };
-    const shadow = {
-        reported: row.reported ?? {},
-        desired: row.desired ?? {},
-        updatedAt: row.updated_at,
-    };
+    const shadow = shadowFromRow(row);
 
     await writeCachedShadow(fastify, deviceId, shadow);
     return shadow;
 }
 
-export const updateReported = (f, id, data) => _updateField(f, id, 'reported', data);
+export async function updateReported(fastify, deviceId, data) {
+    const reportTs = Number(data.ts);
+    const { rows } = await fastify.db.query(
+        `INSERT INTO device_shadows (device_id, reported, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (device_id) DO UPDATE
+            SET reported = device_shadows.reported || EXCLUDED.reported,
+                updated_at = NOW()
+         WHERE COALESCE(
+            CASE
+                WHEN jsonb_typeof(device_shadows.reported->'ts') = 'number'
+                    THEN (device_shadows.reported->>'ts')::double precision
+                ELSE NULL
+            END,
+            -1
+         ) <= $3
+         RETURNING reported, desired, updated_at`,
+        [deviceId, JSON.stringify(data), reportTs]
+    );
+
+    const applied = rows.length > 0;
+    const shadow = applied
+        ? shadowFromRow(rows[0])
+        : (await readShadowFromDb(fastify, deviceId)) ?? { reported: {}, desired: {}, updatedAt: null };
+    await writeCachedShadow(fastify, deviceId, shadow);
+    return { shadow, applied };
+}
+
 export const setDesired     = (f, id, data) => _updateField(f, id, 'desired', data);

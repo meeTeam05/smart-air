@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { handleResponse, handleShadowGet, handleStatus, handleTelemetry } from '../src/services/mqtt-handlers.js';
+import { handleResponse, handleShadowGet, handleShadowReport, handleStatus, handleTelemetry } from '../src/services/mqtt-handlers.js';
 
 function createLogger() {
     return {
@@ -255,6 +255,50 @@ test('handleShadowGet publishes desired and delta response', async () => {
     assert.deepEqual(published[0].payload.desired, { relay_1: true });
     assert.deepEqual(published[0].payload.delta, { relay_1: true });
     assert.deepEqual(published[0].options, { qos: 1 });
+});
+
+test('handleShadowReport skips realtime event for stale payload ts', async () => {
+    let realtimeCount = 0;
+    const currentRow = {
+        reported: { mode: 'off', relay_1: false, ts: 200 },
+        desired: {},
+        updated_at: new Date('2026-05-01T00:00:00Z'),
+    };
+    const fastify = {
+        log: createLogger(),
+        redis: {
+            async set() {},
+        },
+        db: {
+            async query(sql, params) {
+                if (sql.includes('FROM devices')) return { rows: [{}] };
+                if (sql.includes('INSERT INTO device_shadows')) {
+                    assert.equal(params[2], 100);
+                    return { rows: [], rowCount: 0 };
+                }
+                if (sql.includes('SELECT reported, desired, updated_at FROM device_shadows')) {
+                    return { rows: [currentRow] };
+                }
+                if (sql.includes('INSERT INTO realtime_events')) {
+                    realtimeCount += 1;
+                    return {
+                        rows: [{
+                            id: '44',
+                            type: 'shadow.reported',
+                            device_id: 'aa:bb:cc:dd:ee:ff',
+                            occurred_at: new Date('2026-05-15T10:00:00Z'),
+                            payload: JSON.parse(params[3]),
+                        }],
+                    };
+                }
+                return { rows: [], rowCount: 0 };
+            },
+        },
+    };
+
+    await handleShadowReport(fastify, 'aa:bb:cc:dd:ee:ff', { mode: 'on', relay_1: true, ts: 100 });
+
+    assert.equal(realtimeCount, 0);
 });
 
 test('handleResponse emits command.updated when command transitions to terminal status', async () => {

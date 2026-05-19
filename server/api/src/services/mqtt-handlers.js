@@ -237,7 +237,11 @@ export async function handleShadowReport(fastify, deviceId, payload) {
         return;
     }
 
-    const shadow = await updateReported(fastify, deviceId, payload);
+    const { shadow, applied } = await updateReported(fastify, deviceId, payload);
+    if (!applied) {
+        fastify.log.info({ deviceId, ts: payload.ts }, 'stale shadow report ignored');
+        return;
+    }
     await createRealtimeEvent(fastify, {
         type: 'shadow.reported',
         deviceId,

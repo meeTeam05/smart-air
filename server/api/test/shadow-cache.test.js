@@ -111,6 +111,51 @@ test('shadow DB updates succeed when Redis write-through cache fails', async () 
 
     assert.equal(updateCount, 2);
     assert.deepEqual(desired.desired, { relay_1: true });
-    assert.deepEqual(reported.reported, { relay_1: false });
+    assert.equal(reported.applied, true);
+    assert.deepEqual(reported.shadow.reported, { relay_1: false });
     assert.equal(log.warnCalls.length, 2);
+});
+
+test('updateReported guards stale shadow reports by payload ts', async () => {
+    const redisWrites = [];
+    let selectCount = 0;
+    let upsertSql = null;
+    const currentRow = {
+        reported: { mode: 'off', relay_1: false, ts: 200 },
+        desired: { relay_1: false },
+        updated_at: new Date('2026-05-01T00:00:00Z'),
+    };
+    const fastify = {
+        log: createLogger(),
+        redis: {
+            async set(key, value) {
+                redisWrites.push({ key, value: JSON.parse(value) });
+            },
+        },
+        db: {
+            async query(sql, params) {
+                if (sql.includes('INSERT INTO device_shadows')) {
+                    upsertSql = sql;
+                    assert.equal(params[0], DEVICE_ID);
+                    assert.equal(params[2], 100);
+                    return { rows: [], rowCount: 0 };
+                }
+                if (sql.includes('SELECT reported, desired, updated_at FROM device_shadows')) {
+                    selectCount += 1;
+                    assert.deepEqual(params, [DEVICE_ID]);
+                    return { rows: [currentRow] };
+                }
+                throw new Error(`Unexpected SQL: ${sql}`);
+            },
+        },
+    };
+
+    const result = await updateReported(fastify, DEVICE_ID, { mode: 'on', relay_1: true, ts: 100 });
+
+    assert.match(upsertSql, /WHERE COALESCE\(/);
+    assert.equal(selectCount, 1);
+    assert.equal(result.applied, false);
+    assert.deepEqual(result.shadow.reported, currentRow.reported);
+    assert.equal(redisWrites.length, 1);
+    assert.deepEqual(redisWrites[0].value.reported, currentRow.reported);
 });

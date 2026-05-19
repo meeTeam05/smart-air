@@ -587,6 +587,7 @@ Shadow = snapshot state gồm:
 
 Cache: Redis `shadow:{deviceId}` TTL 1h (`REDIS_TTL_SHADOW`), fallback DB `device_shadows`.
 Malformed Redis JSON or Redis read/write failures are logged and ignored; DB remains the source of truth.
+For `device/{id}/shadow/report`, top-level `reported.ts` is the ordering key: older reports are ignored so out-of-order MQTT delivery cannot overwrite newer state.
 
 ### `GET /api/devices/:id/shadow` 🔒
 
@@ -891,7 +892,7 @@ EMQX Admin API provisioning/cleanup dùng `EMQX_API_URL` và timeout `EMQX_API_T
 | `device/+/status`        | `handleStatus()`      | Validate `{online:boolean}`; UPDATE `devices.online` + `last_seen`; emit `device.status`; SET `announce:`; `flushPending()`; push desired shadow |
 | `device/+/telemetry`     | `handleTelemetry()`   | Validate device/topic, mode, sensor fields, ts; INSERT TimescaleDB with QoS-1 dedupe; emit `telemetry.point` |
 | `device/+/response`      | `handleResponse()`    | UPDATE `commands.status` + `executed_at`; emit `command.updated`. Status whitelist: `done`/`error` |
-| `device/+/shadow/report` | `handleShadowReport()`| Drop unknown devices, validate known fields, UPSERT `device_shadows`; emit `shadow.reported`  |
+| `device/+/shadow/report` | `handleShadowReport()`| Drop unknown devices, validate known fields, UPSERT `device_shadows` only when `payload.ts` is not older than current `reported.ts`; emit `shadow.reported` only for applied updates |
 | `device/+/shadow/get`    | `handleShadowGet()`   | Load shadow and publish `shadow/get_response`                                                  |
 | `device/+/ota/progress`  | `handleOtaProgress()` | SET Redis TTL 600s; emit `ota.progress`                                                       |
 
