@@ -74,10 +74,13 @@ const fastify = Fastify({
         level: process.env.LOG_LEVEL || 'info',
         redact: [
             'req.headers.authorization',
+            'req.headers.cookie',
             'req.body.password',
             'req.body.refreshToken',
             'req.body.secret_key',
             'res.body.refreshToken',
+            'res.body.secret_key',
+            'res.headers["set-cookie"]',
         ],
     },
 });
