@@ -32,8 +32,8 @@ async function emqxFetch(path, method, body, options = {}) {
     }
     const okStatuses = new Set(options.okStatuses || []);
     if (!res.ok && !okStatuses.has(res.status)) {
-        const text = await res.text();
-        throw new Error(`EMQX API ${method} ${path} → ${res.status}: ${text}`);
+        await res.text();
+        throw new Error(`EMQX API ${method} ${path} failed with status ${res.status}`);
     }
     return res;
 }
