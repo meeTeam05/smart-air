@@ -15,7 +15,7 @@
     do {                                                                   \
         esp_err_t __err = (x);                                             \
         if (__err != ESP_OK) {                                             \
-            ESP_LOGE(TAG, "Operation failed: %s", esp_err_to_name(__err)); \
+            ESP_LOGE(TAG, "Operation failed: %s", ds3231_err_to_name(__err)); \
             return __err;                                                  \
         }                                                                  \
     } while (0)
@@ -69,6 +69,16 @@ static const char *TAG = "ds3231";
 
 static const int days_per_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 static const int days_per_month_leap_year[] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+const char *ds3231_err_to_name(esp_err_t err)
+{
+    switch (err) {
+    case ESP_ERR_DS3231_OSCILLATOR_STOP:
+        return "ESP_ERR_DS3231_OSCILLATOR_STOP";
+    default:
+        return esp_err_to_name(err);
+    }
+}
 
 /**
  * @brief Convert BCD to decimal
@@ -182,7 +192,7 @@ esp_err_t ds3231_init_desc(ds3231_t *dev, i2c_port_t port, gpio_num_t sda_gpio, 
     if (res == ESP_OK) {
         ESP_LOGI(TAG, "DS3231 initialized on port %d (SDA: GPIO%d, SCL: GPIO%d)", port, sda_gpio, scl_gpio);
     } else {
-        ESP_LOGE(TAG, "Failed to initialize DS3231: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to initialize DS3231: %s", ds3231_err_to_name(res));
     }
 
     return res;
@@ -351,7 +361,7 @@ esp_err_t ds3231_set_alarm(ds3231_t *dev,
     esp_err_t res = i2c_dev_write_reg(&dev->i2c_dev, start_addr, data, i);
 
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set alarm: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to set alarm: %s", ds3231_err_to_name(res));
         return res;
     }
 
@@ -422,7 +432,7 @@ esp_err_t ds3231_get_time(ds3231_t *dev, struct tm *time)
     esp_err_t res = i2c_dev_read_reg(&dev->i2c_dev, DS3231_ADDR_TIME, data, 7);
 
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read time: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to read time: %s", ds3231_err_to_name(res));
         return res;
     }
 
@@ -495,7 +505,7 @@ esp_err_t ds3231_set_timestamp(ds3231_t *dev, uint32_t timestamp)
 
     esp_err_t res = ds3231_set_time(dev, &timeinfo);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set time: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to set time: %s", ds3231_err_to_name(res));
         return res;
     }
 
@@ -512,13 +522,13 @@ esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp)
     struct tm time;
     esp_err_t res = ds3231_get_time(dev, &time);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get time for timestamp: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to get time for timestamp: %s", ds3231_err_to_name(res));
         return res;
     }
 
     res = utc_tm_to_timestamp(&time, timestamp);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to convert UTC time to timestamp: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to convert UTC time to timestamp: %s", ds3231_err_to_name(res));
         return res;
     }
 
@@ -630,7 +640,7 @@ static esp_err_t ds3231_get_flag(ds3231_t *dev, uint8_t addr, uint8_t mask, uint
     /* get register */
     esp_err_t res = i2c_dev_read_reg(&dev->i2c_dev, addr, &data, 1);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read register 0x%02x: %s", addr, esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to read register 0x%02x: %s", addr, ds3231_err_to_name(res));
         return res;
     }
 
@@ -665,7 +675,7 @@ static esp_err_t ds3231_set_flag(ds3231_t *dev, uint8_t addr, uint8_t bits, uint
     /* get status register */
     esp_err_t res = i2c_dev_read_reg(&dev->i2c_dev, addr, &data, 1);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read register 0x%02x: %s", addr, esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to read register 0x%02x: %s", addr, ds3231_err_to_name(res));
         return res;
     }
 
@@ -684,7 +694,7 @@ static esp_err_t ds3231_set_flag(ds3231_t *dev, uint8_t addr, uint8_t bits, uint
 
     res = i2c_dev_write_reg(&dev->i2c_dev, addr, &data, 1);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to write register 0x%02x: %s", addr, esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to write register 0x%02x: %s", addr, ds3231_err_to_name(res));
     }
 
     return res;

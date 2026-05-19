@@ -145,6 +145,7 @@ The firmware is the device-side runtime for:
 - BLE Wi-Fi provisioning
 - local HTTP credential handoff
 - Wi-Fi connection
+- best-effort SNTP clock sync
 - MQTT connection and command handling
 - sensor polling and telemetry publishing
 - relay control
@@ -202,17 +203,18 @@ Firmware internal architecture:
 8. Initialize Wi-Fi station
 9. If Wi-Fi is not provisioned, enter BLE provisioning flow
 10. Load stored Wi-Fi credentials and connect to Wi-Fi
-11. Resolve immutable device ID from Wi-Fi STA MAC
-12. Load MQTT broker URI and device secret from NVS, falling back to Kconfig defaults
-13. Start local HTTP provisioning API
-14. If no MQTT secret exists yet, stop here and wait for local `/api/config`
-15. Initialize buzzer, relays, and device mode
-16. Register MQTT command handlers
-17. Register time sync callback
-18. Start MQTT client
-19. Start OTA task
-20. Start sensor task
-21. Validate and commit pending OTA image after system startup
+11. Attempt one-shot SNTP sync, then persist the synced timestamp to DS3231 when RTC is available
+12. Resolve immutable device ID from Wi-Fi STA MAC
+13. Load MQTT broker URI and device secret from NVS, falling back to Kconfig defaults
+14. Start local HTTP provisioning API
+15. If no MQTT secret exists yet, stop here and wait for local `/api/config`
+16. Initialize buzzer, relays, and device mode
+17. Register MQTT command handlers
+18. Register time sync callback
+19. Start MQTT client
+20. Start OTA task
+21. Start sensor task
+22. Validate and commit pending OTA image after system startup
 
 This ordering matters:
 
@@ -316,6 +318,7 @@ BLE and local provisioning flow:
 | 1. scan BLE ----------------------> |        | advertises SMART_AIR_<suffix>         |        |                                    |
 | 2. connect + send SSID/password --->|------->| NimBLE GATT service                   |        |                                    |
 |                                     |        |   -> Wi-Fi connect                    |        |                                    |
+|                                     |        |   -> best-effort SNTP sync            |        |                                    |
 | <--- 3. notify {device_id, ip} -----|<-------|   -> save wifi_prov in NVS            |        |                                    |
 |                                     |        |                                       |        |                                    |
 | 4. POST /api/devices ------------------------------------------------------------------------>| create device row + EMQX user/ACL  |
@@ -339,6 +342,7 @@ Current behavior:
 - exposes a custom GATT service
 - accepts SSID and password over writable characteristics
 - attempts Wi-Fi connect
+- performs one bounded SNTP sync attempt after Wi-Fi connect, then writes the synced timestamp to DS3231 if available
 - persists Wi-Fi credentials into NVS namespace `wifi_prov`
 - notifies the app with JSON status, including device IP and device ID on success
 
@@ -410,6 +414,7 @@ Currently implemented command paths:
 Behavioral notes:
 
 - `set_time` is handled specially by the MQTT layer and forwarded to a time sync callback
+- boot also performs a best-effort SNTP sync after Wi-Fi connect; if SNTP fails or times out, firmware falls through to existing fallback behavior
 - unsupported command types are acknowledged with `status: "error"`
 - `set_config` is explicitly rejected over MQTT; local `/api/config` is the supported path
 - OTA does not use the generic command topic; it uses `device/{id}/ota/update`

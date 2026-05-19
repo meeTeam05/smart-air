@@ -30,6 +30,42 @@
 
 static const char *TAG = "mqtt";
 
+static const char *mqtt_error_type_name(esp_mqtt_error_type_t error_type)
+{
+    switch (error_type) {
+    case MQTT_ERROR_TYPE_NONE:
+        return "none";
+    case MQTT_ERROR_TYPE_TCP_TRANSPORT:
+        return "tcp_transport";
+    case MQTT_ERROR_TYPE_CONNECTION_REFUSED:
+        return "connection_refused";
+    case MQTT_ERROR_TYPE_SUBSCRIBE_FAILED:
+        return "subscribe_failed";
+    default:
+        return "unknown";
+    }
+}
+
+static const char *mqtt_connect_return_code_name(esp_mqtt_connect_return_code_t code)
+{
+    switch (code) {
+    case MQTT_CONNECTION_ACCEPTED:
+        return "accepted";
+    case MQTT_CONNECTION_REFUSE_PROTOCOL:
+        return "refuse_protocol";
+    case MQTT_CONNECTION_REFUSE_ID_REJECTED:
+        return "refuse_id_rejected";
+    case MQTT_CONNECTION_REFUSE_SERVER_UNAVAILABLE:
+        return "refuse_server_unavailable";
+    case MQTT_CONNECTION_REFUSE_BAD_USERNAME:
+        return "refuse_bad_username";
+    case MQTT_CONNECTION_REFUSE_NOT_AUTHORIZED:
+        return "refuse_not_authorized";
+    default:
+        return "unknown";
+    }
+}
+
 /* ── Driver state ────────────────────────────────────────────────────────── */
 
 static esp_mqtt_client_handle_t s_client = NULL;
@@ -223,11 +259,33 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
     }
 
     case MQTT_EVENT_ERROR:
+        if (ev->error_handle == NULL) {
+            ESP_LOGE(TAG, "MQTT error event missing error_handle (broker=%s)", s_broker_uri);
+            break;
+        }
+
+        ESP_LOGE(TAG,
+                 "MQTT error: type=%s (%d), broker=%s",
+                 mqtt_error_type_name(ev->error_handle->error_type),
+                 ev->error_handle->error_type,
+                 s_broker_uri);
+
         if (ev->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
             ESP_LOGE(TAG,
-                     "TLS error — esp_tls_last_error=0x%x tls_stack_err=0x%x",
+                     "Transport details: esp_err=%s (0x%x) tls_stack_err=0x%x cert_flags=0x%x sock_errno=%d (%s)",
+                     esp_err_to_name(ev->error_handle->esp_tls_last_esp_err),
                      ev->error_handle->esp_tls_last_esp_err,
-                     ev->error_handle->esp_tls_stack_err);
+                     ev->error_handle->esp_tls_stack_err,
+                     ev->error_handle->esp_tls_cert_verify_flags,
+                     ev->error_handle->esp_transport_sock_errno,
+                     strerror(ev->error_handle->esp_transport_sock_errno));
+        } else if (ev->error_handle->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
+            ESP_LOGE(TAG,
+                     "Broker refused connection: code=%s (%d)",
+                     mqtt_connect_return_code_name(ev->error_handle->connect_return_code),
+                     ev->error_handle->connect_return_code);
+        } else if (ev->error_handle->error_type == MQTT_ERROR_TYPE_SUBSCRIBE_FAILED) {
+            ESP_LOGE(TAG, "Broker reported subscribe failure");
         }
         break;
 

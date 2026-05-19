@@ -15,7 +15,7 @@
 
 #define DS3231_ADDR 0x68  //!< I2C address
 
-#define ESP_ERR_DS3231_BASE            0x7000
+#define ESP_ERR_DS3231_BASE            0xA000
 #define ESP_ERR_DS3231_OSCILLATOR_STOP (ESP_ERR_DS3231_BASE + 0x01)
 
 /**
@@ -190,3 +190,14 @@ esp_err_t ds3231_set_timestamp(ds3231_t *dev, uint32_t timestamp);
  * @return ESP_OK on success, error code otherwise
  */
 esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp);
+
+/**
+ * @brief Convert DS3231-specific errors to log-friendly names
+ *
+ * Falls back to esp_err_to_name() for non-DS3231 errors.
+ *
+ * @param[in] err Error code
+ *
+ * @return Constant string describing the error
+ */
+const char *ds3231_err_to_name(esp_err_t err);

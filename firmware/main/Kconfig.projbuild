@@ -36,6 +36,24 @@ menu "Smart Air Configuration"
             an IP address. Use this when the upstream DHCP server advertises
             a resolver that cannot reliably resolve the MQTT TLS hostname.
 
+    config SA_SNTP_SERVER
+        string "SNTP server"
+        default "pool.ntp.org"
+        help
+            Static SNTP server used for best-effort boot-time clock sync
+            after Wi-Fi connects. This is not a hard boot dependency; when
+            SNTP fails or times out, firmware continues with its existing
+            build-time and MQTT set_time fallback behavior.
+
+    config SA_SNTP_SYNC_TIMEOUT_MS
+        int "SNTP sync timeout (ms)"
+        default 10000
+        range 1000 60000
+        help
+            Maximum time to wait for the one-shot SNTP sync attempt after
+            Wi-Fi connects. If the timeout elapses, firmware continues boot
+            without failing and falls back to existing timestamp sources.
+
     config SA_PROV_TIMEOUT_MS
         int "BLE provisioning timeout (ms)"
         default 300000

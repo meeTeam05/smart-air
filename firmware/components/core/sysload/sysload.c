@@ -11,6 +11,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
 #include "esp_event.h"
 #include "esp_log.h"
 
@@ -144,6 +145,66 @@ static gm702b_t s_co_dev;
 #if SA_ENABLE_NO2_SENSOR
 static gm102b_t s_no2_dev;
 #endif
+
+static void sync_time_from_sntp_stage(bool rtc_ready)
+{
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(CONFIG_SA_SNTP_SERVER);
+    config.start = false;
+    config.wait_for_sync = true;
+    config.server_from_dhcp = false;
+
+    ESP_LOGI(TAG,
+             "Starting best-effort SNTP sync: server=%s timeout=%dms",
+             CONFIG_SA_SNTP_SERVER,
+             CONFIG_SA_SNTP_SYNC_TIMEOUT_MS);
+
+    esp_err_t err = esp_netif_sntp_init(&config);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "SNTP init failed (%s) - continuing with existing fallback", esp_err_to_name(err));
+        return;
+    }
+
+    err = esp_netif_sntp_start();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "SNTP start failed (%s) - continuing with existing fallback", esp_err_to_name(err));
+        esp_netif_sntp_deinit();
+        return;
+    }
+
+    err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(CONFIG_SA_SNTP_SYNC_TIMEOUT_MS));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG,
+                 "SNTP sync wait failed (%s) - continuing with existing fallback",
+                 esp_err_to_name(err));
+        esp_netif_sntp_deinit();
+        return;
+    }
+
+    time_t now = time(NULL);
+    if (now < (time_t)MIN_VALID_UNIX_TS) {
+        ESP_LOGW(TAG, "SNTP reported success but system time is still invalid - continuing with existing fallback");
+        esp_netif_sntp_deinit();
+        return;
+    }
+
+    uint32_t ts = (uint32_t)now;
+    sync_system_clock(ts, "sntp");
+
+#if SA_ENABLE_DS3231
+    if (rtc_ready) {
+        err = ds3231_set_timestamp(&s_ds3231_dev, ts);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "DS3231 time updated from SNTP: %lu", (unsigned long)ts);
+        } else {
+            ESP_LOGW(TAG, "DS3231 set_timestamp failed after SNTP sync: %s", ds3231_err_to_name(err));
+        }
+    }
+#else
+    (void)rtc_ready;
+#endif
+
+    esp_netif_sntp_deinit();
+}
 
 #if SA_ENABLE_CO_SENSOR || SA_ENABLE_NO2_SENSOR
 typedef enum {
@@ -580,7 +641,7 @@ static void on_time_sync(uint32_t ts)
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "DS3231 time updated: %lu", (unsigned long)ts);
     } else {
-        ESP_LOGW(TAG, "DS3231 set_timestamp failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "DS3231 set_timestamp failed: %s", ds3231_err_to_name(err));
     }
 }
 #else
@@ -697,6 +758,12 @@ void sysload_init(void)
     char password[64] = {0};
     load_wifi_credentials_stage(ssid, sizeof(ssid), password, sizeof(password));
     connect_wifi_stage(ssid, password);
+
+#if SA_ENABLE_DS3231
+    sync_time_from_sntp_stage(rtc_err == ESP_OK);
+#else
+    sync_time_from_sntp_stage(false);
+#endif
 
     /* 9 — Resolve immutable device ID and runtime config */
     char broker_uri[128] = {0};
