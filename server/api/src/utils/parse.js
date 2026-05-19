@@ -31,3 +31,13 @@ export function cleanOptionalString(value, { allowNull = false } = {}) {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function normalizeEmail(email) {
+    return typeof email === 'string' ? email.trim().toLowerCase() : null;
+}
+
+export function isValidEmail(email) {
+    return typeof email === 'string' && email.length <= 254 && EMAIL_RE.test(email);
+}

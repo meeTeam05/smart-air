@@ -1,7 +1,7 @@
 import { requireRole, checkMembership } from '../utils/check-access.js';
 import { cleanupDeletedDevice } from '../services/device-cleanup.js';
 import { MAX_HOMES_PER_USER, MAX_ROOMS_PER_HOME } from '../constants.js';
-import { cleanOptionalString, cleanRequiredString, parseUuid } from '../utils/parse.js';
+import { cleanOptionalString, cleanRequiredString, isValidEmail, normalizeEmail, parseUuid } from '../utils/parse.js';
 
 const VALID_INVITE_ROLES = new Set(['admin', 'member']);
 
@@ -136,8 +136,8 @@ export default async function homesRoutes(fastify) {
         const userId = request.user.sub;
         await requireRole(fastify, homeId, userId, 'owner', 'admin');
         const { email, role } = request.body || {};
-        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : null;
-        if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254) {
+        const normalizedEmail = normalizeEmail(email);
+        if (!isValidEmail(normalizedEmail)) {
             return reply.code(400).send({ error: 'valid email required' });
         }
 

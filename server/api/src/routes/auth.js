@@ -2,9 +2,9 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { BCRYPT_ROUNDS, REFRESH_COOKIE_PATH, SECONDS_PER_DAY } from '../constants.js';
+import { isValidEmail, normalizeEmail } from '../utils/parse.js';
 
 const REFRESH_EXPIRES_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '30');
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REFRESH_RACE_GRACE_MS = 5_000;
 
 function hashRefreshToken(token) {
@@ -42,14 +42,6 @@ async function findConsumedRefreshToken(client, tokenHash) {
 function isRecentRefreshRace(consumedAt) {
     const consumedMs = consumedAt instanceof Date ? consumedAt.getTime() : Date.parse(consumedAt);
     return Number.isFinite(consumedMs) && (Date.now() - consumedMs) <= REFRESH_RACE_GRACE_MS;
-}
-
-function normalizeEmail(email) {
-    return typeof email === 'string' ? email.trim().toLowerCase() : null;
-}
-
-function isValidEmail(email) {
-    return typeof email === 'string' && email.length <= 254 && EMAIL_RE.test(email);
 }
 
 function isValidPassword(password) {
