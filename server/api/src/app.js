@@ -19,6 +19,7 @@ import commandsRoutes from './routes/commands.js';
 import telemetryRoutes from './routes/telemetry.js';
 import realtimeRoutes from './routes/realtime.js';
 import { registerCommandTimeoutJob } from './jobs/command-timeout.js';
+import { registerDataRetentionJob } from './jobs/data-retention.js';
 import { registerEmqxCleanupRetryJob } from './jobs/emqx-cleanup-retry.js';
 import { registerRefreshTokenMarkerCleanupJob } from './jobs/refresh-token-marker-cleanup.js';
 import { registerRealtimeEventRetentionJob } from './jobs/realtime-event-retention.js';
@@ -95,6 +96,7 @@ await fastify.register(mqttPlugin);
 await fastify.register(realtimePlugin);
 
 registerCommandTimeoutJob(fastify);
+registerDataRetentionJob(fastify);
 registerEmqxCleanupRetryJob(fastify);
 registerRefreshTokenMarkerCleanupJob(fastify);
 registerRealtimeEventRetentionJob(fastify);
