@@ -67,6 +67,7 @@ export function registerCommandTimeoutJob(fastify, options = {}) {
 
     registerNonOverlappingIntervalJob(fastify, {
         intervalMs: sweepIntervalMs,
+        runImmediately: true,
         task: runSweep,
     });
 }
