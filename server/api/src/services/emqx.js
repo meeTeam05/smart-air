@@ -116,7 +116,7 @@ export async function checkEmqxApiHealth() {
     await emqxFetch('/status', 'GET');
 }
 
-export async function createDeviceUser(deviceId, secretKey) {
+export async function createDeviceUser(deviceId, secretKey, logger = null) {
     const userRes = await createAuthUser(deviceId, secretKey);
 
     const userCreated = userRes.status !== 409;
@@ -135,8 +135,10 @@ export async function createDeviceUser(deviceId, secretKey) {
                     { okStatuses: [404] }
                 );
             } catch (delErr) {
-                // Log compensation failure but throw original ACL error
-                console.error(`EMQX compensation failed for ${deviceId}: ${delErr.message}`);
+                logger?.error(
+                    { err: delErr, deviceId },
+                    'EMQX compensation delete failed after ACL setup error'
+                );
             }
         }
         throw err;
