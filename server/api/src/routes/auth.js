@@ -78,10 +78,10 @@ async function issueRefreshToken(fastify, reply, userId) {
 }
 
 export default async function authRoutes(fastify) {
-    const rl = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+    const authRateLimitConfig = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
     // POST /api/auth/register
-    fastify.post('/auth/register', rl, async (request, reply) => {
+    fastify.post('/auth/register', authRateLimitConfig, async (request, reply) => {
         const { email, password, full_name } = request.body || {};
         const normalizedEmail = normalizeEmail(email);
         if (!isValidEmail(normalizedEmail)) return reply.code(400).send({ error: 'valid email required' });
@@ -104,7 +104,7 @@ export default async function authRoutes(fastify) {
     });
 
     // POST /api/auth/login
-    fastify.post('/auth/login', rl, async (request, reply) => {
+    fastify.post('/auth/login', authRateLimitConfig, async (request, reply) => {
         const { email, password } = request.body || {};
         const normalizedEmail = normalizeEmail(email);
         if (!isValidEmail(normalizedEmail) || typeof password !== 'string') {
@@ -128,7 +128,7 @@ export default async function authRoutes(fastify) {
     });
 
     // POST /api/auth/refresh
-    fastify.post('/auth/refresh', rl, async (request, reply) => {
+    fastify.post('/auth/refresh', authRateLimitConfig, async (request, reply) => {
         // body.refreshToken takes priority (mobile); fallback to HttpOnly cookie (browser)
         const token = request.body?.refreshToken !== undefined
             ? request.body.refreshToken
