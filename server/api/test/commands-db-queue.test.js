@@ -49,6 +49,46 @@ test('commandMessage serializes command_id with payload fields', () => {
     );
 });
 
+test('flushPending derives advisory lock keys from device IDs without hashtext', async () => {
+    const lockCalls = [];
+    const client = {
+        released: false,
+        async query(sql, params) {
+            if (sql.includes('pg_try_advisory_lock') || sql.includes('pg_advisory_unlock')) {
+                lockCalls.push({ sql, params });
+            }
+            if (sql.includes('pg_try_advisory_lock')) return { rows: [{ locked: true }] };
+            if (sql.includes('SELECT id, payload')) return { rows: [] };
+            return { rows: [], rowCount: 1 };
+        },
+        release() {
+            this.released = true;
+        },
+    };
+    const fastify = {
+        db: {
+            async connect() {
+                return client;
+            },
+        },
+        log: createLogger(),
+    };
+
+    await flushPending(fastify, 'aa:bb:cc:dd:ee:ff');
+
+    assert.deepEqual(lockCalls, [
+        {
+            sql: 'SELECT pg_try_advisory_lock($1::bigint) AS locked',
+            params: [BigInt('0xaabbccddeeff').toString()],
+        },
+        {
+            sql: 'SELECT pg_advisory_unlock($1::bigint)',
+            params: [BigInt('0xaabbccddeeff').toString()],
+        },
+    ]);
+    assert.ok(client.released);
+});
+
 test('flushPending publishes pending DB commands once and marks sent', async () => {
     const queryLog = [];
     const published = [];

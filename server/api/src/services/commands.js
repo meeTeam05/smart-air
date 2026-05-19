@@ -35,7 +35,7 @@ function pendingTimeoutSeconds() {
 }
 
 function advisoryLockKey(deviceId) {
-    return `commands:flush:${deviceId}`;
+    return BigInt(`0x${deviceId.replace(/:/g, '')}`).toString();
 }
 
 export function commandMessage(commandId, payload) {
@@ -65,14 +65,14 @@ async function revertSentCommand(fastify, deviceId, command) {
 
 async function tryAcquireFlushLock(client, deviceId) {
     const { rows } = await client.query(
-        'SELECT pg_try_advisory_lock(hashtext($1)) AS locked',
+        'SELECT pg_try_advisory_lock($1::bigint) AS locked',
         [advisoryLockKey(deviceId)]
     );
     return rows[0]?.locked === true;
 }
 
 async function releaseFlushLock(client, deviceId) {
-    await client.query('SELECT pg_advisory_unlock(hashtext($1))', [advisoryLockKey(deviceId)]);
+    await client.query('SELECT pg_advisory_unlock($1::bigint)', [advisoryLockKey(deviceId)]);
 }
 
 export async function flushPending(fastify, deviceId) {
