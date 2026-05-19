@@ -24,9 +24,6 @@ export default async function shadowRoutes(fastify) {
         const desired = request.body;
         const isPlainObject = (obj) => obj && typeof obj === 'object' && !Array.isArray(obj);
         if (!isPlainObject(desired)) return reply.code(400).send({ error: 'body must be a plain JSON object' });
-        if (Buffer.byteLength(JSON.stringify(desired), 'utf8') > MAX_DESIRED_SHADOW_BYTES) {
-            return reply.code(400).send({ error: 'desired shadow payload exceeds size limit' });
-        }
 
         const reservedKeys = ['mode', 'relay_1', 'relay_2', 'relay_3'];
         const foundReserved = reservedKeys.filter((key) => Object.hasOwn(desired, key));
@@ -34,6 +31,9 @@ export default async function shadowRoutes(fastify) {
             return reply.code(400).send({
                 error: `Reserved keys detected: ${foundReserved.join(', ')}. Use typed endpoints for device mode and relay control.`,
             });
+        }
+        if (Buffer.byteLength(JSON.stringify(desired), 'utf8') > MAX_DESIRED_SHADOW_BYTES) {
+            return reply.code(400).send({ error: 'desired shadow payload exceeds size limit' });
         }
 
         const shadow = await getShadow(fastify, deviceId);
