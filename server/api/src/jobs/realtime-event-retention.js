@@ -1,3 +1,5 @@
+import { registerNonOverlappingIntervalJob } from './scheduler.js';
+
 const DEFAULT_RETENTION_HOURS = 24;
 const DEFAULT_SWEEP_INTERVAL_MS = 3_600_000;
 
@@ -30,12 +32,9 @@ export function registerRealtimeEventRetentionJob(fastify, options = {}) {
     const sweepIntervalMs = options.sweepIntervalMs
         ?? parsePositiveIntEnv('REALTIME_EVENT_RETENTION_SWEEP_INTERVAL_MS', DEFAULT_SWEEP_INTERVAL_MS);
 
-    const intervalId = setInterval(() => {
-        runRealtimeEventRetention(fastify, retentionHours);
-    }, sweepIntervalMs);
-    runRealtimeEventRetention(fastify, retentionHours);
-
-    fastify.addHook('onClose', async () => {
-        clearInterval(intervalId);
+    registerNonOverlappingIntervalJob(fastify, {
+        intervalMs: sweepIntervalMs,
+        runImmediately: true,
+        task: () => runRealtimeEventRetention(fastify, retentionHours),
     });
 }

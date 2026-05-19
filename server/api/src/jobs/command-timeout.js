@@ -1,4 +1,5 @@
 import { createRealtimeEvent } from '../services/realtime-events.js';
+import { registerNonOverlappingIntervalJob } from './scheduler.js';
 
 const DEFAULT_TIMEOUT_SECONDS = 60;
 const DEFAULT_PENDING_TIMEOUT_SECONDS = 1800; // 30 min
@@ -64,9 +65,8 @@ export function registerCommandTimeoutJob(fastify, options = {}) {
         }
     };
 
-    const intervalId = setInterval(runSweep, sweepIntervalMs);
-
-    fastify.addHook('onClose', async () => {
-        clearInterval(intervalId);
+    registerNonOverlappingIntervalJob(fastify, {
+        intervalMs: sweepIntervalMs,
+        task: runSweep,
     });
 }

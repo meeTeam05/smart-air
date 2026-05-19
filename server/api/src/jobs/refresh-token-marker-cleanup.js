@@ -1,3 +1,5 @@
+import { registerNonOverlappingIntervalJob } from './scheduler.js';
+
 const DEFAULT_SWEEP_INTERVAL_MS = 3_600_000;
 
 function parsePositiveIntEnv(name, fallback) {
@@ -25,12 +27,9 @@ export function registerRefreshTokenMarkerCleanupJob(fastify, options = {}) {
         }
     };
 
-    const intervalId = setInterval(() => {
-        runSweep();
-    }, sweepIntervalMs);
-    runSweep();
-
-    fastify.addHook('onClose', async () => {
-        clearInterval(intervalId);
+    registerNonOverlappingIntervalJob(fastify, {
+        intervalMs: sweepIntervalMs,
+        runImmediately: true,
+        task: runSweep,
     });
 }

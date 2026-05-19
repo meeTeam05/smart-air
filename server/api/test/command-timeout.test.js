@@ -90,7 +90,8 @@ test('command timeout sweep emits command.updated events for timed-out commands'
             sweepIntervalMs: 10,
         });
 
-        await intervalCallback();
+        intervalCallback();
+        await new Promise((resolve) => setImmediate(resolve));
 
         const eventInserts = queryLog.filter((call) => call.sql.includes('INSERT INTO realtime_events'));
         assert.equal(eventInserts.length, 2);
