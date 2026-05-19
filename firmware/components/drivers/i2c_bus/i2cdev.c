@@ -15,7 +15,8 @@
 
 /* ── Private defines ────────────────────────────────────────────────────── */
 
-#define I2C_TIMEOUT_MS SA_I2C_TIMEOUT_MS
+#define I2C_TIMEOUT_MS       SA_I2C_TIMEOUT_MS
+#define I2C_MUTEX_TIMEOUT_MS SA_I2C_TIMEOUT_MS
 
 static const char *TAG = "i2cdev";
 static i2c_master_bus_handle_t i2c_bus_handle = NULL;
@@ -169,9 +170,12 @@ esp_err_t i2c_dev_take_mutex(i2c_dev_t *dev)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (xSemaphoreTake(dev->mutex, portMAX_DELAY) != pdTRUE) {
-        ESP_LOGE(TAG, "Failed to take mutex for device 0x%02x", dev->addr);
-        return ESP_ERR_INVALID_STATE;
+    if (xSemaphoreTake(dev->mutex, pdMS_TO_TICKS(I2C_MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG,
+                 "Timed out waiting %lu ms for mutex for device 0x%02x",
+                 (unsigned long)I2C_MUTEX_TIMEOUT_MS,
+                 dev->addr);
+        return ESP_ERR_TIMEOUT;
     }
 
     return ESP_OK;
