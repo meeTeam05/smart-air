@@ -140,14 +140,15 @@ async function mqttPlugin(fastify) {
         }
 
         let handled = true;
+        const payloadByteLength = buf.length;
         if (parts[2] === 'status') {
             await handleStatus(fastify, deviceId, payload);
         } else if (parts[2] === 'telemetry') {
-            await handleTelemetry(fastify, deviceId, payload, packet);
+            await handleTelemetry(fastify, deviceId, payload, packet, payloadByteLength);
         } else if (parts[2] === 'response') {
             await handleResponse(fastify, deviceId, payload);
         } else if (parts[2] === 'shadow' && parts[3] === 'report') {
-            await handleShadowReport(fastify, deviceId, payload);
+            await handleShadowReport(fastify, deviceId, payload, payloadByteLength);
         } else if (parts[2] === 'shadow' && parts[3] === 'get') {
             await handleShadowGet(fastify, deviceId, payload);
         } else if (parts[2] === 'ota' && parts[3] === 'progress') {

@@ -25,13 +25,16 @@ function validSensorValue(value) {
     return value === null || (typeof value === 'number' && Number.isFinite(value));
 }
 
-export function payloadByteLength(payload) {
+export function payloadByteLength(payload, rawByteLength = null) {
+    if (Number.isInteger(rawByteLength) && rawByteLength >= 0) {
+        return rawByteLength;
+    }
     return Buffer.byteLength(JSON.stringify(payload), 'utf8');
 }
 
-function validateTelemetryPayload(deviceId, payload) {
+function validateTelemetryPayload(deviceId, payload, rawByteLength = null) {
     if (!isPlainObject(payload)) return 'payload must be a plain JSON object';
-    if (payloadByteLength(payload) > MAX_TELEMETRY_PAYLOAD_BYTES) {
+    if (payloadByteLength(payload, rawByteLength) > MAX_TELEMETRY_PAYLOAD_BYTES) {
         return 'payload exceeds telemetry size limit';
     }
     if (typeof payload.device_id === 'string' && payload.device_id !== deviceId) {
@@ -53,9 +56,9 @@ function validateTelemetryPayload(deviceId, payload) {
     return null;
 }
 
-function validateShadowReportPayload(payload) {
+function validateShadowReportPayload(payload, rawByteLength = null) {
     if (!isPlainObject(payload)) return 'payload must be a plain JSON object';
-    if (payloadByteLength(payload) > MAX_SHADOW_REPORT_BYTES) {
+    if (payloadByteLength(payload, rawByteLength) > MAX_SHADOW_REPORT_BYTES) {
         return 'payload exceeds shadow report size limit';
     }
     if (Object.hasOwn(payload, 'mode') && payload.mode !== 'on' && payload.mode !== 'off') {
@@ -170,15 +173,16 @@ export async function handleStatus(fastify, deviceId, payload) {
     }
 }
 
-export async function handleTelemetry(fastify, deviceId, payload, packet = null) {
+export async function handleTelemetry(fastify, deviceId, payload, packet = null, rawByteLength = null) {
     if (!await ensureDeviceExists(fastify, deviceId, 'telemetry')) {
         return;
     }
 
-    const invalidReason = validateTelemetryPayload(deviceId, payload);
+    const payloadBytes = isPlainObject(payload) ? payloadByteLength(payload, rawByteLength) : null;
+    const invalidReason = validateTelemetryPayload(deviceId, payload, rawByteLength);
     if (invalidReason) {
         fastify.log.warn(
-            { deviceId, invalidReason, payloadBytes: isPlainObject(payload) ? payloadByteLength(payload) : null },
+            { deviceId, invalidReason, payloadBytes },
             'invalid telemetry payload ignored'
         );
         return;
@@ -219,19 +223,19 @@ export async function handleTelemetry(fastify, deviceId, payload, packet = null)
         });
     } catch (err) {
         if (err.code === '23514' && err.constraint === 'telemetry_payload_size_check') {
-            fastify.log.warn({ deviceId, err, payloadBytes: payloadByteLength(payload) }, 'telemetry payload rejected by size constraint');
+            fastify.log.warn({ deviceId, err, payloadBytes }, 'telemetry payload rejected by size constraint');
             return;
         }
         throw err;
     }
 }
 
-export async function handleShadowReport(fastify, deviceId, payload) {
+export async function handleShadowReport(fastify, deviceId, payload, rawByteLength = null) {
     if (!await ensureDeviceExists(fastify, deviceId, 'shadow/report')) {
         return;
     }
 
-    const invalidReason = validateShadowReportPayload(payload);
+    const invalidReason = validateShadowReportPayload(payload, rawByteLength);
     if (invalidReason) {
         fastify.log.warn({ deviceId, invalidReason, payload }, 'invalid shadow report ignored');
         return;

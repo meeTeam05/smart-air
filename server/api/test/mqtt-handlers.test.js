@@ -40,6 +40,40 @@ test('handleTelemetry drops oversized payloads before DB insert', async () => {
     assert.equal(log.warnCalls.length, 1);
 });
 
+test('handleTelemetry uses raw payload byte length for oversized payload rejection', async () => {
+    const log = createLogger();
+    let insertCount = 0;
+    const payload = {
+        device_id: 'aa:bb:cc:dd:ee:ff',
+        mode: 'on',
+        ts: 1777631761,
+        toJSON() {
+            throw new Error('validation should not stringify payload when raw byte length is known');
+        },
+    };
+    const fastify = {
+        log,
+        db: {
+            async query(sql) {
+                if (sql.includes('FROM devices')) return { rows: [{}] };
+                insertCount += 1;
+                return { rows: [] };
+            },
+        },
+    };
+
+    await assert.doesNotReject(() => handleTelemetry(
+        fastify,
+        'aa:bb:cc:dd:ee:ff',
+        payload,
+        null,
+        5000
+    ));
+
+    assert.equal(insertCount, 0);
+    assert.equal(log.warnCalls.length, 1);
+});
+
 test('handleTelemetry acknowledges known telemetry size constraint failures', async () => {
     const log = createLogger();
     const fastify = {
