@@ -11,6 +11,8 @@ import {
 } from '../services/realtime-events.js';
 
 const DEFAULT_HEARTBEAT_MS = 25_000;
+const DEFAULT_RECONNECT_DELAY_MS = 1_000;
+const MAX_RECONNECT_DELAY_MS = 30_000;
 
 function parsePositiveIntEnv(name, fallback) {
     const value = Number.parseInt(process.env[name] || '', 10);
@@ -40,7 +42,10 @@ async function realtimePlugin(fastify) {
     const clients = new Set();
     const heartbeatMs = parsePositiveIntEnv('REALTIME_HEARTBEAT_MS', DEFAULT_HEARTBEAT_MS);
     const replayLimit = parsePositiveIntEnv('REALTIME_REPLAY_LIMIT', 1000);
-    const listener = await fastify.db.connect();
+    let listener = null;
+    let reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS;
+    let reconnectTimer = null;
+    let closing = false;
     fastify.decorate('realtimeReadyAt', null);
 
     async function broadcastEventId(eventId) {
@@ -127,18 +132,82 @@ async function realtimePlugin(fastify) {
         }
     }
 
-    listener.on('notification', (message) => {
+    function handleNotification(message) {
         if (message.channel !== REALTIME_NOTIFY_CHANNEL || !message.payload) return;
         broadcastEventId(message.payload).catch((err) => {
             fastify.log.error({ err, eventId: message.payload }, 'realtime event broadcast failed');
         });
-    });
-    listener.on('error', (err) => {
+    }
+
+    async function closeListener(currentListener, { unlisten = false } = {}) {
+        if (!currentListener) return;
+
+        currentListener.removeAllListeners('notification');
+        currentListener.removeAllListeners('error');
+
+        if (unlisten) {
+            try {
+                await currentListener.query(`UNLISTEN ${REALTIME_NOTIFY_CHANNEL}`);
+            } catch (err) {
+                fastify.log.warn({ err }, 'realtime listener unlisten failed during shutdown');
+            }
+        }
+
+        currentListener.release();
+    }
+
+    function scheduleReconnect() {
+        if (closing || reconnectTimer) return;
+
+        const delayMs = reconnectDelayMs;
+        reconnectDelayMs = Math.min(MAX_RECONNECT_DELAY_MS, delayMs * 2);
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connectListener().catch((err) => {
+                fastify.realtimeReadyAt = null;
+                fastify.log.error({ err }, 'realtime listener reconnect failed');
+                scheduleReconnect();
+            });
+        }, delayMs);
+    }
+
+    async function handleListenerError(currentListener, err) {
+        if (closing || listener !== currentListener) return;
+
+        listener = null;
         fastify.realtimeReadyAt = null;
         fastify.log.error({ err }, 'realtime listener connection error');
-    });
-    await listener.query(`LISTEN ${REALTIME_NOTIFY_CHANNEL}`);
-    fastify.realtimeReadyAt = Date.now();
+
+        try {
+            await closeListener(currentListener);
+        } catch (closeErr) {
+            fastify.log.warn({ err: closeErr }, 'realtime listener release failed after connection error');
+        }
+
+        scheduleReconnect();
+    }
+
+    async function connectListener() {
+        const currentListener = await fastify.db.connect();
+        try {
+            currentListener.on('notification', handleNotification);
+            currentListener.on('error', (err) => {
+                handleListenerError(currentListener, err).catch((error) => {
+                    fastify.log.error({ err: error }, 'realtime listener recovery failed');
+                });
+            });
+            await currentListener.query(`LISTEN ${REALTIME_NOTIFY_CHANNEL}`);
+        } catch (err) {
+            await closeListener(currentListener);
+            throw err;
+        }
+
+        listener = currentListener;
+        reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS;
+        fastify.realtimeReadyAt = Date.now();
+    }
+
+    await connectListener();
 
     fastify.decorate('realtime', {
         openStream,
@@ -147,13 +216,19 @@ async function realtimePlugin(fastify) {
     });
 
     fastify.addHook('onClose', async () => {
+        closing = true;
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
         for (const client of clients) {
             if (client.heartbeat) clearInterval(client.heartbeat);
             client.raw.end();
         }
         clients.clear();
-        await listener.query(`UNLISTEN ${REALTIME_NOTIFY_CHANNEL}`);
-        listener.release();
+        const currentListener = listener;
+        listener = null;
+        await closeListener(currentListener, { unlisten: true });
     });
 }
 
