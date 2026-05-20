@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "smart_air",
+  "project_id": "c6db030c-1bd9-41b3-b775-44b41d51ecb3"
+}
