@@ -23,6 +23,16 @@ const SUBSCRIPTIONS = Object.freeze([
     'device/+/ota/progress',
 ]);
 
+export function waitForMqttClientEnd(client) {
+    return new Promise((resolve, reject) => {
+        try {
+            client.end(false, {}, resolve);
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
 async function mqttPlugin(fastify) {
     const clientId = process.env.EMQX_MQTT_CLIENT_ID || 'sa-api-bridge';
     const publishTimeoutMs = parsePositiveIntEnv('MQTT_PUBLISH_TIMEOUT_MS', DEFAULT_PUBLISH_TIMEOUT_MS);
@@ -179,7 +189,7 @@ async function mqttPlugin(fastify) {
     fastify.addHook('onClose', async () => {
         closed = true;
         setNotReady();
-        client.end();
+        await waitForMqttClientEnd(client);
     });
 
     provisionAndConnect();

@@ -76,3 +76,47 @@ test('readiness degrades when EMQX admin API health probe fails', async () => {
         await app.close();
     }
 });
+
+test('readiness probes postgres, redis, and EMQX in parallel', async () => {
+    const originalFetch = globalThis.fetch;
+    const starts = [];
+    const delayMs = 30;
+    globalThis.fetch = async () => {
+        starts.push({ name: 'emqx', at: Date.now() });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return { ok: true, status: 200, async text() { return 'ok'; } };
+    };
+
+    const app = Fastify({ logger: false });
+    app.decorate('mqttReadyAt', Date.now());
+    app.decorate('realtimeReadyAt', Date.now());
+    app.decorate('db', {
+        async query() {
+            starts.push({ name: 'postgres', at: Date.now() });
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            return { rows: [{}] };
+        },
+    });
+    app.decorate('redis', {
+        async ping() {
+            starts.push({ name: 'redis', at: Date.now() });
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            return 'PONG';
+        },
+    });
+
+    try {
+        await app.register(healthRoutes);
+
+        const res = await app.inject({ method: 'GET', url: '/health/ready' });
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(starts.length, 3);
+        const times = starts.map((entry) => entry.at);
+        const spreadMs = Math.max(...times) - Math.min(...times);
+        assert.ok(spreadMs < delayMs, `expected parallel starts, got spread ${spreadMs}ms`);
+    } finally {
+        globalThis.fetch = originalFetch;
+        await app.close();
+    }
+});
