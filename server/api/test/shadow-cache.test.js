@@ -43,6 +43,7 @@ test('getShadow ignores malformed Redis JSON, deletes cache key, and falls back 
                         reported: { temperature: 25 },
                         desired: { relay_1: true },
                         updated_at: new Date('2026-05-01T00:00:00Z'),
+                        cache_version: '2026-05-01T00:00:00.000000Z',
                     }],
                 };
             },
@@ -107,6 +108,7 @@ test('shadow DB updates succeed when Redis write-through cache fails', async () 
                         reported: { relay_1: false },
                         desired: { relay_1: true },
                         updated_at: new Date('2026-05-01T00:00:00Z'),
+                        cache_version: '2026-05-01T00:00:00.000000Z',
                     }],
                 };
             },
@@ -132,6 +134,7 @@ test('updateReported guards stale shadow reports by payload ts', async () => {
         reported: { mode: 'off', relay_1: false, ts: 200 },
         desired: { relay_1: false },
         updated_at: new Date('2026-05-01T00:00:00Z'),
+        cache_version: '2026-05-01T00:00:00.000000Z',
     };
     const fastify = {
         log: createLogger(),
@@ -149,7 +152,7 @@ test('updateReported guards stale shadow reports by payload ts', async () => {
                     assert.equal(params[2], 100);
                     return { rows: [], rowCount: 0 };
                 }
-                if (sql.includes('SELECT reported, desired, updated_at FROM device_shadows')) {
+                if (sql.includes('SELECT') && sql.includes('FROM device_shadows')) {
                     selectCount += 1;
                     assert.deepEqual(params, [DEVICE_ID]);
                     return { rows: [currentRow] };
@@ -167,7 +170,8 @@ test('updateReported guards stale shadow reports by payload ts', async () => {
     assert.deepEqual(result.shadow.reported, currentRow.reported);
     assert.equal(redisWrites.length, 1);
     assert.equal(redisWrites[0].keyCount, 1);
-    assert.deepEqual(redisWrites[0].value.reported, currentRow.reported);
+    assert.deepEqual(redisWrites[0].value.shadow.reported, currentRow.reported);
+    assert.equal(redisWrites[0].value.version, currentRow.cache_version);
 });
 
 test('shadow cache writes use updatedAt compare-and-set semantics', async () => {
@@ -189,6 +193,7 @@ test('shadow cache writes use updatedAt compare-and-set semantics', async () => 
                         reported: {},
                         desired: { relay_1: true },
                         updated_at: new Date('2026-05-02T03:04:05.000Z'),
+                        cache_version: '2026-05-02T03:04:05.000123Z',
                     }],
                 };
             },
@@ -198,10 +203,93 @@ test('shadow cache writes use updatedAt compare-and-set semantics', async () => 
     await setDesired(fastify, DEVICE_ID, { relay_1: true });
 
     assert.equal(evalCalls.length, 1);
-    assert.match(evalCalls[0].script, /decoded\.updatedAt > ARGV\[2\]/);
+    assert.match(evalCalls[0].script, /decoded\.version/);
     assert.equal(evalCalls[0].keyCount, 1);
     assert.equal(evalCalls[0].key, `shadow:${DEVICE_ID}`);
-    assert.deepEqual(evalCalls[0].serialized.desired, { relay_1: true });
-    assert.equal(evalCalls[0].version, '2026-05-02T03:04:05.000Z');
+    assert.deepEqual(evalCalls[0].serialized.shadow.desired, { relay_1: true });
+    assert.equal(evalCalls[0].version, '2026-05-02T03:04:05.000123Z');
     assert.equal(evalCalls[0].ttl, String(60 * 60));
+});
+
+test('getShadow deduplicates concurrent cache misses into one DB read', async () => {
+    let dbReads = 0;
+    const evalCalls = [];
+    let releaseRead;
+    const readGate = new Promise((resolve) => {
+        releaseRead = resolve;
+    });
+
+    const fastify = {
+        log: createLogger(),
+        redis: {
+            async get() {
+                return null;
+            },
+            async eval(script, keyCount, key, serialized) {
+                evalCalls.push({ script, keyCount, key, serialized: JSON.parse(serialized) });
+                return 1;
+            },
+        },
+        db: {
+            async query(sql, params) {
+                assert.match(sql, /FROM device_shadows/);
+                assert.deepEqual(params, [DEVICE_ID]);
+                dbReads += 1;
+                await readGate;
+                return {
+                    rows: [{
+                        reported: { temperature: 25 },
+                        desired: { relay_1: true },
+                        updated_at: new Date('2026-05-01T00:00:00Z'),
+                        cache_version: '2026-05-01T00:00:00.000000Z',
+                    }],
+                };
+            },
+        },
+    };
+
+    const first = getShadow(fastify, DEVICE_ID);
+    const second = getShadow(fastify, DEVICE_ID);
+    releaseRead();
+
+    const [left, right] = await Promise.all([first, second]);
+
+    assert.equal(dbReads, 1);
+    assert.deepEqual(left, right);
+    assert.equal(evalCalls.length, 1);
+    assert.equal(evalCalls[0].serialized.version, '2026-05-01T00:00:00.000000Z');
+});
+
+test('getShadow reads wrapped cache payloads without DB fallback', async () => {
+    let dbReads = 0;
+    const fastify = {
+        log: createLogger(),
+        redis: {
+            async get() {
+                return JSON.stringify({
+                    version: '2026-05-01T00:00:00.123456Z',
+                    shadow: {
+                        reported: { temperature: 25 },
+                        desired: { relay_1: true },
+                        updatedAt: '2026-05-01T00:00:00.123Z',
+                    },
+                });
+            },
+        },
+        db: {
+            async query() {
+                dbReads += 1;
+                return { rows: [] };
+            },
+        },
+    };
+
+    const shadow = await getShadow(fastify, DEVICE_ID);
+
+    assert.equal(dbReads, 0);
+    assert.deepEqual(shadow, {
+        reported: { temperature: 25 },
+        desired: { relay_1: true },
+        updatedAt: '2026-05-01T00:00:00.123Z',
+    });
 });

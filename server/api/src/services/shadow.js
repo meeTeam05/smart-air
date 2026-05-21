@@ -4,12 +4,30 @@ const SHADOW_CACHE_SET_SCRIPT = `
 local existing = redis.call('GET', KEYS[1])
 if existing then
     local ok, decoded = pcall(cjson.decode, existing)
-    if ok and decoded and decoded.updatedAt and decoded.updatedAt > ARGV[2] then
+    local existingVersion = nil
+    if ok and decoded then
+        if decoded.version then
+            existingVersion = decoded.version
+        elseif decoded.updatedAt then
+            existingVersion = decoded.updatedAt
+        elseif decoded.shadow and decoded.shadow.updatedAt then
+            existingVersion = decoded.shadow.updatedAt
+        end
+    end
+    if existingVersion and existingVersion > ARGV[2] then
         return 0
     end
 end
 redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
 return 1
+`;
+
+const inflightShadowReads = new Map();
+const SHADOW_DB_COLUMNS = `
+    reported,
+    desired,
+    updated_at,
+    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cache_version
 `;
 
 function deepEqual(left, right) {
@@ -68,7 +86,17 @@ async function readCachedShadow(fastify, deviceId) {
     if (!cached) return null;
 
     try {
-        return JSON.parse(cached);
+        const decoded = JSON.parse(cached);
+        if (
+            decoded &&
+            typeof decoded === 'object' &&
+            !Array.isArray(decoded) &&
+            decoded.shadow &&
+            typeof decoded.version === 'string'
+        ) {
+            return decoded.shadow;
+        }
+        return decoded;
     } catch (err) {
         fastify.log.warn({ err, deviceId }, 'malformed Redis shadow cache ignored');
         try {
@@ -80,17 +108,17 @@ async function readCachedShadow(fastify, deviceId) {
     }
 }
 
-async function writeCachedShadow(fastify, deviceId, shadow) {
+async function writeCachedShadow(fastify, deviceId, shadow, version = null) {
     const key = shadowKey(deviceId);
-    const serialized = JSON.stringify(shadow);
-    const version = new Date(shadow.updatedAt).toISOString();
+    const cacheVersion = version ?? (shadow.updatedAt ? new Date(shadow.updatedAt).toISOString() : '');
+    const serialized = JSON.stringify({ shadow, version: cacheVersion });
     try {
         await fastify.redis.eval(
             SHADOW_CACHE_SET_SCRIPT,
             1,
             key,
             serialized,
-            version,
+            cacheVersion,
             String(REDIS_TTL_SHADOW)
         );
     } catch (err) {
@@ -111,23 +139,51 @@ function shadowFromRow(row) {
     };
 }
 
-async function readShadowFromDb(fastify, deviceId) {
+function shadowCacheVersionFromRow(row) {
+    if (typeof row?.cache_version === 'string' && row.cache_version !== '') {
+        return row.cache_version;
+    }
+    return row?.updated_at ? new Date(row.updated_at).toISOString() : '';
+}
+
+async function readShadowRowFromDb(fastify, deviceId) {
     const { rows } = await fastify.db.query(
-        'SELECT reported, desired, updated_at FROM device_shadows WHERE device_id = $1',
+        `SELECT ${SHADOW_DB_COLUMNS}
+         FROM device_shadows
+         WHERE device_id = $1`,
         [deviceId]
     );
-    if (rows.length === 0) return null;
-    return shadowFromRow(rows[0]);
+    return rows[0] ?? null;
+}
+
+async function readShadowFromDb(fastify, deviceId) {
+    const row = await readShadowRowFromDb(fastify, deviceId);
+    return row ? shadowFromRow(row) : null;
 }
 
 export async function getShadow(fastify, deviceId) {
     const cached = await readCachedShadow(fastify, deviceId);
     if (cached) return cached;
 
-    const shadow = await readShadowFromDb(fastify, deviceId);
-    if (!shadow) return { reported: {}, desired: {}, updatedAt: null };
-    await writeCachedShadow(fastify, deviceId, shadow);
-    return shadow;
+    const inflight = inflightShadowReads.get(deviceId);
+    if (inflight) return inflight;
+
+    const loadPromise = (async () => {
+        const row = await readShadowRowFromDb(fastify, deviceId);
+        if (!row) return { reported: {}, desired: {}, updatedAt: null };
+        const shadow = shadowFromRow(row);
+        await writeCachedShadow(fastify, deviceId, shadow, shadowCacheVersionFromRow(row));
+        return shadow;
+    })();
+
+    inflightShadowReads.set(deviceId, loadPromise);
+    try {
+        return await loadPromise;
+    } finally {
+        if (inflightShadowReads.get(deviceId) === loadPromise) {
+            inflightShadowReads.delete(deviceId);
+        }
+    }
 }
 
 async function _updateField(fastify, deviceId, field, value) {
@@ -140,14 +196,14 @@ async function _updateField(fastify, deviceId, field, value) {
          ON CONFLICT (device_id) DO UPDATE
             SET ${field} = device_shadows.${field} || EXCLUDED.${field},
                 updated_at = NOW()
-         RETURNING reported, desired, updated_at`,
+         RETURNING ${SHADOW_DB_COLUMNS}`,
         [deviceId, JSON.stringify(value)]
     );
 
-    const row = rows[0] || { reported: {}, desired: {}, updated_at: null };
+    const row = rows[0] || { reported: {}, desired: {}, updated_at: null, cache_version: '' };
     const shadow = shadowFromRow(row);
 
-    await writeCachedShadow(fastify, deviceId, shadow);
+    await writeCachedShadow(fastify, deviceId, shadow, shadowCacheVersionFromRow(row));
     return shadow;
 }
 
@@ -167,15 +223,19 @@ export async function updateReported(fastify, deviceId, data) {
             END,
             -1
          ) <= $3
-         RETURNING reported, desired, updated_at`,
+         RETURNING ${SHADOW_DB_COLUMNS}`,
         [deviceId, JSON.stringify(data), reportTs]
     );
 
     const applied = rows.length > 0;
-    const shadow = applied
-        ? shadowFromRow(rows[0])
-        : (await readShadowFromDb(fastify, deviceId)) ?? { reported: {}, desired: {}, updatedAt: null };
-    await writeCachedShadow(fastify, deviceId, shadow);
+    const row = applied ? rows[0] : await readShadowRowFromDb(fastify, deviceId);
+    const shadow = row ? shadowFromRow(row) : { reported: {}, desired: {}, updatedAt: null };
+    await writeCachedShadow(
+        fastify,
+        deviceId,
+        shadow,
+        row ? shadowCacheVersionFromRow(row) : ''
+    );
     return { shadow, applied };
 }
 
