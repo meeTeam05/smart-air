@@ -2,10 +2,12 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { BCRYPT_ROUNDS, REFRESH_COOKIE_PATH, SECONDS_PER_DAY } from '../constants.js';
-import { isValidEmail, normalizeEmail } from '../utils/parse.js';
+import { isValidEmail, normalizeEmail, parsePositiveIntEnv } from '../utils/parse.js';
 
-const REFRESH_EXPIRES_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '30');
+const REFRESH_EXPIRES_DAYS = parsePositiveIntEnv('REFRESH_TOKEN_EXPIRES_DAYS', 30);
 const REFRESH_RACE_GRACE_MS = 5_000;
+const DUMMY_PASSWORD_HASH = '$2a$12$3e3kkNZej.GAbhctAc65eefDYsUFcpdDifsvE5Uegz5qkrFU54iJu';
+const MAX_FULL_NAME_LENGTH = 255;
 
 function hashRefreshToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
@@ -84,9 +86,13 @@ export default async function authRoutes(fastify) {
     fastify.post('/auth/register', authRateLimitConfig, async (request, reply) => {
         const { email, password, full_name } = request.body || {};
         const normalizedEmail = normalizeEmail(email);
+        const fullName = typeof full_name === 'string' ? full_name.trim() : null;
         if (!isValidEmail(normalizedEmail)) return reply.code(400).send({ error: 'valid email required' });
         if (!isValidPassword(password)) {
             return reply.code(400).send({ error: 'password must be 8-72 bytes' });
+        }
+        if (fullName && fullName.length > MAX_FULL_NAME_LENGTH) {
+            return reply.code(400).send({ error: 'full_name must be 255 characters or less' });
         }
 
         const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -94,7 +100,7 @@ export default async function authRoutes(fastify) {
             const { rows } = await fastify.db.query(
                 `INSERT INTO users (email, password_hash, full_name)
                  VALUES ($1, $2, $3) RETURNING id, email, full_name, created_at`,
-                [normalizedEmail, hash, typeof full_name === 'string' && full_name.trim() ? full_name.trim() : null]
+                [normalizedEmail, hash, fullName || null]
             );
             return reply.code(201).send(rows[0]);
         } catch (err) {
@@ -116,10 +122,9 @@ export default async function authRoutes(fastify) {
             [normalizedEmail]
         );
         const user = rows[0];
-        if (!user || !user.is_active) return reply.code(401).send({ error: 'Invalid credentials' });
-
-        const valid = await bcrypt.compare(password, user.password_hash);
-        if (!valid) return reply.code(401).send({ error: 'Invalid credentials' });
+        const passwordHash = user?.password_hash || DUMMY_PASSWORD_HASH;
+        const valid = await bcrypt.compare(password, passwordHash);
+        if (!user || !user.is_active || !valid) return reply.code(401).send({ error: 'Invalid credentials' });
 
         const accessToken = fastify.jwt.sign({ sub: user.id, email: user.email });
         const refreshToken = await issueRefreshToken(fastify, reply, user.id);
