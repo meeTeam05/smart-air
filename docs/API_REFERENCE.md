@@ -57,6 +57,7 @@
 | GET    | `/api/devices/:id/shadow`         |   🔒   |            | Lấy shadow state                       |
 | PUT    | `/api/devices/:id/shadow/desired` |   🔒   |            | Set desired state                      |
 | POST   | `/api/devices/:id/command`        |   🔒   |   30/min   | Gửi command                            |
+| POST   | `/api/devices/:id/relay/:channel` |   🔒   |   30/min   | Điều khiển relay trực tiếp             |
 | GET    | `/api/devices/:id/commands`       |   🔒   |            | Lịch sử command                        |
 | GET    | `/api/devices/:id/telemetry`      |   🔒   |            | Dữ liệu cảm biến                       |
 | GET    | `/api/realtime`                   |   🔒   |            | App realtime stream (SSE)              |
@@ -711,6 +712,42 @@ curl -X POST https://minhnhat05.xyz/api/devices/dc:b4:d9:13:ed:8c/command \
 
 > ESP32 nhận → thực thi → publish `device/{id}/response`: `{ command_id, status: "done" }`
 > Server `handleResponse()` → UPDATE `commands.status`, `executed_at = NOW()`.
+
+---
+
+### `POST /api/devices/:id/relay/:channel` 🔒
+
+**Rate limit:** 30/phút/IP
+Authorization: `checkDeviceAccess()`
+
+Typed endpoint để điều khiển trực tiếp relay, tương đương payload command:
+`{ "type": "relay_set", "relay": <channel>, "state": <boolean> }`
+
+**Path params:**
+
+| Param     | Type    | Ràng buộc |
+| --------- | ------- | --------- |
+| `id`      | string  | Device ID hợp lệ |
+| `channel` | integer | `1..3` |
+
+**Request body:**
+
+```json
+{ "state": true }
+```
+
+**201 Created:**
+```json
+{ "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
+```
+
+| Error                          | Code | Message               |
+| ------------------------------ | ---- | --------------------- |
+| Invalid MAC                    | 400  | `"Invalid device ID"` |
+| `channel` ngoài `1..3` / body thiếu `state` | 400  | Fastify schema validation |
+| Không phải thành viên          | 403  | `"Forbidden"`         |
+
+**Internal:** Server chuẩn hóa thành command payload `relay_set`, lưu vào `commands`, rồi dispatch qua cùng luồng `sendCommand()` như endpoint generic.
 
 ---
 
