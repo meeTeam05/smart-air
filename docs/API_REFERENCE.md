@@ -623,7 +623,7 @@ Authorization: `checkDeviceAccess()`
 
 Authorization: `checkDeviceAccess()`
 
-**Request body:** JSON object bất kỳ.
+**Request body:** JSON object bất kỳ, ngoại trừ các reserved keys `mode`, `relay_1`, `relay_2`, `relay_3`. Các key này phải đi qua typed endpoints riêng cho device mode và relay control.
 
 ```json
 { "fan_speed": 3, "led": false }
@@ -634,6 +634,7 @@ Authorization: `checkDeviceAccess()`
 | Error                  | Code | Message                      |
 | ---------------------- | ---- | ---------------------------- |
 | Body không phải object | 400  | `"body must be a plain JSON object"` |
+| Reserved keys          | 400  | `"Reserved keys detected: ... Use typed endpoints for device mode and relay control."` |
 | Body vượt size limit   | 400  | `"desired shadow payload exceeds size limit"` |
 | Invalid MAC            | 400  | `"Invalid device ID"`        |
 | Không phải thành viên  | 403  | `"Forbidden"`                |
