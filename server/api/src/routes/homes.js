@@ -160,7 +160,9 @@ export default async function homesRoutes(fastify) {
                 [homeId, userRows[0].id, role || 'member']
             );
         } catch (err) {
-            if (err.code === '23505') return reply.code(409).send({ error: 'Already a member' });
+            if (err.code === '23505') {
+                return { success: true };
+            }
             throw err;
         }
         return { success: true };

@@ -353,7 +353,7 @@ Mời thành viên bằng email. **owner/admin**.
 | Email thiếu/sai format | 400  | `"valid email required"` |
 | Không phải owner/admin | 403  | `"Forbidden"`        |
 | Email chưa đăng ký     | 200  | `{ "success": true }` để tránh lộ email đã đăng ký |
-| Đã là thành viên       | 409  | `"Already a member"` |
+| Đã là thành viên       | 200  | `{ "success": true }` để tránh lộ trạng thái membership |
 
 ---
 
