@@ -58,6 +58,7 @@
 | PUT    | `/api/devices/:id/shadow/desired` |   🔒   |            | Set desired state                      |
 | POST   | `/api/devices/:id/command`        |   🔒   |   30/min   | Gửi command                            |
 | POST   | `/api/devices/:id/relay/:channel` |   🔒   |   30/min   | Điều khiển relay trực tiếp             |
+| POST   | `/api/devices/:id/mode`           |   🔒   |   30/min   | Đổi mode thiết bị trực tiếp            |
 | GET    | `/api/devices/:id/commands`       |   🔒   |            | Lịch sử command                        |
 | GET    | `/api/devices/:id/telemetry`      |   🔒   |            | Dữ liệu cảm biến                       |
 | GET    | `/api/realtime`                   |   🔒   |            | App realtime stream (SSE)              |
@@ -748,6 +749,41 @@ Typed endpoint để điều khiển trực tiếp relay, tương đương paylo
 | Không phải thành viên          | 403  | `"Forbidden"`         |
 
 **Internal:** Server chuẩn hóa thành command payload `relay_set`, lưu vào `commands`, rồi dispatch qua cùng luồng `sendCommand()` như endpoint generic.
+
+---
+
+### `POST /api/devices/:id/mode` 🔒
+
+**Rate limit:** 30/phút/IP
+Authorization: `checkDeviceAccess()`
+
+Typed endpoint để đổi mode thiết bị, tương đương payload command:
+`{ "type": "device_mode", "mode": "on" | "off" }`
+
+**Path params:**
+
+| Param | Type   | Ràng buộc |
+| ----- | ------ | --------- |
+| `id`  | string | Device ID hợp lệ |
+
+**Request body:**
+
+```json
+{ "mode": "on" }
+```
+
+**201 Created:**
+```json
+{ "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
+```
+
+| Error               | Code | Message               |
+| ------------------- | ---- | --------------------- |
+| Invalid MAC         | 400  | `"Invalid device ID"` |
+| Body thiếu / `mode` không phải `on|off` | 400  | Fastify schema validation |
+| Không phải thành viên | 403  | `"Forbidden"`         |
+
+**Internal:** Server chuẩn hóa thành command payload `device_mode`, lưu vào `commands`, rồi dispatch qua cùng luồng `sendCommand()` như endpoint generic.
 
 ---
 
