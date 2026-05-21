@@ -83,7 +83,7 @@ export default async function devicesRoutes(fastify) {
 
                 let emqxResult;
                 try {
-                    emqxResult = await createDeviceUser(normalizedDeviceId, secretKey, fastify.log);
+                    emqxResult = await createDeviceUser(normalizedDeviceId, secretKey, fastify.log, request.id);
                 } catch (err) {
                     fastify.log.warn({ err }, 'EMQX user creation failed — device not saved');
                     err.statusCode = 502;

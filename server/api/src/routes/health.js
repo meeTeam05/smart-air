@@ -28,7 +28,7 @@ export default async function healthRoutes(fastify) {
         }
 
         try {
-            await checkEmqxApiHealth();
+            await checkEmqxApiHealth(request.id);
             checks.emqx = 'ok';
         } catch {
             checks.emqx = 'fail';
@@ -70,7 +70,7 @@ export default async function healthRoutes(fastify) {
         }
 
         try {
-            await checkEmqxApiHealth();
+            await checkEmqxApiHealth(request.id);
             checks.emqx = 'ok';
         } catch {
             checks.emqx = 'fail';

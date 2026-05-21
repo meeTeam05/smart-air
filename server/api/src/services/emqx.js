@@ -11,13 +11,24 @@ function authHeader() {
     return 'Basic ' + Buffer.from(`${key}:${secret}`).toString('base64');
 }
 
+function buildHeaders(requestId) {
+    const headers = {
+        'Content-Type': 'application/json',
+        Authorization: authHeader(),
+    };
+    if (typeof requestId === 'string' && requestId.trim() !== '') {
+        headers['X-Request-Id'] = requestId;
+    }
+    return headers;
+}
+
 async function emqxFetch(path, method, body, options = {}) {
     const timeout = AbortSignal.timeout(EMQX_API_TIMEOUT_MS);
     let res;
     try {
         res = await fetch(`${EMQX_API_URL}${path}`, {
             method,
-            headers: { 'Content-Type': 'application/json', Authorization: authHeader() },
+            headers: buildHeaders(options.requestId),
             body: body ? JSON.stringify(body) : undefined,
             signal: timeout,
         });
@@ -35,40 +46,42 @@ async function emqxFetch(path, method, body, options = {}) {
     return res;
 }
 
-async function createAuthUser(userId, password) {
+async function createAuthUser(userId, password, requestId = null) {
     return emqxFetch(
         '/api/v5/authentication/password_based:built_in_database/users',
         'POST',
         { user_id: userId, password, is_superuser: false },
-        { okStatuses: [409] }
+        { okStatuses: [409], requestId }
     );
 }
 
-async function updateAuthUser(userId, password) {
+async function updateAuthUser(userId, password, requestId = null) {
     return emqxFetch(
         `/api/v5/authentication/password_based:built_in_database/users/${encodeURIComponent(userId)}`,
         'PUT',
-        { password, is_superuser: false }
+        { password, is_superuser: false },
+        { requestId }
     );
 }
 
-async function clearAuthorizationCache() {
-    await emqxFetch('/api/v5/authorization/cache', 'DELETE', undefined, { okStatuses: [404] });
+async function clearAuthorizationCache(requestId = null) {
+    await emqxFetch('/api/v5/authorization/cache', 'DELETE', undefined, { okStatuses: [404], requestId });
 }
 
-async function upsertUserRules(username, rules) {
+async function upsertUserRules(username, rules, requestId = null) {
     const body = { username, rules };
     const createRes = await emqxFetch(
         '/api/v5/authorization/sources/built_in_database/rules/users',
         'POST',
         [body],
-        { okStatuses: [409] }
+        { okStatuses: [409], requestId }
     );
     if (createRes.status === 409) {
         await emqxFetch(
             `/api/v5/authorization/sources/built_in_database/rules/users/${encodeURIComponent(username)}`,
             'PUT',
-            body
+            body,
+            { requestId }
         );
     }
 }
@@ -112,18 +125,18 @@ export async function ensureBridgeUser() {
     await clearAuthorizationCache();
 }
 
-export async function checkEmqxApiHealth() {
-    await emqxFetch('/status', 'GET');
+export async function checkEmqxApiHealth(requestId = null) {
+    await emqxFetch('/status', 'GET', undefined, { requestId });
 }
 
-export async function createDeviceUser(deviceId, secretKey, logger = null) {
-    const userRes = await createAuthUser(deviceId, secretKey);
+export async function createDeviceUser(deviceId, secretKey, logger = null, requestId = null) {
+    const userRes = await createAuthUser(deviceId, secretKey, requestId);
 
     const userCreated = userRes.status !== 409;
     if (!userCreated) return { userCreated: false };
 
     try {
-        await upsertUserRules(deviceId, deviceRules(deviceId));
+        await upsertUserRules(deviceId, deviceRules(deviceId), requestId);
     } catch (err) {
         // Compensation: delete user if ACL creation failed and user was just created
         if (userCreated) {
@@ -132,7 +145,7 @@ export async function createDeviceUser(deviceId, secretKey, logger = null) {
                     `/api/v5/authentication/password_based:built_in_database/users/${encodeURIComponent(deviceId)}`,
                     'DELETE',
                     undefined,
-                    { okStatuses: [404] }
+                    { okStatuses: [404], requestId }
                 );
             } catch (delErr) {
                 logger?.error(
