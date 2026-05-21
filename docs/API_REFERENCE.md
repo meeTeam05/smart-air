@@ -521,12 +521,16 @@ Danh sách device thuộc các nhà của user.
     "online": true,
     "last_seen": "2026-05-01T10:05:00.000Z",
     "firmware_ver": "1.0.0",
-    "created_at": "2026-04-01T00:00:00.000Z"
+    "created_at": "2026-04-01T00:00:00.000Z",
+    "mode": "on",
+    "relay_1": true,
+    "relay_2": false,
+    "relay_3": false
   }
 ]
 ```
 
-Sắp xếp `created_at ASC`. **Không** bao gồm `secret_key`, `type_id`, `owner_id`.
+Sắp xếp `created_at ASC`. Kèm thêm trạng thái shadow gần nhất: `mode`, `relay_1`, `relay_2`, `relay_3`. **Không** bao gồm `secret_key`, `type_id`, `owner_id`.
 
 ---
 
