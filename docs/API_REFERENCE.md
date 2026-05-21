@@ -530,7 +530,7 @@ Danh sách device thuộc các nhà của user.
 ]
 ```
 
-Sắp xếp `created_at ASC`. Kèm thêm trạng thái shadow gần nhất: `mode`, `relay_1`, `relay_2`, `relay_3`. **Không** bao gồm `secret_key`, `type_id`, `owner_id`.
+Sắp xếp `created_at ASC`, rồi `id ASC` để phân trang ổn định khi nhiều device có cùng thời điểm tạo. Kèm thêm trạng thái shadow gần nhất: `mode`, `relay_1`, `relay_2`, `relay_3`. **Không** bao gồm `secret_key`, `type_id`, `owner_id`.
 
 ---
 

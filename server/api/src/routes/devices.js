@@ -153,7 +153,7 @@ export default async function devicesRoutes(fastify) {
              JOIN home_members hm ON hm.home_id = d.home_id
              LEFT JOIN device_shadows s ON s.device_id = d.id
              WHERE hm.user_id = $1
-             ORDER BY d.created_at LIMIT $2 OFFSET $3`,
+             ORDER BY d.created_at, d.id LIMIT $2 OFFSET $3`,
             [userId, limit, offset]
         );
         return rows;
