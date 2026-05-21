@@ -443,7 +443,7 @@ test('handleResponse emits command.updated when command transitions to terminal 
         db: {
             async query(sql, params) {
                 calls.push({ sql, params });
-                if (sql.includes("UPDATE commands SET status = 'sent'")) {
+                if (sql.includes('UPDATE commands') && sql.includes('sent_at = COALESCE(sent_at, NOW())')) {
                     return { rows: [], rowCount: 1 };
                 }
                 if (sql.includes('UPDATE commands') && sql.includes('executed_at')) {
@@ -488,4 +488,8 @@ test('handleResponse emits command.updated when command transitions to terminal 
         error_message: null,
     });
     assert.equal(realtimeCall.params[4], 'command.updated:cmd-1:done');
+    assert.ok(
+        calls.some((call) => call.sql.includes("status = 'sent'") && call.sql.includes('sent_at = COALESCE(sent_at, NOW())')),
+        'response path should stamp sent_at when promoting pending commands'
+    );
 });

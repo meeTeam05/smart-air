@@ -300,7 +300,10 @@ export async function handleResponse(fastify, deviceId, payload) {
     }
 
     await fastify.db.query(
-        "UPDATE commands SET status = 'sent' WHERE id = $1 AND device_id = $2 AND status = 'pending'",
+        `UPDATE commands
+         SET status = 'sent',
+             sent_at = COALESCE(sent_at, NOW())
+         WHERE id = $1 AND device_id = $2 AND status = 'pending'`,
         [commandId, deviceId]
     );
 

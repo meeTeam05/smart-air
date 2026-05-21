@@ -6,6 +6,7 @@ import { parsePositiveInt } from '../utils/parse.js';
 
 const BLOCKED_GENERIC_COMMAND_TYPES = new Set(['set_config', 'ota_update']);
 const MAX_UINT32 = 4_294_967_295;
+const COMMANDS_MAX_OFFSET = 2_147_483_647;
 
 function isPlainObject(value) {
     return value && typeof value === 'object' && !Array.isArray(value);
@@ -173,7 +174,7 @@ export default async function commandsRoutes(fastify) {
         if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
 
         const limit = parsePositiveInt(request.query.limit, 50, COMMANDS_MAX_LIMIT);
-        const offset = parsePositiveInt(request.query.offset, 0);
+        const offset = parsePositiveInt(request.query.offset, 0, COMMANDS_MAX_OFFSET);
         if (limit === null || offset === null) {
             return reply.code(400).send({ error: 'limit and offset must be non-negative integers' });
         }

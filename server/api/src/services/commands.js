@@ -45,7 +45,8 @@ export function commandMessage(commandId, payload) {
 async function revertSentCommand(fastify, deviceId, command) {
     const { rowCount } = await fastify.db.query(
         `UPDATE commands
-         SET status = 'pending'
+         SET status = 'pending',
+             sent_at = NULL
          WHERE id = $1 AND device_id = $2 AND status = 'sent' AND executed_at IS NULL`,
         [command.id, deviceId]
     );
@@ -128,7 +129,10 @@ export async function flushPending(fastify, deviceId) {
                 }
 
                 await client.query(
-                    "UPDATE commands SET status = 'sent' WHERE id = $1 AND device_id = $2 AND status = 'pending'",
+                    `UPDATE commands
+                     SET status = 'sent',
+                         sent_at = NOW()
+                     WHERE id = $1 AND device_id = $2 AND status = 'pending'`,
                     [command.id, deviceId]
                 );
                 await createRealtimeEvent(client, {

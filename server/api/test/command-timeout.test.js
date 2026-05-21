@@ -38,6 +38,7 @@ test('command timeout sweep emits command.updated events for timed-out commands'
             async query(sql, params = []) {
                 queryLog.push({ sql, params });
                 if (sql.includes('UPDATE commands')) {
+                    assert.match(sql, /sent_at IS NOT NULL AND sent_at < NOW\(\) - \(\$1 \* INTERVAL '1 second'\)/);
                     return {
                         rowCount: 2,
                         rows: [

@@ -122,6 +122,7 @@ test('flushPending publishes pending DB commands once and marks sent', async () 
         ts: 1777631761,
     });
     assert.ok(queryLog.some((sql) => sql.includes("SET status = 'sent'")));
+    assert.ok(queryLog.some((sql) => sql.includes('sent_at = NOW()')));
     assert.ok(client.released);
 });
 
@@ -172,6 +173,7 @@ test('flushPending commits sent status before MQTT publish', async () => {
     await flushPending(fastify, 'aa:bb:cc:dd:ee:ff');
 
     assert.ok(steps.indexOf('COMMIT') < steps.indexOf('MQTT_PUBLISH'));
+    assert.ok(steps.some((step) => step.includes('sent_at = NOW()')));
 });
 
 test('sendCommand emits command.updated for pending command state', async () => {
@@ -319,7 +321,7 @@ test('flushPending leaves command pending when publish fails', async () => {
 
     assert.ok(queryLog.some((sql) => sql.includes("SET status = 'sent'")));
     assert.ok(
-        queryLog.some((sql) => sql.includes("SET status = 'pending'")),
+        queryLog.some((sql) => sql.includes("SET status = 'pending'") && sql.includes('sent_at = NULL')),
         'publish failure should revert command to pending'
     );
 });
