@@ -764,6 +764,7 @@ Authorization: `checkDeviceAccess()`
 
 > Khi có `agg`: `time_bucket()` + AVG, vẫn áp dụng `limit` cho số bucket trả về.
 > Khi không có `agg`: raw data, áp dụng `limit`.
+> Ràng buộc thời gian: `from` phải `<= to`, và `to - from` không được vượt quá `90 ngày`.
 
 **200 OK (raw):**
 ```json
@@ -785,6 +786,9 @@ Sắp xếp `ts DESC`.
 
 | Error                 | Code | Message                                                      |
 | --------------------- | ---- | ------------------------------------------------------------ |
+| `from > to`           | 400  | `"from must be <= to"`                                       |
+| Range vượt `90 ngày`  | 400  | `"range must be <= 90 days"`                                 |
+| `from` / `to` sai định dạng | 400  | `"invalid from/to date (ISO8601 expected)"`                  |
 | Invalid MAC           | 400  | `"Invalid device ID"`                                        |
 | `agg` không hợp lệ    | 400  | `"Invalid agg value. Allowed: 1m, 5m, 15m, 30m, 1h, 6h, 1d"` |
 | Không phải thành viên | 403  | `"Forbidden"`                                                |
