@@ -7,6 +7,7 @@ export function parseDateOr(qs, fallback) {
 
 export function parsePositiveInt(s, fallback, max) {
     if (s == null) return fallback;
+    if (typeof s !== 'string' && typeof s !== 'number') return null;
     const n = parseInt(s, 10);
     if (Number.isNaN(n) || n < 0) return null;
     return max !== undefined ? Math.min(n, max) : n;
