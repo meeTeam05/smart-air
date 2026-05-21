@@ -25,12 +25,18 @@ export function registerNonOverlappingIntervalJob(
         }
     };
 
+    const triggerRun = () => {
+        runOnce().catch((err) => {
+            fastify.log.error({ err, jobName }, 'job sweep failed');
+        });
+    };
+
     const intervalId = setInterval(() => {
-        void runOnce();
+        triggerRun();
     }, intervalMs);
 
     if (runImmediately) {
-        void runOnce();
+        triggerRun();
     }
 
     fastify.addHook('onClose', async () => {
