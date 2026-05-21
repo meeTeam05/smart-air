@@ -196,6 +196,7 @@ test('realtime plugin rejects new streams when max client capacity is reached', 
         },
     };
     const firstRequest = {
+        ip: '127.0.0.1',
         user: { sub: 'user-1' },
         headers: {},
         query: {},
@@ -215,6 +216,7 @@ test('realtime plugin rejects new streams when max client capacity is reached', 
         },
     };
     const secondRequest = {
+        ip: '127.0.0.2',
         user: { sub: 'user-2' },
         headers: {},
         query: {},
@@ -233,6 +235,90 @@ test('realtime plugin rejects new streams when max client capacity is reached', 
         assert.equal(app.realtime.clientCount(), 1);
     } finally {
         delete process.env.REALTIME_MAX_CLIENTS;
+        await app.close();
+    }
+});
+
+test('realtime plugin rejects excess streams from the same IP before global capacity is hit', async () => {
+    function createListener() {
+        const listener = new EventEmitter();
+        listener.query = async () => ({ rows: [] });
+        listener.release = () => {};
+        return listener;
+    }
+
+    const app = Fastify({ logger: false });
+    app.decorate('db', {
+        async connect() {
+            return createListener();
+        },
+        async query() {
+            return { rows: [] };
+        },
+    });
+
+    process.env.REALTIME_MAX_CLIENTS = '5';
+    process.env.REALTIME_MAX_CLIENTS_PER_IP = '1';
+
+    const firstReply = {
+        hijacked: false,
+        raw: {
+            destroyed: false,
+            headers: null,
+            writes: [],
+            writeHead(statusCode, headers) {
+                this.headers = { statusCode, headers };
+            },
+            write(chunk) {
+                this.writes.push(chunk);
+            },
+            end() {},
+        },
+        hijack() {
+            this.hijacked = true;
+        },
+    };
+    const firstRequest = {
+        ip: '127.0.0.1',
+        user: { sub: 'user-1' },
+        headers: {},
+        query: {},
+        raw: { on() {} },
+    };
+
+    const secondReply = {
+        statusCode: null,
+        payload: null,
+        code(statusCode) {
+            this.statusCode = statusCode;
+            return this;
+        },
+        send(payload) {
+            this.payload = payload;
+            return payload;
+        },
+    };
+    const secondRequest = {
+        ip: '127.0.0.1',
+        user: { sub: 'user-2' },
+        headers: {},
+        query: {},
+        raw: { on() {} },
+    };
+
+    try {
+        await app.register(realtimePlugin);
+
+        await app.realtime.openStream(firstRequest, firstReply);
+        const result = await app.realtime.openStream(secondRequest, secondReply);
+
+        assert.equal(firstReply.hijacked, true);
+        assert.equal(secondReply.statusCode, 429);
+        assert.deepEqual(result, { error: 'Realtime per-IP capacity exceeded' });
+        assert.equal(app.realtime.clientCount(), 1);
+    } finally {
+        delete process.env.REALTIME_MAX_CLIENTS;
+        delete process.env.REALTIME_MAX_CLIENTS_PER_IP;
         await app.close();
     }
 });

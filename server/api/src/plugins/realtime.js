@@ -13,6 +13,7 @@ import { parsePositiveIntEnv } from '../utils/parse.js';
 
 const DEFAULT_HEARTBEAT_MS = 25_000;
 const DEFAULT_MAX_CLIENTS = 1_000;
+const DEFAULT_MAX_CLIENTS_PER_IP = 10;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
@@ -39,6 +40,7 @@ async function realtimePlugin(fastify) {
     const clients = new Set();
     const heartbeatMs = parsePositiveIntEnv('REALTIME_HEARTBEAT_MS', DEFAULT_HEARTBEAT_MS);
     const maxClients = parsePositiveIntEnv('REALTIME_MAX_CLIENTS', DEFAULT_MAX_CLIENTS);
+    const maxClientsPerIp = parsePositiveIntEnv('REALTIME_MAX_CLIENTS_PER_IP', DEFAULT_MAX_CLIENTS_PER_IP);
     const replayLimit = parsePositiveIntEnv('REALTIME_REPLAY_LIMIT', 1000);
     let listener = null;
     let reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS;
@@ -60,6 +62,7 @@ async function realtimePlugin(fastify) {
     }
 
     async function openStream(request, reply) {
+        const clientIp = request.ip || request.raw?.socket?.remoteAddress || 'unknown';
         const lastEventId = parseLastEventId(
             request.headers['last-event-id'] ?? request.query?.lastEventId
         );
@@ -68,6 +71,10 @@ async function realtimePlugin(fastify) {
         }
         if (clients.size >= maxClients) {
             return reply.code(503).send({ error: 'Realtime capacity exceeded' });
+        }
+        const clientsForIp = [...clients].filter((client) => client.ip === clientIp).length;
+        if (clientsForIp >= maxClientsPerIp) {
+            return reply.code(429).send({ error: 'Realtime per-IP capacity exceeded' });
         }
 
         reply.hijack();
@@ -79,6 +86,7 @@ async function realtimePlugin(fastify) {
         });
 
         const client = {
+            ip: clientIp,
             userId: request.user.sub,
             lastSentEventId: lastEventId,
             raw: reply.raw,

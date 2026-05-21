@@ -10,6 +10,7 @@ import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
 import mqttPlugin from './plugins/mqtt.js';
 import realtimePlugin from './plugins/realtime.js';
+import { sanitizeLoggedError } from './utils/log-sanitize.js';
 
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
@@ -79,6 +80,9 @@ const fastify = Fastify({
             'res.body.secret_key',
             'res.headers["set-cookie"]',
         ],
+        serializers: {
+            err: sanitizeLoggedError,
+        },
     },
 });
 
