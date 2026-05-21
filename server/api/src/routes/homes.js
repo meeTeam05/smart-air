@@ -2,11 +2,12 @@ import { requireRole, checkMembership } from '../utils/check-access.js';
 import { cleanupDeletedDevice } from '../services/device-cleanup.js';
 import { MAX_HOMES_PER_USER, MAX_ROOMS_PER_HOME } from '../constants.js';
 import { cleanOptionalString, cleanRequiredString, isValidEmail, normalizeEmail, parseUuid } from '../utils/parse.js';
+import { advisoryLockId } from '../utils/advisory-lock.js';
 
 const VALID_INVITE_ROLES = new Set(['admin', 'member']);
 
 async function lockQuota(client, key) {
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
+    await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [advisoryLockId(key)]);
 }
 
 function cleanNullableString(value) {

@@ -22,8 +22,19 @@ export async function enqueueDeviceCleanupJob(fastify, deviceId, client = fastif
     );
 }
 
-async function completeDeviceCleanupJob(fastify, deviceId) {
+export async function scheduleDeviceCleanupJob(fastify, deviceId, delaySeconds) {
     await fastify.db.query(
+        `INSERT INTO external_cleanup_jobs (kind, resource_id, next_attempt_at)
+         VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 second'))
+         ON CONFLICT (kind, resource_id) DO UPDATE
+            SET next_attempt_at = EXCLUDED.next_attempt_at,
+                updated_at = NOW()`,
+        [CLEANUP_KIND_DEVICE_USER, deviceId, delaySeconds]
+    );
+}
+
+export async function clearDeviceCleanupJob(fastify, deviceId, client = fastify.db) {
+    await client.query(
         'DELETE FROM external_cleanup_jobs WHERE kind = $1 AND resource_id = $2',
         [CLEANUP_KIND_DEVICE_USER, deviceId]
     );
@@ -75,6 +86,15 @@ export async function drainLegacyCleanupRetrySet(fastify) {
 }
 
 export async function cleanupDeletedDevice(fastify, deviceId) {
+    const { rows: deviceRows } = await fastify.db.query(
+        'SELECT 1 FROM devices WHERE id = $1 LIMIT 1',
+        [deviceId]
+    );
+    if (deviceRows.length > 0) {
+        await clearDeviceCleanupJob(fastify, deviceId);
+        return;
+    }
+
     try {
         await fastify.redis.del(
             `shadow:${deviceId}`,
@@ -90,7 +110,7 @@ export async function cleanupDeletedDevice(fastify, deviceId) {
     try {
         await deleteDeviceUser(deviceId);
         try {
-            await completeDeviceCleanupJob(fastify, deviceId);
+            await clearDeviceCleanupJob(fastify, deviceId);
         } catch (err) {
             fastify.log.error({ err, deviceId }, 'failed to complete EMQX cleanup DB job after successful delete');
         }
