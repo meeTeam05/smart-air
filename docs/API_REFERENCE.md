@@ -31,37 +31,37 @@
 
 ### Endpoint Summary
 
-| Method | Path                              | Auth  | Rate Limit | Mô tả                                  |
-| ------ | --------------------------------- | :---: | :--------: | -------------------------------------- |
-| GET    | `/api/health/live`                |       |            | Liveness check (process up)             |
+| Method | Path                              | Auth  | Rate Limit | Mô tả                                                     |
+| ------ | --------------------------------- | :---: | :--------: | --------------------------------------------------------- |
+| GET    | `/api/health/live`                |       |            | Liveness check (process up)                               |
 | GET    | `/api/health/ready`               |       |            | Readiness check (DB + Redis + EMQX API + MQTT + realtime) |
-| GET    | `/api/health`                     |       |            | Alias của readiness check               |
-| POST   | `/api/auth/register`              |       |   10/min   | Đăng ký                                |
-| POST   | `/api/auth/login`                 |       |   10/min   | Đăng nhập                              |
-| POST   | `/api/auth/refresh`               |       |   10/min   | Refresh token                          |
-| POST   | `/api/auth/logout`                |   🔒   |            | Đăng xuất                              |
-| GET    | `/api/homes`                      |   🔒   |            | Danh sách nhà                          |
-| POST   | `/api/homes`                      |   🔒   |            | Tạo nhà                                |
-| PUT    | `/api/homes/:id`                  |   🔒   |            | Sửa nhà (owner/admin)                  |
-| DELETE | `/api/homes/:id`                  |   🔒   |            | Xóa nhà (owner)                        |
-| POST   | `/api/homes/:id/invite`           |   🔒   |            | Mời thành viên (owner/admin)           |
-| GET    | `/api/homes/:homeId/rooms`        |   🔒   |            | Danh sách phòng                        |
-| POST   | `/api/homes/:homeId/rooms`        |   🔒   |            | Tạo phòng (owner/admin)                |
-| PUT    | `/api/rooms/:id`                  |   🔒   |            | Sửa phòng (owner/admin)                |
-| DELETE | `/api/rooms/:id`                  |   🔒   |            | Xóa phòng (owner/admin)                |
-| POST   | `/api/devices`                    |   🔒   |   20/min   | Đăng ký device                         |
-| GET    | `/api/devices/announce/:mac`      |   🔒   |            | Kiểm tra device đã online              |
-| GET    | `/api/devices`                    |   🔒   |            | Danh sách device                       |
-| PUT    | `/api/devices/:id`                |   🔒   |            | Sửa device (member)                    |
-| DELETE | `/api/devices/:id`                |   🔒   |            | Xóa device (owner/admin)               |
-| GET    | `/api/devices/:id/shadow`         |   🔒   |            | Lấy shadow state                       |
-| PUT    | `/api/devices/:id/shadow/desired` |   🔒   |            | Set desired state                      |
-| POST   | `/api/devices/:id/command`        |   🔒   |   30/min   | Gửi command                            |
-| POST   | `/api/devices/:id/relay/:channel` |   🔒   |   30/min   | Điều khiển relay trực tiếp             |
-| POST   | `/api/devices/:id/mode`           |   🔒   |   30/min   | Đổi mode thiết bị trực tiếp            |
-| GET    | `/api/devices/:id/commands`       |   🔒   |            | Lịch sử command                        |
-| GET    | `/api/devices/:id/telemetry`      |   🔒   |            | Dữ liệu cảm biến                       |
-| GET    | `/api/realtime`                   |   🔒   |            | App realtime stream (SSE)              |
+| GET    | `/api/health`                     |       |            | Alias của readiness check                                 |
+| POST   | `/api/auth/register`              |       |   10/min   | Đăng ký                                                   |
+| POST   | `/api/auth/login`                 |       |   10/min   | Đăng nhập                                                 |
+| POST   | `/api/auth/refresh`               |       |   10/min   | Refresh token                                             |
+| POST   | `/api/auth/logout`                |   🔒   |            | Đăng xuất                                                 |
+| GET    | `/api/homes`                      |   🔒   |            | Danh sách nhà                                             |
+| POST   | `/api/homes`                      |   🔒   |            | Tạo nhà                                                   |
+| PUT    | `/api/homes/:id`                  |   🔒   |            | Sửa nhà (owner/admin)                                     |
+| DELETE | `/api/homes/:id`                  |   🔒   |            | Xóa nhà (owner)                                           |
+| POST   | `/api/homes/:id/invite`           |   🔒   |            | Mời thành viên (owner/admin)                              |
+| GET    | `/api/homes/:homeId/rooms`        |   🔒   |            | Danh sách phòng                                           |
+| POST   | `/api/homes/:homeId/rooms`        |   🔒   |            | Tạo phòng (owner/admin)                                   |
+| PUT    | `/api/rooms/:id`                  |   🔒   |            | Sửa phòng (owner/admin)                                   |
+| DELETE | `/api/rooms/:id`                  |   🔒   |            | Xóa phòng (owner/admin)                                   |
+| POST   | `/api/devices`                    |   🔒   |   20/min   | Đăng ký device                                            |
+| GET    | `/api/devices/announce/:mac`      |   🔒   |            | Kiểm tra device đã online                                 |
+| GET    | `/api/devices`                    |   🔒   |            | Danh sách device                                          |
+| PUT    | `/api/devices/:id`                |   🔒   |            | Sửa device (member)                                       |
+| DELETE | `/api/devices/:id`                |   🔒   |            | Xóa device (owner/admin)                                  |
+| GET    | `/api/devices/:id/shadow`         |   🔒   |            | Lấy shadow state                                          |
+| PUT    | `/api/devices/:id/shadow/desired` |   🔒   |            | Set desired state                                         |
+| POST   | `/api/devices/:id/command`        |   🔒   |   30/min   | Gửi command                                               |
+| POST   | `/api/devices/:id/relay/:channel` |   🔒   |   30/min   | Điều khiển relay trực tiếp                                |
+| POST   | `/api/devices/:id/mode`           |   🔒   |   30/min   | Đổi mode thiết bị trực tiếp                               |
+| GET    | `/api/devices/:id/commands`       |   🔒   |            | Lịch sử command                                           |
+| GET    | `/api/devices/:id/telemetry`      |   🔒   |            | Dữ liệu cảm biến                                          |
+| GET    | `/api/realtime`                   |   🔒   |            | App realtime stream (SSE)                                 |
 
 ### Authentication
 
@@ -132,6 +132,8 @@ Tạo tài khoản mới.
 | `password`  | string |    ✓     | —       |
 | `full_name` | string |          | `null`  |
 
+`full_name` được trim trước khi lưu và nếu có giá trị thì tối đa `255` ký tự.
+
 ```bash
 curl -X POST https://minhnhat05.xyz/api/auth/register \
   -H "Content-Type: application/json" \
@@ -148,10 +150,11 @@ curl -X POST https://minhnhat05.xyz/api/auth/register \
 }
 ```
 
-| Error                | Code | Message                         |
-| -------------------- | ---- | ------------------------------- |
-| Thiếu email/password | 400  | `"email and password required"` |
-| Email đã tồn tại     | 409  | `"Email already registered"`    |
+| Error                | Code | Message                                      |
+| -------------------- | ---- | -------------------------------------------- |
+| Thiếu email/password | 400  | `"email and password required"`              |
+| `full_name` quá dài  | 400  | `"full_name must be 255 characters or less"` |
+| Email đã tồn tại     | 409  | `"Email already registered"`                 |
 
 **Internal:** bcrypt hash (`BCRYPT_ROUNDS = 12`), email lowercase trước khi lưu.
 
@@ -348,11 +351,11 @@ Mời thành viên bằng email. **owner/admin**.
 
 **200 OK:** `{ "success": true }`
 
-| Error                  | Code | Message              |
-| ---------------------- | ---- | -------------------- |
-| Email thiếu/sai format | 400  | `"valid email required"` |
-| Không phải owner/admin | 403  | `"Forbidden"`        |
-| Email chưa đăng ký     | 200  | `{ "success": true }` để tránh lộ email đã đăng ký |
+| Error                  | Code | Message                                                 |
+| ---------------------- | ---- | ------------------------------------------------------- |
+| Email thiếu/sai format | 400  | `"valid email required"`                                |
+| Không phải owner/admin | 403  | `"Forbidden"`                                           |
+| Email chưa đăng ký     | 200  | `{ "success": true }` để tránh lộ email đã đăng ký      |
 | Đã là thành viên       | 200  | `{ "success": true }` để tránh lộ trạng thái membership |
 
 ---
@@ -468,25 +471,26 @@ Xóa phòng. **owner/admin**. Devices trong phòng sẽ SET `room_id = NULL` (kh
 
 > `secret_key` là MQTT password. Chỉ trả về **1 lần** khi tạo device.
 
-| Error                      | Code | Message                               |
-| -------------------------- | ---- | ------------------------------------- |
-| Thiếu fields               | 400  | `"device_id, name, home_id required"` |
-| room_id sai format         | 400  | `"room_id must be a valid UUID"`      |
-| room không thuộc home      | 400  | `"room_id does not belong to home"`   |
-| Không phải owner/admin     | 403  | `"Forbidden"`                         |
-| Device đã tồn tại          | 409  | `"Device already registered"`         |
-| EMQX đã có user orphan     | 409  | `"Device provisioning conflict"`      |
-| Quá quota device của home  | 429  | `"device limit reached for this home"` |
-| EMQX Admin API fail/timeout | 502 | `"Device provisioning failed"`        |
+| Error                       | Code | Message                                |
+| --------------------------- | ---- | -------------------------------------- |
+| Thiếu fields                | 400  | `"device_id, name, home_id required"`  |
+| room_id sai format          | 400  | `"room_id must be a valid UUID"`       |
+| room không thuộc home       | 400  | `"room_id does not belong to home"`    |
+| Không phải owner/admin      | 403  | `"Forbidden"`                          |
+| Device đã tồn tại           | 409  | `"Device already registered"`          |
+| EMQX đã có user orphan      | 409  | `"Device provisioning conflict"`       |
+| Quá quota device của home   | 429  | `"device limit reached for this home"` |
+| EMQX Admin API fail/timeout | 502  | `"Device provisioning failed"`         |
 
 **Internal:**
 1. `normalizeDeviceId()` — validate MAC + lowercase
 2. `requireRole('owner', 'admin')` trên home
-3. Trong transaction: lock quota, check duplicate device, check room thuộc home, check quota
+3. Preflight transaction: re-check owner/admin membership dưới DB lock, lock quota, check duplicate device, check room thuộc home, check quota
 4. Tạo `secret_key = uuidv4()`
-5. EMQX: tạo MQTT user + ACL với timeout `EMQX_API_TIMEOUT_MS` (default 5000 ms); nếu user đã tồn tại nhưng DB chưa có device thì trả 409, không overwrite password
-6. INSERT `devices`; nếu DB fail sau khi tạo EMQX user thì cleanup compensation
-7. Trả `secret_key` về app đúng 1 lần để app hoặc provisioning flow chuyển credential đó xuống firmware trước khi thiết bị login MQTT
+5. Arm durable cleanup marker trong `external_cleanup_jobs` trước khi gọi EMQX để orphan credential có đường dọn dẹp nếu tiến trình crash giữa chừng
+6. EMQX: tạo MQTT user + ACL với timeout `EMQX_API_TIMEOUT_MS` (default 5000 ms); nếu user đã tồn tại nhưng DB chưa có device thì trả 409, không overwrite password
+7. Transaction thứ hai re-check role/quota/room/device conditions rồi INSERT `devices`; nếu quyền đã bị thu hồi hoặc DB fail sau khi tạo EMQX user thì server chạy cleanup compensation ngay và retry job vẫn còn marker để dọn orphan nếu cleanup tức thời thất bại
+8. Trả `secret_key` về app đúng 1 lần để app hoặc provisioning flow chuyển credential đó xuống firmware trước khi thiết bị login MQTT
 
 ---
 
@@ -637,13 +641,13 @@ Authorization: `checkDeviceAccess()`
 
 **200 OK:** `{ "success": true }`
 
-| Error                  | Code | Message                      |
-| ---------------------- | ---- | ---------------------------- |
-| Body không phải object | 400  | `"body must be a plain JSON object"` |
+| Error                  | Code | Message                                                                                |
+| ---------------------- | ---- | -------------------------------------------------------------------------------------- |
+| Body không phải object | 400  | `"body must be a plain JSON object"`                                                   |
 | Reserved keys          | 400  | `"Reserved keys detected: ... Use typed endpoints for device mode and relay control."` |
-| Body vượt size limit   | 400  | `"desired shadow payload exceeds size limit"` |
-| Invalid MAC            | 400  | `"Invalid device ID"`        |
-| Không phải thành viên  | 403  | `"Forbidden"`                |
+| Body vượt size limit   | 400  | `"desired shadow payload exceeds size limit"`                                          |
+| Invalid MAC            | 400  | `"Invalid device ID"`                                                                  |
+| Không phải thành viên  | 403  | `"Forbidden"`                                                                          |
 
 **Internal:**
 1. Validate plain object + size limit, rồi `setDesired()` UPSERT DB + write-through Redis cache
@@ -703,13 +707,13 @@ curl -X POST https://minhnhat05.xyz/api/devices/dc:b4:d9:13:ed:8c/command \
 
 **Các lệnh thực tế:**
 
-| Lệnh              | Payload                                                 |
-| ----------------- | ------------------------------------------------------- |
-| Relay             | `{ "type": "relay_set", "relay": 1, "state": true }`    |
-| Device mode       | `{ "type": "device_mode", "mode": "on" }`               |
-| Đồng bộ thời gian | `{ "type": "set_time", "ts": 1777631761 }`              |
-| Calibrate CO      | `{ "type": "calibrate_co" }`                            |
-| Calibrate NO2     | `{ "type": "calibrate_no2" }`                           |
+| Lệnh              | Payload                                              |
+| ----------------- | ---------------------------------------------------- |
+| Relay             | `{ "type": "relay_set", "relay": 1, "state": true }` |
+| Device mode       | `{ "type": "device_mode", "mode": "on" }`            |
+| Đồng bộ thời gian | `{ "type": "set_time", "ts": 1777631761 }`           |
+| Calibrate CO      | `{ "type": "calibrate_co" }`                         |
+| Calibrate NO2     | `{ "type": "calibrate_no2" }`                        |
 
 > Calibration là maintenance command nhưng vẫn dùng quyền member như các command generic khác.
 
@@ -730,10 +734,10 @@ Typed endpoint để điều khiển trực tiếp relay, tương đương paylo
 
 **Path params:**
 
-| Param     | Type    | Ràng buộc |
-| --------- | ------- | --------- |
+| Param     | Type    | Ràng buộc        |
+| --------- | ------- | ---------------- |
 | `id`      | string  | Device ID hợp lệ |
-| `channel` | integer | `1..3` |
+| `channel` | integer | `1..3`           |
 
 **Request body:**
 
@@ -746,11 +750,11 @@ Typed endpoint để điều khiển trực tiếp relay, tương đương paylo
 { "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
 ```
 
-| Error                          | Code | Message               |
-| ------------------------------ | ---- | --------------------- |
-| Invalid MAC                    | 400  | `"Invalid device ID"` |
+| Error                                       | Code | Message                   |
+| ------------------------------------------- | ---- | ------------------------- |
+| Invalid MAC                                 | 400  | `"Invalid device ID"`     |
 | `channel` ngoài `1..3` / body thiếu `state` | 400  | Fastify schema validation |
-| Không phải thành viên          | 403  | `"Forbidden"`         |
+| Không phải thành viên                       | 403  | `"Forbidden"`             |
 
 **Internal:** Server chuẩn hóa thành command payload `relay_set`, lưu vào `commands`, rồi dispatch qua cùng luồng `sendCommand()` như endpoint generic.
 
@@ -766,8 +770,8 @@ Typed endpoint để đổi mode thiết bị, tương đương payload command:
 
 **Path params:**
 
-| Param | Type   | Ràng buộc |
-| ----- | ------ | --------- |
+| Param | Type   | Ràng buộc        |
+| ----- | ------ | ---------------- |
 | `id`  | string | Device ID hợp lệ |
 
 **Request body:**
@@ -781,11 +785,11 @@ Typed endpoint để đổi mode thiết bị, tương đương payload command:
 { "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
 ```
 
-| Error               | Code | Message               |
-| ------------------- | ---- | --------------------- |
-| Invalid MAC         | 400  | `"Invalid device ID"` |
-| Body thiếu / `mode` không phải `on|off` | 400  | Fastify schema validation |
-| Không phải thành viên | 403  | `"Forbidden"`         |
+| Error                              | Code | Message               |
+| ---------------------------------- | ---- | --------------------- |
+| Invalid MAC                        | 400  | `"Invalid device ID"` |
+| Body thiếu / `mode` không phải `on | off` | 400                   | Fastify schema validation |
+| Không phải thành viên              | 403  | `"Forbidden"`         |
 
 **Internal:** Server chuẩn hóa thành command payload `device_mode`, lưu vào `commands`, rồi dispatch qua cùng luồng `sendCommand()` như endpoint generic.
 
@@ -800,7 +804,7 @@ Lịch sử command, mới nhất trước. Authorization: `checkDeviceAccess()`
 | Param    | Default | Max                        |
 | -------- | ------- | -------------------------- |
 | `limit`  | 50      | 200 (`COMMANDS_MAX_LIMIT`) |
-| `offset` | 0       | —                          |
+| `offset` | 0       | 2147483647                 |
 
 **200 OK:**
 ```json
@@ -846,29 +850,31 @@ Authorization: `checkDeviceAccess()`
 **200 OK (raw):**
 ```json
 [
-  { "ts": "2026-05-01T10:05:00.000Z", "temperature": 28.5, "humidity": 65.2 },
-  { "ts": "2026-05-01T10:04:55.000Z", "temperature": 28.4, "humidity": 65.0 }
+  { "ts": "2026-05-01T10:05:00.000Z", "temperature": 28.5, "humidity": 65.2, "co_ppm": 3.1, "no2_ppm": 0.04, "mode": "on" },
+  { "ts": "2026-05-01T10:04:55.000Z", "temperature": 28.4, "humidity": 65.0, "co_ppm": 3.0, "no2_ppm": 0.04, "mode": "on" }
 ]
 ```
 
 **200 OK (agg=1h):**
 ```json
 [
-  { "ts": "2026-05-01T10:00:00.000Z", "temperature": 28.4, "humidity": 65.1 },
-  { "ts": "2026-05-01T09:00:00.000Z", "temperature": 27.9, "humidity": 64.5 }
+  { "ts": "2026-05-01T10:00:00.000Z", "temperature": 28.4, "humidity": 65.1, "co_ppm": 3.0, "no2_ppm": 0.04 },
+  { "ts": "2026-05-01T09:00:00.000Z", "temperature": 27.9, "humidity": 64.5, "co_ppm": 2.8, "no2_ppm": 0.03 }
 ]
 ```
 
+Raw telemetry trả về `mode`, `temperature`, `humidity`, `co_ppm`, `no2_ppm`. Aggregation mode trả về `temperature`, `humidity`, `co_ppm`, `no2_ppm` theo bucket và không có `mode`.
+
 Sắp xếp `ts DESC`.
 
-| Error                 | Code | Message                                                      |
-| --------------------- | ---- | ------------------------------------------------------------ |
-| `from > to`           | 400  | `"from must be <= to"`                                       |
-| Range vượt `90 ngày`  | 400  | `"range must be <= 90 days"`                                 |
+| Error                       | Code | Message                                                      |
+| --------------------------- | ---- | ------------------------------------------------------------ |
+| `from > to`                 | 400  | `"from must be <= to"`                                       |
+| Range vượt `90 ngày`        | 400  | `"range must be <= 90 days"`                                 |
 | `from` / `to` sai định dạng | 400  | `"invalid from/to date (ISO8601 expected)"`                  |
-| Invalid MAC           | 400  | `"Invalid device ID"`                                        |
-| `agg` không hợp lệ    | 400  | `"Invalid agg value. Allowed: 1m, 5m, 15m, 30m, 1h, 6h, 1d"` |
-| Không phải thành viên | 403  | `"Forbidden"`                                                |
+| Invalid MAC                 | 400  | `"Invalid device ID"`                                        |
+| `agg` không hợp lệ          | 400  | `"Invalid agg value. Allowed: 1m, 5m, 15m, 30m, 1h, 6h, 1d"` |
+| Không phải thành viên       | 403  | `"Forbidden"`                                                |
 
 **Flutter `fl_chart` guide:**
 
@@ -895,6 +901,7 @@ Last-Event-ID: <optional event id>
 ```
 
 Nginx disables buffering for this exact path. Server sends heartbeat comments to keep the connection open.
+Server also enforces both global SSE capacity (`REALTIME_MAX_CLIENTS`) and per-IP SSE capacity (`REALTIME_MAX_CLIENTS_PER_IP`, default `10`).
 
 **SSE frame:**
 
@@ -906,23 +913,29 @@ data: {"id":"12345","type":"telemetry.point","device_id":"aa:bb:cc:dd:ee:ff","oc
 
 **Envelope fields:**
 
-| Field         | Type   | Mô tả                                          |
-| ------------- | ------ | ---------------------------------------------- |
+| Field         | Type   | Mô tả                                            |
+| ------------- | ------ | ------------------------------------------------ |
 | `id`          | string | Monotonic realtime event id for reconnect replay |
-| `type`        | string | Event type, also used as the SSE `event` field |
-| `device_id`   | string | Device id this event belongs to                |
-| `occurred_at` | string | ISO timestamp for the underlying state change  |
-| `payload`     | object | Type-specific app payload                      |
+| `type`        | string | Event type, also used as the SSE `event` field   |
+| `device_id`   | string | Device id this event belongs to                  |
+| `occurred_at` | string | ISO timestamp for the underlying state change    |
+| `payload`     | object | Type-specific app payload                        |
 
 **Event types:**
 
-| Type              | Produced after                                  | Payload shape |
-| ----------------- | ----------------------------------------------- | ------------- |
-| `telemetry.point` | Telemetry DB insert succeeds                    | `{ ts, temperature, humidity, co_ppm, no2_ppm, mode }` |
-| `device.status`  | Device row online/last_seen update succeeds     | `{ online, firmware }` |
-| `shadow.reported`| Reported shadow update succeeds                 | `{ reported, patch }` |
-| `command.updated`| Command row changes status                      | `{ command_id, status, payload?, error_message? }` |
-| `ota.progress`   | OTA progress Redis write succeeds               | OTA progress payload |
+| Type              | Produced after                              | Payload shape                                          |
+| ----------------- | ------------------------------------------- | ------------------------------------------------------ |
+| `telemetry.point` | Telemetry DB insert succeeds                | `{ ts, temperature, humidity, co_ppm, no2_ppm, mode }` |
+| `device.status`   | Device row online/last_seen update succeeds | `{ online, firmware }`                                 |
+| `shadow.reported` | Reported shadow update succeeds             | `{ reported, patch }`                                  |
+| `command.updated` | Command row changes status                  | `{ command_id, status, payload?, error_message? }`     |
+
+| Error                        | Code                              | Message                               |
+| ---------------------------- | --------------------------------- | ------------------------------------- |
+| Invalid `Last-Event-ID`      | 400                               | `"Invalid Last-Event-ID"`             |
+| Global realtime capacity hit | 503                               | `"Realtime capacity exceeded"`        |
+| Per-IP realtime capacity hit | 429                               | `"Realtime per-IP capacity exceeded"` |
+| `ota.progress`               | OTA progress Redis write succeeds | OTA progress payload                  |
 
 REST remains canonical for initial snapshots, history, reconnect backfill beyond the SSE replay window, and fallback.
 Realtime events are retained for short reconnect replay (`REALTIME_EVENT_RETENTION_HOURS`, default 24h).
@@ -954,12 +967,12 @@ Protocol:     MQTT v3.1.1 over WebSocket
 
 ## 10. Redis Keys Reference
 
-| Key                                | Type        | TTL       | Set bởi                          |
-| ---------------------------------- | ----------- | --------- | -------------------------------- |
-| `announce:{deviceId}`              | string      | 300s      | `handleStatus()`                 |
-| `shadow:{deviceId}`                | JSON string | 3600s     | `getShadow()` (cache)            |
-| `pending_cmds:{deviceId}`          | list        | legacy    | Dọn khi delete device            |
-| `ota_progress:{deviceId}`          | JSON string | 600s      | `handleOtaProgress()`            |
+| Key                       | Type        | TTL    | Set bởi               |
+| ------------------------- | ----------- | ------ | --------------------- |
+| `announce:{deviceId}`     | string      | 300s   | `handleStatus()`      |
+| `shadow:{deviceId}`       | JSON string | 3600s  | `getShadow()` (cache) |
+| `pending_cmds:{deviceId}` | list        | legacy | Dọn khi delete device |
+| `ota_progress:{deviceId}` | JSON string | 600s   | `handleOtaProgress()` |
 
 ---
 
@@ -970,21 +983,21 @@ EMQX Admin API provisioning/cleanup dùng `EMQX_API_URL` và timeout `EMQX_API_T
 
 **Subscribe:**
 
-| Topic                    | Handler               | Xử lý                                                                                         |
-| ------------------------ | --------------------- | --------------------------------------------------------------------------------------------- |
-| `device/+/status`        | `handleStatus()`      | Validate `{online:boolean}`; UPDATE `devices.online` + `last_seen`; emit `device.status`; SET `announce:`; `flushPending()`; push desired shadow |
-| `device/+/telemetry`     | `handleTelemetry()`   | Validate device/topic, mode, sensor fields, ts; INSERT TimescaleDB with QoS-1 dedupe; emit `telemetry.point` |
-| `device/+/response`      | `handleResponse()`    | UPDATE `commands.status` + `executed_at`; emit `command.updated`. Status whitelist: `done`/`error` |
-| `device/+/shadow/report` | `handleShadowReport()`| Drop unknown devices, validate known fields, UPSERT `device_shadows` only when `payload.ts` is not older than current `reported.ts`; emit `shadow.reported` only for applied updates |
-| `device/+/shadow/get`    | `handleShadowGet()`   | Load shadow and publish `shadow/get_response`                                                  |
-| `device/+/ota/progress`  | `handleOtaProgress()` | SET Redis TTL 600s; emit `ota.progress`                                                       |
+| Topic                    | Handler                | Xử lý                                                                                                                                                                                |
+| ------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `device/+/status`        | `handleStatus()`       | Validate `{online:boolean}`; UPDATE `devices.online` + `last_seen`; emit `device.status`; SET `announce:`; `flushPending()`; push desired shadow                                     |
+| `device/+/telemetry`     | `handleTelemetry()`    | Validate device/topic, mode, sensor fields, ts; INSERT TimescaleDB with QoS-1 dedupe; emit `telemetry.point`                                                                         |
+| `device/+/response`      | `handleResponse()`     | UPDATE `commands.status` + `executed_at`; emit `command.updated`. Status whitelist: `done`/`error`                                                                                   |
+| `device/+/shadow/report` | `handleShadowReport()` | Drop unknown devices, validate known fields, UPSERT `device_shadows` only when `payload.ts` is not older than current `reported.ts`; emit `shadow.reported` only for applied updates |
+| `device/+/shadow/get`    | `handleShadowGet()`    | Load shadow and publish `shadow/get_response`                                                                                                                                        |
+| `device/+/ota/progress`  | `handleOtaProgress()`  | SET Redis TTL 600s; emit `ota.progress`                                                                                                                                              |
 
 **Publish:**
 
-| Topic                             | Khi nào                               | Payload                      |
-| --------------------------------- | ------------------------------------- | ---------------------------- |
-| `device/{id}/command`             | `sendCommand()` / `flushPending()`    | `{ command_id, ...payload }` |
-| `device/{id}/shadow/get_response` | Device online / `PUT /shadow/desired` / `shadow/get` | `{ desired, delta, ts }` |
+| Topic                             | Khi nào                                              | Payload                      |
+| --------------------------------- | ---------------------------------------------------- | ---------------------------- |
+| `device/{id}/command`             | `sendCommand()` / `flushPending()`                   | `{ command_id, ...payload }` |
+| `device/{id}/shadow/get_response` | Device online / `PUT /shadow/desired` / `shadow/get` | `{ desired, delta, ts }`     |
 
 ---
 
@@ -1078,13 +1091,13 @@ Tất cả centralized tại `src/constants.js`:
 
 ### Admin surfaces hiện có
 
-| Surface             | URL / Port                         | Ghi chú |
-| ------------------- | ---------------------------------- | ------- |
-| EMQX Dashboard      | `http://127.0.0.1:18083`           | localhost only |
-| pgAdmin             | `http://127.0.0.1:5050`            | localhost only |
-| Portainer           | `http://127.0.0.1:9000`            | localhost only |
-| Grafana public path | `https://minhnhat05.xyz/grafana/`  | qua nginx + cloudflared |
-| API public path     | `https://minhnhat05.xyz/api/...`   | qua nginx + cloudflared |
+| Surface             | URL / Port                        | Ghi chú                 |
+| ------------------- | --------------------------------- | ----------------------- |
+| EMQX Dashboard      | `http://127.0.0.1:18083`          | localhost only          |
+| pgAdmin             | `http://127.0.0.1:5050`           | localhost only          |
+| Portainer           | `http://127.0.0.1:9000`           | localhost only          |
+| Grafana public path | `https://minhnhat05.xyz/grafana/` | qua nginx + cloudflared |
+| API public path     | `https://minhnhat05.xyz/api/...`  | qua nginx + cloudflared |
 
 > `api`, `nginx`, `grafana`, và `redis` không bind port trực tiếp ra host trong `docker-compose.yml`.
 
