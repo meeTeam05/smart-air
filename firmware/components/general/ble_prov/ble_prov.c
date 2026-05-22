@@ -56,11 +56,53 @@ static bool s_got_pass;
 static EventGroupHandle_t s_prov_eg;
 static TaskHandle_t s_prov_task_handle;
 static bool s_nimble_initialized;
+static portMUX_TYPE s_prov_eg_lock = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_prov_eg_users;
 
 static void start_advertise(void);
 static int gap_event(struct ble_gap_event *ev, void *arg);
 static int prov_chr_access(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 static void cleanup_start_failure(void);
+
+static EventGroupHandle_t prov_event_group_acquire(void)
+{
+    EventGroupHandle_t prov_eg;
+
+    portENTER_CRITICAL(&s_prov_eg_lock);
+    prov_eg = s_prov_eg;
+    if (prov_eg != NULL) {
+        s_prov_eg_users++;
+    }
+    portEXIT_CRITICAL(&s_prov_eg_lock);
+
+    return prov_eg;
+}
+
+static void prov_event_group_release(void)
+{
+    portENTER_CRITICAL(&s_prov_eg_lock);
+    if (s_prov_eg_users > 0) {
+        s_prov_eg_users--;
+    }
+    portEXIT_CRITICAL(&s_prov_eg_lock);
+}
+
+static void prov_event_group_wait_for_users(void)
+{
+    while (true) {
+        uint32_t active_users = 0;
+
+        portENTER_CRITICAL(&s_prov_eg_lock);
+        active_users = s_prov_eg_users;
+        portEXIT_CRITICAL(&s_prov_eg_lock);
+
+        if (active_users == 0) {
+            return;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}
 
 static const struct ble_gatt_svc_def s_gatt_svcs[] = {
     {
@@ -172,7 +214,11 @@ static void prov_task(void *arg)
     uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CONFIG_SA_PROV_TIMEOUT_MS));
     if (notified == 0) {
         ESP_LOGW(TAG, "Provisioning timed out — no credentials received");
-        xEventGroupSetBits(s_prov_eg, PROV_FAIL_BIT);
+        EventGroupHandle_t prov_eg = prov_event_group_acquire();
+        if (prov_eg != NULL) {
+            xEventGroupSetBits(prov_eg, PROV_FAIL_BIT);
+            prov_event_group_release();
+        }
         mbedtls_platform_zeroize(s_ssid, sizeof(s_ssid));
         mbedtls_platform_zeroize(s_password, sizeof(s_password));
         s_prov_task_handle = NULL;
@@ -222,7 +268,11 @@ static void prov_task(void *arg)
     }
 
     /* Signal ble_prov_start() to unblock */
-    xEventGroupSetBits(s_prov_eg, err == ESP_OK ? PROV_DONE_BIT : PROV_FAIL_BIT);
+    EventGroupHandle_t prov_eg = prov_event_group_acquire();
+    if (prov_eg != NULL) {
+        xEventGroupSetBits(prov_eg, err == ESP_OK ? PROV_DONE_BIT : PROV_FAIL_BIT);
+        prov_event_group_release();
+    }
     mbedtls_platform_zeroize(s_ssid, sizeof(s_ssid));
     mbedtls_platform_zeroize(s_password, sizeof(s_password));
     s_prov_task_handle = NULL;
@@ -276,7 +326,12 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
         ESP_LOGI(TAG, "Client disconnected (reason=%d)", ev->disconnect.reason);
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         /* Re-advertise only if provisioning not yet complete */
-        if (!(xEventGroupGetBits(s_prov_eg) & (PROV_DONE_BIT | PROV_FAIL_BIT))) {
+        EventGroupHandle_t prov_eg = prov_event_group_acquire();
+        EventBits_t bits = prov_eg != NULL ? xEventGroupGetBits(prov_eg) : (PROV_DONE_BIT | PROV_FAIL_BIT);
+        if (prov_eg != NULL) {
+            prov_event_group_release();
+        }
+        if (!(bits & (PROV_DONE_BIT | PROV_FAIL_BIT))) {
             start_advertise();
         }
         break;
@@ -395,9 +450,16 @@ void ble_prov_stop(void)
         s_nimble_initialized = false;
     }
 
-    if (s_prov_eg != NULL) {
-        vEventGroupDelete(s_prov_eg);
-        s_prov_eg = NULL;
+    EventGroupHandle_t prov_eg = NULL;
+
+    portENTER_CRITICAL(&s_prov_eg_lock);
+    prov_eg = s_prov_eg;
+    s_prov_eg = NULL;
+    portEXIT_CRITICAL(&s_prov_eg_lock);
+
+    if (prov_eg != NULL) {
+        prov_event_group_wait_for_users();
+        vEventGroupDelete(prov_eg);
     }
 }
 
@@ -453,8 +515,15 @@ static void cleanup_start_failure(void)
         nimble_port_deinit();
         s_nimble_initialized = false;
     }
-    if (s_prov_eg != NULL) {
-        vEventGroupDelete(s_prov_eg);
-        s_prov_eg = NULL;
+    EventGroupHandle_t prov_eg = NULL;
+
+    portENTER_CRITICAL(&s_prov_eg_lock);
+    prov_eg = s_prov_eg;
+    s_prov_eg = NULL;
+    portEXIT_CRITICAL(&s_prov_eg_lock);
+
+    if (prov_eg != NULL) {
+        prov_event_group_wait_for_users();
+        vEventGroupDelete(prov_eg);
     }
 }
