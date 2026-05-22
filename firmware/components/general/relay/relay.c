@@ -256,8 +256,10 @@ esp_err_t relay_set(int channel, bool on)
 
     err = relay_publish_delta(channel, on);
     if (err != ESP_OK) {
-        esp_err_t rollback_err = relay_rollback_state(index, prev_state);
-        return rollback_err != ESP_OK ? rollback_err : err;
+        ESP_LOGW(TAG,
+                 "relay_%d state changed locally but shadow publish failed: %s",
+                 channel,
+                 esp_err_to_name(err));
     }
 
     buzzer_beep_ms(RELAY_BEEP_MS_SINGLE);
