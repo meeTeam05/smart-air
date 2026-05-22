@@ -16,6 +16,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/task.h"
 
 #include <string.h>
 
@@ -33,8 +34,50 @@ static esp_event_handler_instance_t s_ip_event_handler;
 static char s_ip[16];
 static bool s_initialized;
 static int s_reconnect_count;
+static portMUX_TYPE s_state_lock = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_wifi_eg_users;
 
 #define WIFI_MAX_RECONNECT_ATTEMPTS 10
+
+static EventGroupHandle_t wifi_event_group_acquire(void)
+{
+    EventGroupHandle_t wifi_eg = NULL;
+
+    portENTER_CRITICAL(&s_state_lock);
+    if (s_wifi_eg != NULL) {
+        s_wifi_eg_users++;
+        wifi_eg = s_wifi_eg;
+    }
+    portEXIT_CRITICAL(&s_state_lock);
+
+    return wifi_eg;
+}
+
+static void wifi_event_group_release(void)
+{
+    portENTER_CRITICAL(&s_state_lock);
+    if (s_wifi_eg_users > 0) {
+        s_wifi_eg_users--;
+    }
+    portEXIT_CRITICAL(&s_state_lock);
+}
+
+static void wifi_event_group_wait_for_users(void)
+{
+    while (1) {
+        uint32_t active_users = 0;
+
+        portENTER_CRITICAL(&s_state_lock);
+        active_users = s_wifi_eg_users;
+        portEXIT_CRITICAL(&s_state_lock);
+
+        if (active_users == 0) {
+            return;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}
 
 static esp_err_t wifi_apply_custom_dns(void)
 {
@@ -66,12 +109,13 @@ static esp_err_t wifi_apply_custom_dns(void)
 
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
-    if (s_wifi_eg == NULL) {
+    EventGroupHandle_t wifi_eg = wifi_event_group_acquire();
+    if (wifi_eg == NULL) {
         return;
     }
 
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        xEventGroupClearBits(s_wifi_eg, WIFI_CONNECTED_BIT);
+        xEventGroupClearBits(wifi_eg, WIFI_CONNECTED_BIT);
 
         if (s_reconnect_count < WIFI_MAX_RECONNECT_ATTEMPTS) {
             s_reconnect_count++;
@@ -79,7 +123,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
             esp_wifi_connect();
         } else {
             ESP_LOGE(TAG, "Disconnected — max reconnect attempts reached, giving up");
-            xEventGroupSetBits(s_wifi_eg, WIFI_FAIL_BIT);
+            xEventGroupSetBits(wifi_eg, WIFI_FAIL_BIT);
         }
 
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
@@ -91,9 +135,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
             ESP_LOGW(TAG, "Continuing with DHCP DNS after custom DNS apply failure");
         }
         s_reconnect_count = 0;
-        xEventGroupClearBits(s_wifi_eg, WIFI_FAIL_BIT);
-        xEventGroupSetBits(s_wifi_eg, WIFI_CONNECTED_BIT);
+        xEventGroupClearBits(wifi_eg, WIFI_FAIL_BIT);
+        xEventGroupSetBits(wifi_eg, WIFI_CONNECTED_BIT);
     }
+
+    wifi_event_group_release();
 }
 
 esp_err_t wifi_sta_init(void)
@@ -159,14 +205,19 @@ fail:
 
 esp_err_t wifi_sta_connect(const char *ssid, const char *password, uint32_t timeout_ms)
 {
-    if (!s_initialized)
+    EventGroupHandle_t wifi_eg = wifi_event_group_acquire();
+    if (wifi_eg == NULL) {
         return ESP_ERR_INVALID_STATE;
+    }
+
+    if (!s_initialized)
+        goto invalid_state;
     if (ssid == NULL || password == NULL)
-        return ESP_ERR_INVALID_ARG;
+        goto invalid_arg;
 
     /* Fresh connection attempt starts with a clean retry budget and event state */
     s_reconnect_count = 0;
-    xEventGroupClearBits(s_wifi_eg, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+    xEventGroupClearBits(wifi_eg, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
 
     wifi_config_t cfg = {0};
     strncpy((char *)cfg.sta.ssid, ssid, sizeof(cfg.sta.ssid) - 1);
@@ -176,30 +227,45 @@ esp_err_t wifi_sta_connect(const char *ssid, const char *password, uint32_t time
     esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "set_config failed: %s", esp_err_to_name(err));
+        wifi_event_group_release();
         return err;
     }
 
     err = esp_wifi_connect();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_wifi_connect failed: %s", esp_err_to_name(err));
+        wifi_event_group_release();
         return err;
     }
 
     EventBits_t bits =
-        xEventGroupWaitBits(s_wifi_eg, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
+        xEventGroupWaitBits(wifi_eg, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
+    wifi_event_group_release();
 
     if (bits & WIFI_CONNECTED_BIT)
         return ESP_OK;
     if (bits & WIFI_FAIL_BIT)
         return ESP_FAIL;
     return ESP_ERR_TIMEOUT;
+
+invalid_state:
+    wifi_event_group_release();
+    return ESP_ERR_INVALID_STATE;
+
+invalid_arg:
+    wifi_event_group_release();
+    return ESP_ERR_INVALID_ARG;
 }
 
 bool wifi_sta_is_connected(void)
 {
-    if (s_wifi_eg == NULL)
+    EventGroupHandle_t wifi_eg = wifi_event_group_acquire();
+    if (wifi_eg == NULL)
         return false;
-    return (xEventGroupGetBits(s_wifi_eg) & WIFI_CONNECTED_BIT) != 0;
+
+    bool is_connected = (xEventGroupGetBits(wifi_eg) & WIFI_CONNECTED_BIT) != 0;
+    wifi_event_group_release();
+    return is_connected;
 }
 
 void wifi_sta_get_ip(char *buf, size_t len)
@@ -215,21 +281,44 @@ esp_err_t wifi_sta_deinit(void)
     if (!s_initialized)
         return ESP_OK;
 
+    EventGroupHandle_t wifi_eg = NULL;
+    esp_netif_t *netif = NULL;
+    esp_event_handler_instance_t wifi_handler = NULL;
+    esp_event_handler_instance_t ip_handler = NULL;
+
+    portENTER_CRITICAL(&s_state_lock);
+    wifi_eg = s_wifi_eg;
+    s_wifi_eg = NULL;
+    netif = s_netif;
+    s_netif = NULL;
+    wifi_handler = s_wifi_event_handler;
+    s_wifi_event_handler = NULL;
+    ip_handler = s_ip_event_handler;
+    s_ip_event_handler = NULL;
+    s_initialized = false;
+    s_reconnect_count = 0;
+    s_ip[0] = '\0';
+    portEXIT_CRITICAL(&s_state_lock);
+
+    if (wifi_eg != NULL) {
+        xEventGroupSetBits(wifi_eg, WIFI_FAIL_BIT);
+    }
+    if (wifi_handler != NULL) {
+        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_handler));
+    }
+    if (ip_handler != NULL) {
+        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_handler));
+    }
+    wifi_event_group_wait_for_users();
+
     ESP_ERROR_CHECK(esp_wifi_disconnect());
     ESP_ERROR_CHECK(esp_wifi_stop());
     ESP_ERROR_CHECK(esp_wifi_deinit());
-    if (s_wifi_event_handler != NULL) {
-        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, s_wifi_event_handler));
-        s_wifi_event_handler = NULL;
+    if (netif != NULL) {
+        esp_netif_destroy(netif);
     }
-    if (s_ip_event_handler != NULL) {
-        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, s_ip_event_handler));
-        s_ip_event_handler = NULL;
+    if (wifi_eg != NULL) {
+        vEventGroupDelete(wifi_eg);
     }
-    esp_netif_destroy(s_netif);
-    s_netif = NULL;
-    vEventGroupDelete(s_wifi_eg);
-    s_wifi_eg = NULL;
-    s_initialized = false;
     return ESP_OK;
 }
