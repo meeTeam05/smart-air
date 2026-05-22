@@ -15,6 +15,7 @@
 #include "freertos/task.h"
 #include "mqtt.h"
 
+#include <math.h>
 #include <string.h>
 #include <time.h>
 
@@ -118,6 +119,31 @@ static void log_stack_watermark_if_lower(void)
              (unsigned)(stack_words * sizeof(StackType_t)));
 }
 
+static bool validate_sht_reading(float temperature, float humidity)
+{
+    if (!isfinite(temperature) || temperature < -40.0f || temperature > 125.0f) {
+        ESP_LOGW(TAG, "Discarding invalid SHT3x temperature reading: %.2f", temperature);
+        return false;
+    }
+
+    if (!isfinite(humidity) || humidity < 0.0f || humidity > 100.0f) {
+        ESP_LOGW(TAG, "Discarding invalid SHT3x humidity reading: %.2f", humidity);
+        return false;
+    }
+
+    return true;
+}
+
+static bool validate_gas_reading(const char *label, float ppm, float max_ppm)
+{
+    if (!isfinite(ppm) || ppm < 0.0f || ppm > max_ppm) {
+        ESP_LOGW(TAG, "Discarding invalid %s reading: %.2f ppm", label, ppm);
+        return false;
+    }
+
+    return true;
+}
+
 #if SA_DEMO_NO_PERIPHERALS
 typedef struct {
     float temperature;
@@ -210,7 +236,9 @@ static void sensor_task_fn(void *arg)
         /* Read SHT3x if available */
         if (ctx->sht3x != NULL) {
             if (sht3x_measure(ctx->sht3x, &temperature, &humidity) == ESP_OK) {
-                have_sht = true;
+                if (validate_sht_reading(temperature, humidity)) {
+                    have_sht = true;
+                }
             } else {
                 ESP_LOGW(TAG, "SHT3x read failed");
             }
@@ -228,7 +256,9 @@ static void sensor_task_fn(void *arg)
         /* Read CO sensor if available */
         if (ctx->co != NULL) {
             if (gm702b_read(ctx->co, &co_ppm) == ESP_OK) {
-                have_co = true;
+                if (validate_gas_reading("CO", co_ppm, GM702B_CO_PPM_MAX)) {
+                    have_co = true;
+                }
             } else {
                 ESP_LOGW(TAG, "GM702B CO read failed");
             }
@@ -237,7 +267,9 @@ static void sensor_task_fn(void *arg)
         /* Read NO2 sensor if available */
         if (ctx->no2 != NULL) {
             if (gm102b_read(ctx->no2, &no2_ppm) == ESP_OK) {
-                have_no2 = true;
+                if (validate_gas_reading("NO2", no2_ppm, GM102B_NO2_PPM_MAX)) {
+                    have_no2 = true;
+                }
             } else {
                 ESP_LOGW(TAG, "GM102B NO2 read failed");
             }
