@@ -67,13 +67,31 @@ static const int NO2_CURVE_LEN = sizeof(NO2_CURVE) / sizeof(NO2_CURVE[0]);
 
 /**
  * @brief Linear interpolation between two points.
+ *
+ * Used only for the synthetic clean-air anchor at 0 ppm, which cannot be
+ * represented in log space.
  */
-static float lerp(float x1, float y1, float x2, float y2, float x)
+static float linear_interp(float x1, float y1, float x2, float y2, float x)
 {
     if (fabsf(x2 - x1) < 1e-6f)
         return y1;
     float t = (x - x1) / (x2 - x1);
     return y1 + t * (y2 - y1);
+}
+
+/**
+ * @brief Log-log interpolation between two positive curve points.
+ */
+static float log_interp(float r1, float p1, float r2, float p2, float r)
+{
+    float log_r1 = logf(r1);
+    float log_p1 = logf(p1);
+    float log_r2 = logf(r2);
+    float log_p2 = logf(p2);
+    float log_r = logf(r);
+
+    float t = (log_r - log_r1) / (log_r2 - log_r1);
+    return expf(log_p1 + t * (log_p2 - log_p1));
 }
 
 /**
@@ -94,7 +112,18 @@ static float ratio_to_ppm_no2(float ratio)
     /* Find interval and interpolate (ratio is increasing in table) */
     for (int i = 0; i < NO2_CURVE_LEN - 1; i++) {
         if (ratio >= NO2_CURVE[i].ratio && ratio <= NO2_CURVE[i + 1].ratio) {
-            return lerp(NO2_CURVE[i].ratio, NO2_CURVE[i].ppm, NO2_CURVE[i + 1].ratio, NO2_CURVE[i + 1].ppm, ratio);
+            if (NO2_CURVE[i].ppm <= 0.0f || NO2_CURVE[i + 1].ppm <= 0.0f) {
+                return linear_interp(NO2_CURVE[i].ratio,
+                                     NO2_CURVE[i].ppm,
+                                     NO2_CURVE[i + 1].ratio,
+                                     NO2_CURVE[i + 1].ppm,
+                                     ratio);
+            }
+            return log_interp(NO2_CURVE[i].ratio,
+                              NO2_CURVE[i].ppm,
+                              NO2_CURVE[i + 1].ratio,
+                              NO2_CURVE[i + 1].ppm,
+                              ratio);
         }
     }
     return 0.0f;
