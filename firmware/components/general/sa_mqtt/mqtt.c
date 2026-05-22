@@ -163,6 +163,38 @@ static esp_err_t mqtt_publish_command_ack_internal(const char *command_id, bool 
     return ESP_OK;
 }
 
+static esp_err_t mqtt_subscribe_required_topics(esp_mqtt_client_handle_t client)
+{
+    const struct {
+        const char *topic;
+        const char *label;
+    } subscriptions[] = {
+        {s_cmd_topic, "command"},
+        {s_shadow_topic, "shadow"},
+        {s_ota_topic, "ota"},
+    };
+
+    for (size_t i = 0; i < sizeof(subscriptions) / sizeof(subscriptions[0]); i++) {
+        int msg_id = esp_mqtt_client_subscribe(client, subscriptions[i].topic, 1);
+        if (msg_id < 0) {
+            ESP_LOGE(TAG,
+                     "Subscribe enqueue failed for %s topic %s (msg_id=%d)",
+                     subscriptions[i].label,
+                     subscriptions[i].topic,
+                     msg_id);
+            return msg_id == -2 ? ESP_ERR_NO_MEM : ESP_FAIL;
+        }
+
+        ESP_LOGI(TAG,
+                 "Subscribe queued for %s topic %s (msg_id=%d)",
+                 subscriptions[i].label,
+                 subscriptions[i].topic,
+                 msg_id);
+    }
+
+    return ESP_OK;
+}
+
 /* ── MQTT event handler ──────────────────────────────────────────────────── */
 
 static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_id, void *event_data)
@@ -187,11 +219,14 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         ESP_LOGI(TAG, "Published online status → %s", s_status_topic);
 
         /* FW-05: subscribe inside CONNECTED so re-connects re-subscribe */
-        esp_mqtt_client_subscribe(client, s_cmd_topic, 1);
-        esp_mqtt_client_subscribe(client, s_shadow_topic, 1);
-        esp_mqtt_client_subscribe(client, s_ota_topic, 1);
+        esp_err_t subscribe_err = mqtt_subscribe_required_topics(client);
+        if (subscribe_err != ESP_OK) {
+            ESP_LOGE(TAG, "Required topic subscription setup failed (%s) — forcing reconnect", esp_err_to_name(subscribe_err));
+            esp_mqtt_client_disconnect(client);
+            mqtt_client_release();
+            break;
+        }
         mqtt_client_release();
-        ESP_LOGI(TAG, "Subscribed to command / shadow / ota topics");
         break;
     }
 
@@ -339,7 +374,16 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                      mqtt_connect_return_code_name(ev->error_handle->connect_return_code),
                      ev->error_handle->connect_return_code);
         } else if (ev->error_handle->error_type == MQTT_ERROR_TYPE_SUBSCRIBE_FAILED) {
-            ESP_LOGE(TAG, "Broker reported subscribe failure");
+            ESP_LOGE(TAG, "Broker reported subscribe failure — forcing reconnect");
+
+            esp_mqtt_client_handle_t client = mqtt_client_acquire();
+            if (client != NULL) {
+                esp_err_t disconnect_err = esp_mqtt_client_disconnect(client);
+                if (disconnect_err != ESP_OK) {
+                    ESP_LOGW(TAG, "Disconnect after subscribe failure failed (%s)", esp_err_to_name(disconnect_err));
+                }
+                mqtt_client_release();
+            }
         }
         break;
 
