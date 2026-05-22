@@ -10,6 +10,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "esp_attr.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_event.h"
@@ -48,10 +49,13 @@ static const uint32_t MIN_VALID_UNIX_TS = 946684800UL;
 
 #define SYSLOAD_BOOT_RESTART_DELAY_MS      2000
 #define SYSLOAD_PROVISION_RESTART_DELAY_MS 5000
+#define SYSLOAD_BOOT_FAILURE_RETRY_LIMIT    3
 #define CALIBRATION_TASK_QUEUE_LEN         2
 #define CALIBRATION_TASK_STACK_SIZE        4096
 #define CALIBRATION_TASK_PRIORITY          3
 #define CALIBRATION_TASK_NAME              "calibration_task"
+
+RTC_DATA_ATTR static uint32_t s_boot_failure_count = 0;
 
 static int build_month_index(const char *month)
 {
@@ -445,7 +449,23 @@ static esp_err_t handle_device_mode(const char *type, const char *json_payload)
 static void reboot_after_boot_error(const char *step, esp_err_t err)
 {
     led_set_state(LED_STATE_ERROR);
-    ESP_LOGE(TAG, "%s failed (%s) — rebooting", step, esp_err_to_name(err));
+    s_boot_failure_count++;
+
+    if (s_boot_failure_count >= SYSLOAD_BOOT_FAILURE_RETRY_LIMIT) {
+        ESP_LOGE(TAG,
+                 "%s failed (%s) — boot retry limit reached (%lu), entering safe mode",
+                 step,
+                 esp_err_to_name(err),
+                 (unsigned long)s_boot_failure_count);
+        vTaskDelete(NULL);
+    }
+
+    ESP_LOGE(TAG,
+             "%s failed (%s) — rebooting (%lu/%d)",
+             step,
+             esp_err_to_name(err),
+             (unsigned long)s_boot_failure_count,
+             SYSLOAD_BOOT_FAILURE_RETRY_LIMIT);
     vTaskDelay(pdMS_TO_TICKS(SYSLOAD_BOOT_RESTART_DELAY_MS));
     esp_restart();
 }
@@ -779,6 +799,7 @@ void sysload_init(void)
 
     if (secret_key[0] == '\0') {
         ESP_LOGW(TAG, "MQTT secret_key not provisioned yet — waiting for local POST /api/config");
+        s_boot_failure_count = 0;
         vTaskDelete(NULL);
     }
 
@@ -842,5 +863,6 @@ void sysload_init(void)
     /* 11 — Validate OTA firmware after all subsystems running (SEC-03) */
     ota_validate_and_commit();
 
+    s_boot_failure_count = 0;
     vTaskDelete(NULL);
 }
