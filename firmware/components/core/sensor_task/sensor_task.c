@@ -72,6 +72,11 @@ static void store_pending_payload(const char *stream, pending_payload_t *pending
 
 static bool publish_payload_now(const char *stream, const char *topic, const char *payload, uint32_t *counter)
 {
+    if (config_factory_reset_in_progress()) {
+        ESP_LOGW(TAG, "%s publish skipped during factory reset", stream);
+        return false;
+    }
+
     int msg_id = mqtt_publish(topic, payload, 1, false);
     if (msg_id < 0) {
         (*counter)++;

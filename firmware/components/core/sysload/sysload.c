@@ -256,6 +256,10 @@ static void calibration_task_fn(void *arg)
         xQueueReceive(s_calibration_queue, &req, portMAX_DELAY);
 
         esp_err_t err = run_calibration_request(&req);
+        if (config_factory_reset_in_progress()) {
+            ESP_LOGW(TAG, "Skipping calibration ack for '%s' during factory reset", req.command_id);
+            continue;
+        }
         esp_err_t ack_err = mqtt_publish_command_ack(req.command_id, err == ESP_OK);
         if (ack_err != ESP_OK) {
             ESP_LOGW(TAG,

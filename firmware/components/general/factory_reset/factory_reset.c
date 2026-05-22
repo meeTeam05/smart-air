@@ -26,6 +26,7 @@
 #include "freertos/task.h"
 #include "led.h"
 #include "mqtt.h"
+#include "sensor_task.h"
 #include "wifi.h"
 
 static const char *TAG = "factory_reset";
@@ -53,6 +54,9 @@ esp_err_t factory_reset_run(void)
 
     /* Solid red: point of no return */
     led_set_state(LED_STATE_ERROR);
+
+    /* Stop new telemetry/shadow work before the MQTT client is torn down. */
+    sensor_task_set_enabled(false);
 
     /* 1. Clean WiFi shutdown */
     wifi_sta_deinit();
