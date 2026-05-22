@@ -100,6 +100,20 @@ static void wifi_reconnect_count_reset(void)
     portEXIT_CRITICAL(&s_state_lock);
 }
 
+static void wifi_ip_copy_out(char *buf, size_t len)
+{
+    portENTER_CRITICAL(&s_state_lock);
+    strlcpy(buf, s_ip, len);
+    portEXIT_CRITICAL(&s_state_lock);
+}
+
+static void wifi_ip_store(const char *ip)
+{
+    portENTER_CRITICAL(&s_state_lock);
+    strlcpy(s_ip, ip, sizeof(s_ip));
+    portEXIT_CRITICAL(&s_state_lock);
+}
+
 static esp_err_t wifi_apply_custom_dns(void)
 {
     esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -149,8 +163,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
 
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *ev = (ip_event_got_ip_t *)data;
-        snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&ev->ip_info.ip));
-        ESP_LOGI(TAG, "Got IP: %s", s_ip);
+        char ip[sizeof(s_ip)];
+        snprintf(ip, sizeof(ip), IPSTR, IP2STR(&ev->ip_info.ip));
+        wifi_ip_store(ip);
+        ESP_LOGI(TAG, "Got IP: %s", ip);
         esp_err_t dns_err = wifi_apply_custom_dns();
         if (dns_err != ESP_OK) {
             ESP_LOGW(TAG, "Continuing with DHCP DNS after custom DNS apply failure");
@@ -293,8 +309,7 @@ void wifi_sta_get_ip(char *buf, size_t len)
 {
     if (buf == NULL || len == 0)
         return;
-    strncpy(buf, s_ip, len - 1);
-    buf[len - 1] = '\0';
+    wifi_ip_copy_out(buf, len);
 }
 
 esp_err_t wifi_sta_deinit(void)
