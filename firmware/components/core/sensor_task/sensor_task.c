@@ -255,22 +255,24 @@ static void sensor_task_fn(void *arg)
 
         /* Read CO sensor if available */
         if (ctx->co != NULL) {
-            if (gm702b_read(ctx->co, &co_ppm) == ESP_OK) {
+            esp_err_t err = gm702b_read(ctx->co, &co_ppm);
+            if (err == ESP_OK) {
                 if (validate_gas_reading("CO", co_ppm, GM702B_CO_PPM_MAX)) {
                     have_co = true;
                 }
-            } else {
+            } else if (err != ESP_ERR_INVALID_STATE) {
                 ESP_LOGW(TAG, "GM702B CO read failed");
             }
         }
 
         /* Read NO2 sensor if available */
         if (ctx->no2 != NULL) {
-            if (gm102b_read(ctx->no2, &no2_ppm) == ESP_OK) {
+            esp_err_t err = gm102b_read(ctx->no2, &no2_ppm);
+            if (err == ESP_OK) {
                 if (validate_gas_reading("NO2", no2_ppm, GM102B_NO2_PPM_MAX)) {
                     have_no2 = true;
                 }
-            } else {
+            } else if (err != ESP_ERR_INVALID_STATE) {
                 ESP_LOGW(TAG, "GM102B NO2 read failed");
             }
         }

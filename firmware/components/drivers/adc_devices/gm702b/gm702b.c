@@ -214,8 +214,8 @@ esp_err_t gm702b_read(gm702b_t *dev, float *co_ppm)
     bool calibrated;
     gm702b_get_calibration_state(dev, &r0, &calibrated);
 
-    if (!calibrated) {
-        ESP_LOGW(TAG, "Sensor not calibrated — ppm output will remain 0 until calibration completes");
+    if (!calibrated || r0 <= 0.0f) {
+        return ESP_ERR_INVALID_STATE;
     }
 
     int mv;
@@ -223,13 +223,8 @@ esp_err_t gm702b_read(gm702b_t *dev, float *co_ppm)
 
     float vout = (float)mv / 1000.0f;
     float rs = voltage_to_rs(vout, dev->rl, dev->vc);
-
-    if (calibrated && r0 > 0) {
-        float ratio = rs / r0;
-        *co_ppm = ratio_to_ppm_co(ratio);
-    } else {
-        *co_ppm = 0.0f;
-    }
+    float ratio = rs / r0;
+    *co_ppm = ratio_to_ppm_co(ratio);
 
     return ESP_OK;
 }

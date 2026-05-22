@@ -212,8 +212,8 @@ esp_err_t gm102b_read(gm102b_t *dev, float *no2_ppm)
     bool calibrated;
     gm102b_get_calibration_state(dev, &r0, &calibrated);
 
-    if (!calibrated) {
-        ESP_LOGW(TAG, "Sensor not calibrated — returning 0");
+    if (!calibrated || r0 <= 0.0f) {
+        return ESP_ERR_INVALID_STATE;
     }
 
     int mv;
@@ -221,13 +221,8 @@ esp_err_t gm102b_read(gm102b_t *dev, float *no2_ppm)
 
     float vout = (float)mv / 1000.0f;
     float rs = voltage_to_rs(vout, dev->rl, dev->vc);
-
-    if (calibrated && r0 > 0) {
-        float ratio = rs / r0;
-        *no2_ppm = ratio_to_ppm_no2(ratio);
-    } else {
-        *no2_ppm = 0.0f;
-    }
+    float ratio = rs / r0;
+    *no2_ppm = ratio_to_ppm_no2(ratio);
 
     return ESP_OK;
 }

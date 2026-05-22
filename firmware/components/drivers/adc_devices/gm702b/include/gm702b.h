@@ -53,6 +53,8 @@ esp_err_t gm702b_calibrate(gm702b_t *dev);
  *
  * @param dev    Device descriptor (must be calibrated)
  * @param co_ppm Output: CO concentration in ppm
+ *
+ * @return ESP_OK on success, or ESP_ERR_INVALID_STATE when the sensor is not calibrated.
  */
 esp_err_t gm702b_read(gm702b_t *dev, float *co_ppm);
 
