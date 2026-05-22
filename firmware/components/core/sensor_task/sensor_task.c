@@ -366,12 +366,12 @@ void sensor_task_set_enabled(bool enabled)
 {
     bool changed = false;
 
-    taskENTER_CRITICAL(&s_enabled_lock);
+    portENTER_CRITICAL(&s_enabled_lock);
     if (s_enabled != enabled) {
         s_enabled = enabled;
         changed = true;
     }
-    taskEXIT_CRITICAL(&s_enabled_lock);
+    portEXIT_CRITICAL(&s_enabled_lock);
 
     if (changed) {
         ESP_LOGI(TAG, "sensor task mode set to %s", enabled ? "on" : "off");
@@ -382,9 +382,9 @@ bool sensor_task_get_enabled(void)
 {
     bool enabled;
 
-    taskENTER_CRITICAL(&s_enabled_lock);
+    portENTER_CRITICAL(&s_enabled_lock);
     enabled = s_enabled;
-    taskEXIT_CRITICAL(&s_enabled_lock);
+    portEXIT_CRITICAL(&s_enabled_lock);
 
     return enabled;
 }
