@@ -798,14 +798,6 @@ void sysload_init(void)
     load_wifi_credentials_stage(ssid, sizeof(ssid), password, sizeof(password));
     connect_wifi_stage(ssid, password);
 
-#if SA_ENABLE_DS3231
-    ensure_system_clock_seeded(rtc_err == ESP_OK);
-    sync_time_from_sntp_stage(rtc_err == ESP_OK);
-#else
-    ensure_system_clock_seeded(false);
-    sync_time_from_sntp_stage(false);
-#endif
-
     /* 9 — Resolve immutable device ID and runtime config */
     char broker_uri[128] = {0};
     char resolved_id[18] = {0};
@@ -815,6 +807,14 @@ void sysload_init(void)
 
     /* 9.1 — Local provisioning HTTP API (must exist before first MQTT login) */
     start_http_server_stage(resolved_id);
+
+#if SA_ENABLE_DS3231
+    ensure_system_clock_seeded(rtc_err == ESP_OK);
+    sync_time_from_sntp_stage(rtc_err == ESP_OK);
+#else
+    ensure_system_clock_seeded(false);
+    sync_time_from_sntp_stage(false);
+#endif
 
     if (secret_key[0] == '\0') {
         ESP_LOGW(TAG, "MQTT secret_key not provisioned yet — waiting for local POST /api/config");
