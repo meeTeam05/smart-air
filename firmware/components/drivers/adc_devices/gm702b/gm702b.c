@@ -170,6 +170,16 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
 
         float vout = (float)mv / 1000.0f;
         float rs = voltage_to_rs(vout, dev->rl, dev->vc);
+        if (!isfinite(rs) || rs <= 0.0f) {
+            last_err = ESP_ERR_INVALID_STATE;
+            ESP_LOGW(TAG,
+                     "Calibration sample %d/%d invalid: Vout=%.3fV produced Rs=%.3f ohm",
+                     i + 1,
+                     CALIBRATION_SAMPLES,
+                     vout,
+                     rs);
+            continue;
+        }
         rs_sum += rs;
         valid++;
 
