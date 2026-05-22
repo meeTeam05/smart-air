@@ -553,12 +553,9 @@ static void connect_wifi_stage(const char *ssid, const char *password)
     esp_err_t err = wifi_sta_connect(ssid, password, CONFIG_SA_WIFI_CONNECT_TIMEOUT_MS);
     if (err != ESP_OK) {
         led_set_state(LED_STATE_ERROR);
-        ESP_LOGE(TAG, "Wi-Fi connect failed (%s) — running full factory reset", esp_err_to_name(err));
-        esp_err_t reset_err = factory_reset_run();
-        if (reset_err != ESP_OK) {
-            ESP_LOGE(TAG, "factory_reset_run failed (%s) — rebooting anyway", esp_err_to_name(reset_err));
-        }
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        ESP_LOGE(TAG, "Wi-Fi connect failed (%s) — preserving provisioned credentials and rebooting",
+                 esp_err_to_name(err));
+        vTaskDelay(pdMS_TO_TICKS(SYSLOAD_BOOT_RESTART_DELAY_MS));
         esp_restart();
     }
 
