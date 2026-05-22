@@ -100,6 +100,13 @@ static void wifi_reconnect_count_reset(void)
     portEXIT_CRITICAL(&s_state_lock);
 }
 
+static void wifi_reconnect_count_exhaust(void)
+{
+    portENTER_CRITICAL(&s_state_lock);
+    s_reconnect_count = WIFI_MAX_RECONNECT_ATTEMPTS;
+    portEXIT_CRITICAL(&s_state_lock);
+}
+
 static void wifi_ip_copy_out(char *buf, size_t len)
 {
     portENTER_CRITICAL(&s_state_lock);
@@ -112,6 +119,17 @@ static void wifi_ip_store(const char *ip)
     portENTER_CRITICAL(&s_state_lock);
     strlcpy(s_ip, ip, sizeof(s_ip));
     portEXIT_CRITICAL(&s_state_lock);
+}
+
+static void wifi_abort_pending_connect(EventGroupHandle_t wifi_eg)
+{
+    wifi_reconnect_count_exhaust();
+    xEventGroupClearBits(wifi_eg, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+
+    esp_err_t err = esp_wifi_disconnect();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_wifi_disconnect after connect timeout failed: %s", esp_err_to_name(err));
+    }
 }
 
 static esp_err_t wifi_apply_custom_dns(void)
@@ -277,12 +295,17 @@ esp_err_t wifi_sta_connect(const char *ssid, const char *password, uint32_t time
 
     EventBits_t bits =
         xEventGroupWaitBits(wifi_eg, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
-    wifi_event_group_release();
-
-    if (bits & WIFI_CONNECTED_BIT)
+    if (bits & WIFI_CONNECTED_BIT) {
+        wifi_event_group_release();
         return ESP_OK;
-    if (bits & WIFI_FAIL_BIT)
+    }
+    if (bits & WIFI_FAIL_BIT) {
+        wifi_event_group_release();
         return ESP_FAIL;
+    }
+
+    wifi_abort_pending_connect(wifi_eg);
+    wifi_event_group_release();
     return ESP_ERR_TIMEOUT;
 
 invalid_state:
