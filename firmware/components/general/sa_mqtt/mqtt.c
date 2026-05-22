@@ -26,6 +26,7 @@
 #include "cJSON.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "mqtt";
@@ -90,6 +91,58 @@ static char s_cmd_topic[96];      /* device/{id}/command */
 static char s_response_topic[96]; /* device/{id}/response */
 static char s_shadow_topic[128];  /* device/{id}/shadow/get_response */
 static char s_ota_topic[96];      /* device/{id}/ota/update */
+static char *s_rx_topic = NULL;
+static char *s_rx_payload = NULL;
+static int s_rx_total_len;
+
+static void mqtt_pending_rx_reset(void)
+{
+    free(s_rx_topic);
+    free(s_rx_payload);
+    s_rx_topic = NULL;
+    s_rx_payload = NULL;
+    s_rx_total_len = 0;
+}
+
+static esp_err_t mqtt_pending_rx_append(const esp_mqtt_event_handle_t ev, char **topic_out, char **payload_out)
+{
+    if (ev == NULL || topic_out == NULL || payload_out == NULL || ev->data == NULL || ev->data_len < 0 ||
+        ev->current_data_offset < 0 || ev->total_data_len < ev->data_len) {
+        mqtt_pending_rx_reset();
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (ev->current_data_offset == 0) {
+        mqtt_pending_rx_reset();
+
+        s_rx_topic = strndup(ev->topic, (size_t)ev->topic_len);
+        s_rx_payload = malloc((size_t)ev->total_data_len + 1U);
+        if (s_rx_topic == NULL || s_rx_payload == NULL) {
+            mqtt_pending_rx_reset();
+            return ESP_ERR_NO_MEM;
+        }
+
+        s_rx_total_len = ev->total_data_len;
+        s_rx_payload[s_rx_total_len] = '\0';
+    } else if (s_rx_topic == NULL || s_rx_payload == NULL || ev->total_data_len != s_rx_total_len) {
+        mqtt_pending_rx_reset();
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (ev->current_data_offset + ev->data_len > s_rx_total_len) {
+        mqtt_pending_rx_reset();
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    memcpy(s_rx_payload + ev->current_data_offset, ev->data, (size_t)ev->data_len);
+    if (ev->current_data_offset + ev->data_len < s_rx_total_len) {
+        return ESP_ERR_NOT_FINISHED;
+    }
+
+    *topic_out = s_rx_topic;
+    *payload_out = s_rx_payload;
+    return ESP_OK;
+}
 
 static esp_mqtt_client_handle_t mqtt_client_acquire(void)
 {
@@ -231,23 +284,27 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
     }
 
     case MQTT_EVENT_DISCONNECTED:
+        mqtt_pending_rx_reset();
         led_set_state(LED_STATE_WIFI);
         ESP_LOGW(TAG, "Disconnected — reconnecting automatically");
         break;
 
     case MQTT_EVENT_DATA: {
         /* FW-04: copy topic + payload before returning from handler */
-        char *topic = strndup(ev->topic, (size_t)ev->topic_len);
-        char *payload = strndup(ev->data, (size_t)ev->data_len);
-        if (topic == NULL || payload == NULL) {
+        char *topic = NULL;
+        char *payload = NULL;
+        esp_err_t copy_err = mqtt_pending_rx_append(ev, &topic, &payload);
+        if (copy_err == ESP_ERR_NOT_FINISHED) {
+            break;
+        }
+        if (copy_err != ESP_OK) {
             ESP_LOGE(TAG,
-                     "dropping MQTT message: alloc failed (topic=%s payload=%s, topic_len=%d data_len=%d)",
-                     topic == NULL ? "null" : "ok",
-                     payload == NULL ? "null" : "ok",
+                     "dropping MQTT message fragment: err=%s topic_len=%d data_len=%d total_len=%d offset=%d",
+                     esp_err_to_name(copy_err),
                      ev->topic_len,
-                     ev->data_len);
-            free(topic);
-            free(payload);
+                     ev->data_len,
+                     ev->total_data_len,
+                     ev->current_data_offset);
             break;
         }
 
@@ -342,8 +399,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                 ESP_LOGW(TAG, "OTA update message is not valid JSON");
             }
         }
-        free(topic);
-        free(payload);
+        mqtt_pending_rx_reset();
         break;
     }
 
@@ -541,6 +597,7 @@ esp_err_t mqtt_stop(void)
     }
 
     mqtt_client_wait_for_users();
+    mqtt_pending_rx_reset();
     esp_mqtt_client_stop(client);
     esp_mqtt_client_destroy(client);
     ESP_LOGI(TAG, "MQTT client stopped");
