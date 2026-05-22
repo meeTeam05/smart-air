@@ -203,6 +203,8 @@ esp_err_t wifi_sta_init(void)
         return ESP_OK; /* idempotent */
     }
 
+    bool wifi_inited = false;
+
     s_wifi_eg = xEventGroupCreate();
     if (s_wifi_eg == NULL) {
         return ESP_ERR_NO_MEM;
@@ -218,6 +220,7 @@ esp_err_t wifi_sta_init(void)
     if (err != ESP_OK) {
         goto fail;
     }
+    wifi_inited = true;
 
     err = esp_event_handler_instance_register(
         WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &s_wifi_event_handler);
@@ -250,6 +253,9 @@ fail:
     if (s_netif != NULL) {
         esp_netif_destroy(s_netif);
         s_netif = NULL;
+    }
+    if (wifi_inited) {
+        esp_wifi_deinit();
     }
     if (s_wifi_eg != NULL) {
         vEventGroupDelete(s_wifi_eg);
