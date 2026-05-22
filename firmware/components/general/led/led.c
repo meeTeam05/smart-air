@@ -121,6 +121,33 @@ static void blink_timer_cb(void *arg)
     request_led_refresh();
 }
 
+static void cleanup_init_failure(void)
+{
+    if (s_led_task != NULL) {
+        vTaskDelete(s_led_task);
+        s_led_task = NULL;
+    }
+
+    if (s_timer != NULL) {
+        esp_timer_delete(s_timer);
+        s_timer = NULL;
+    }
+
+    if (s_encoder != NULL) {
+        rmt_del_encoder(s_encoder);
+        s_encoder = NULL;
+    }
+
+    if (s_chan != NULL) {
+        esp_err_t err = rmt_disable(s_chan);
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+            ESP_LOGW(TAG, "rmt_disable during cleanup failed (%s)", esp_err_to_name(err));
+        }
+        rmt_del_channel(s_chan);
+        s_chan = NULL;
+    }
+}
+
 #endif /* SA_ENABLE_LED */
 
 /* ── Public API ──────────────────────────────────────────────────────────── */
@@ -153,12 +180,14 @@ esp_err_t led_init(void)
     err = rmt_new_bytes_encoder(&enc_cfg, &s_encoder);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "rmt_new_bytes_encoder failed (%s)", esp_err_to_name(err));
+        cleanup_init_failure();
         return err;
     }
 
     err = rmt_enable(s_chan);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "rmt_enable failed (%s)", esp_err_to_name(err));
+        cleanup_init_failure();
         return err;
     }
 
@@ -175,24 +204,21 @@ esp_err_t led_init(void)
     err = esp_timer_create(&timer_args, &s_timer);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_timer_create failed (%s)", esp_err_to_name(err));
+        cleanup_init_failure();
         return err;
     }
 
     BaseType_t rc = xTaskCreatePinnedToCore(led_task, "led_task", 2048, NULL, 4, &s_led_task, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed");
-        esp_timer_delete(s_timer);
-        s_timer = NULL;
+        cleanup_init_failure();
         return ESP_ERR_NO_MEM;
     }
 
     err = esp_timer_start_periodic(s_timer, 500 * 1000ULL); /* µs */
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_timer_start_periodic failed (%s)", esp_err_to_name(err));
-        vTaskDelete(s_led_task);
-        s_led_task = NULL;
-        esp_timer_delete(s_timer);
-        s_timer = NULL;
+        cleanup_init_failure();
         return err;
     }
 
