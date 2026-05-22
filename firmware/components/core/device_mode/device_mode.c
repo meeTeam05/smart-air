@@ -248,12 +248,19 @@ esp_err_t device_mode_set(bool on)
             first_err = err;
         }
 
+        bool relays_forced_off = true;
 #if SA_ENABLE_RELAYS
         err = relay_force_all_off();
         if (err != ESP_OK && first_err == ESP_OK) {
             first_err = err;
+            relays_forced_off = false;
         }
 #endif
+
+        if (relays_forced_off) {
+            s_mode_on = false;
+            sensor_task_set_enabled(false);
+        }
 
         err = publish_mode_off_shadow();
         if (err != ESP_OK && first_err == ESP_OK) {
@@ -265,13 +272,11 @@ esp_err_t device_mode_set(bool on)
             first_err = err;
         }
 
-        if (first_err == ESP_OK) {
-            s_mode_on = false;
-            sensor_task_set_enabled(false);
-        }
-
         return first_err;
     }
+
+    s_mode_on = true;
+    sensor_task_set_enabled(true);
 
     err = persist_mode(true);
     if (err != ESP_OK && first_err == ESP_OK) {
@@ -281,11 +286,6 @@ esp_err_t device_mode_set(bool on)
     err = publish_mode_on_shadow();
     if (err != ESP_OK && first_err == ESP_OK) {
         first_err = err;
-    }
-
-    if (first_err == ESP_OK) {
-        s_mode_on = true;
-        sensor_task_set_enabled(true);
     }
 
     return first_err;
