@@ -70,6 +70,8 @@ static const char *mqtt_connect_return_code_name(esp_mqtt_connect_return_code_t 
 
 static esp_mqtt_client_handle_t s_client = NULL;
 static mqtt_time_sync_cb_t s_time_sync_cb = NULL;
+static portMUX_TYPE s_client_lock = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_client_users;
 
 #define MAX_CMD_HANDLERS 8
 typedef struct {
@@ -89,12 +91,54 @@ static char s_response_topic[96]; /* device/{id}/response */
 static char s_shadow_topic[128];  /* device/{id}/shadow/get_response */
 static char s_ota_topic[96];      /* device/{id}/ota/update */
 
+static esp_mqtt_client_handle_t mqtt_client_acquire(void)
+{
+    esp_mqtt_client_handle_t client = NULL;
+
+    portENTER_CRITICAL(&s_client_lock);
+    if (s_client != NULL) {
+        s_client_users++;
+        client = s_client;
+    }
+    portEXIT_CRITICAL(&s_client_lock);
+
+    return client;
+}
+
+static void mqtt_client_release(void)
+{
+    portENTER_CRITICAL(&s_client_lock);
+    if (s_client_users > 0) {
+        s_client_users--;
+    }
+    portEXIT_CRITICAL(&s_client_lock);
+}
+
+static void mqtt_client_wait_for_users(void)
+{
+    while (1) {
+        uint32_t active_users = 0;
+
+        portENTER_CRITICAL(&s_client_lock);
+        active_users = s_client_users;
+        portEXIT_CRITICAL(&s_client_lock);
+
+        if (active_users == 0) {
+            return;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}
+
 static esp_err_t mqtt_publish_command_ack_internal(const char *command_id, bool success)
 {
     if (command_id == NULL || command_id[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
-    if (s_client == NULL) {
+
+    esp_mqtt_client_handle_t client = mqtt_client_acquire();
+    if (client == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -105,13 +149,16 @@ static esp_err_t mqtt_publish_command_ack_internal(const char *command_id, bool 
                            command_id,
                            success ? "done" : "error");
     if (written < 0 || written >= (int)sizeof(response)) {
+        mqtt_client_release();
         return ESP_ERR_INVALID_SIZE;
     }
 
-    if (esp_mqtt_client_publish(s_client, s_response_topic, response, 0, 1, 0) < 0) {
+    if (esp_mqtt_client_publish(client, s_response_topic, response, 0, 1, 0) < 0) {
+        mqtt_client_release();
         return ESP_FAIL;
     }
 
+    mqtt_client_release();
     ESP_LOGI(TAG, "Command ack → %s", s_response_topic);
     return ESP_OK;
 }
@@ -127,16 +174,23 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         ESP_LOGI(TAG, "Connected to broker");
         led_set_state(LED_STATE_ONLINE);
 
+        esp_mqtt_client_handle_t client = mqtt_client_acquire();
+        if (client == NULL) {
+            ESP_LOGW(TAG, "Connected event ignored because MQTT client is stopping");
+            break;
+        }
+
         /* Publish retained online status */
         char msg[80];
         snprintf(msg, sizeof(msg), "{\"online\":true,\"firmware\":\"%s\"}", CONFIG_FIRMWARE_VERSION);
-        esp_mqtt_client_publish(s_client, s_status_topic, msg, 0, 1, 1);
+        esp_mqtt_client_publish(client, s_status_topic, msg, 0, 1, 1);
         ESP_LOGI(TAG, "Published online status → %s", s_status_topic);
 
         /* FW-05: subscribe inside CONNECTED so re-connects re-subscribe */
-        esp_mqtt_client_subscribe(s_client, s_cmd_topic, 1);
-        esp_mqtt_client_subscribe(s_client, s_shadow_topic, 1);
-        esp_mqtt_client_subscribe(s_client, s_ota_topic, 1);
+        esp_mqtt_client_subscribe(client, s_cmd_topic, 1);
+        esp_mqtt_client_subscribe(client, s_shadow_topic, 1);
+        esp_mqtt_client_subscribe(client, s_ota_topic, 1);
+        mqtt_client_release();
         ESP_LOGI(TAG, "Subscribed to command / shadow / ota topics");
         break;
     }
@@ -331,15 +385,19 @@ static void mqtt_task(void *arg)
             },
     };
 
-    s_client = esp_mqtt_client_init(&cfg);
-    if (s_client == NULL) {
+    esp_mqtt_client_handle_t client = esp_mqtt_client_init(&cfg);
+    if (client == NULL) {
         ESP_LOGE(TAG, "esp_mqtt_client_init failed");
         vTaskDelete(NULL);
         return;
     }
 
-    esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(s_client);
+    portENTER_CRITICAL(&s_client_lock);
+    s_client = client;
+    portEXIT_CRITICAL(&s_client_lock);
+
+    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    esp_mqtt_client_start(client);
 
     /* Task work is done — library runs the connection loop internally */
     vTaskDelete(NULL);
@@ -416,20 +474,31 @@ esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *
 
 int mqtt_publish(const char *topic, const char *payload, int qos, bool retain)
 {
-    if (s_client == NULL) {
+    esp_mqtt_client_handle_t client = mqtt_client_acquire();
+    if (client == NULL) {
         return -1;
     }
-    return esp_mqtt_client_publish(s_client, topic, payload, 0, qos, retain ? 1 : 0);
+    int msg_id = esp_mqtt_client_publish(client, topic, payload, 0, qos, retain ? 1 : 0);
+    mqtt_client_release();
+    return msg_id;
 }
 
 esp_err_t mqtt_stop(void)
 {
-    if (s_client == NULL) {
+    esp_mqtt_client_handle_t client = NULL;
+
+    portENTER_CRITICAL(&s_client_lock);
+    client = s_client;
+    s_client = NULL;
+    portEXIT_CRITICAL(&s_client_lock);
+
+    if (client == NULL) {
         return ESP_OK;
     }
-    esp_mqtt_client_stop(s_client);
-    esp_mqtt_client_destroy(s_client);
-    s_client = NULL;
+
+    mqtt_client_wait_for_users();
+    esp_mqtt_client_stop(client);
+    esp_mqtt_client_destroy(client);
     ESP_LOGI(TAG, "MQTT client stopped");
     return ESP_OK;
 }
