@@ -57,6 +57,20 @@ static const uint32_t MIN_VALID_UNIX_TS = 946684800UL;
 
 RTC_DATA_ATTR static uint32_t s_boot_failure_count = 0;
 
+/* File-scope sensor handles — kept alive after sysload_init task exits */
+#if SA_ENABLE_SHT3X
+static sht3x_t s_sht3x_dev;
+#endif
+#if SA_ENABLE_DS3231
+static ds3231_t s_ds3231_dev;
+#endif
+#if SA_ENABLE_CO_SENSOR
+static gm702b_t s_co_dev;
+#endif
+#if SA_ENABLE_NO2_SENSOR
+static gm102b_t s_no2_dev;
+#endif
+
 static int build_month_index(const char *month)
 {
     static const char *months[] = {
@@ -126,29 +140,33 @@ static void sync_system_clock(uint32_t ts, const char *reason)
     }
 }
 
-static void ensure_system_clock_seeded(void)
+static void ensure_system_clock_seeded(bool rtc_ready)
 {
     time_t now = time(NULL);
     if (now >= (time_t)MIN_VALID_UNIX_TS) {
         return;
     }
 
+#if SA_ENABLE_DS3231
+    if (rtc_ready) {
+        uint32_t rtc_ts = 0;
+        esp_err_t err = ds3231_get_timestamp(&s_ds3231_dev, &rtc_ts);
+        if (err == ESP_OK && rtc_ts >= MIN_VALID_UNIX_TS) {
+            sync_system_clock(rtc_ts, "rtc");
+            return;
+        }
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "RTC seed failed (%s) - falling back to build time", ds3231_err_to_name(err));
+        } else {
+            ESP_LOGW(TAG, "RTC seed ignored invalid timestamp %lu - falling back to build time", (unsigned long)rtc_ts);
+        }
+    }
+#else
+    (void)rtc_ready;
+#endif
+
     sync_system_clock(build_time_fallback_ts(), "build time");
 }
-
-/* File-scope sensor handles — kept alive after sysload_init task exits */
-#if SA_ENABLE_SHT3X
-static sht3x_t s_sht3x_dev;
-#endif
-#if SA_ENABLE_DS3231
-static ds3231_t s_ds3231_dev;
-#endif
-#if SA_ENABLE_CO_SENSOR
-static gm702b_t s_co_dev;
-#endif
-#if SA_ENABLE_NO2_SENSOR
-static gm102b_t s_no2_dev;
-#endif
 
 static void sync_time_from_sntp_stage(bool rtc_ready)
 {
@@ -781,8 +799,10 @@ void sysload_init(void)
     connect_wifi_stage(ssid, password);
 
 #if SA_ENABLE_DS3231
+    ensure_system_clock_seeded(rtc_err == ESP_OK);
     sync_time_from_sntp_stage(rtc_err == ESP_OK);
 #else
+    ensure_system_clock_seeded(false);
     sync_time_from_sntp_stage(false);
 #endif
 
@@ -792,7 +812,6 @@ void sysload_init(void)
     char secret_key[64] = {0};
     load_runtime_config_stage(
         broker_uri, sizeof(broker_uri), resolved_id, sizeof(resolved_id), secret_key, sizeof(secret_key));
-    ensure_system_clock_seeded();
 
     /* 9.1 — Local provisioning HTTP API (must exist before first MQTT login) */
     start_http_server_stage(resolved_id);
