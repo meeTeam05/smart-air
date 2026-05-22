@@ -55,7 +55,13 @@ static void publish_progress(int pct, const char *status)
     } else {
         snprintf(msg, sizeof(msg), "{\"progress\":%d}", pct);
     }
-    mqtt_publish(s_progress_topic, msg, 1, false);
+    int msg_id = mqtt_publish(s_progress_topic, msg, 1, false);
+    if (msg_id < 0) {
+        ESP_LOGW(TAG,
+                 "OTA progress publish failed (progress=%d status=%s)",
+                 pct,
+                 status != NULL ? status : "none");
+    }
 }
 
 static esp_err_t format_hex_string(const uint8_t *bytes, size_t byte_count, char *out, size_t out_size)
