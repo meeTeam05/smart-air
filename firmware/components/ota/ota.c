@@ -213,10 +213,17 @@ esp_err_t ota_task_start(const char *device_id)
 
 esp_err_t ota_trigger(const char *url, const char *sha256)
 {
+    ota_msg_t msg = {0};
+
     /* SEC-02: HTTPS only */
     if (url == NULL || strncmp(url, "https://", 8) != 0) {
         ESP_LOGW(TAG, "OTA trigger rejected — URL must start with https://");
         return ESP_ERR_INVALID_ARG;
+    }
+
+    if (strnlen(url, sizeof(msg.url)) >= sizeof(msg.url)) {
+        ESP_LOGW(TAG, "OTA trigger rejected — URL exceeds %u bytes", (unsigned)(sizeof(msg.url) - 1U));
+        return ESP_ERR_INVALID_SIZE;
     }
 
     if (s_ota_queue == NULL) {
@@ -224,7 +231,6 @@ esp_err_t ota_trigger(const char *url, const char *sha256)
         return ESP_FAIL;
     }
 
-    ota_msg_t msg = {0};
     strlcpy(msg.url, url, sizeof(msg.url));
     if (sha256 != NULL) {
         strlcpy(msg.sha256, sha256, sizeof(msg.sha256));
