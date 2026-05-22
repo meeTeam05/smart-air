@@ -79,6 +79,27 @@ static void wifi_event_group_wait_for_users(void)
     }
 }
 
+static int wifi_reconnect_count_increment(void)
+{
+    int attempt = 0;
+
+    portENTER_CRITICAL(&s_state_lock);
+    if (s_reconnect_count < WIFI_MAX_RECONNECT_ATTEMPTS) {
+        s_reconnect_count++;
+        attempt = s_reconnect_count;
+    }
+    portEXIT_CRITICAL(&s_state_lock);
+
+    return attempt;
+}
+
+static void wifi_reconnect_count_reset(void)
+{
+    portENTER_CRITICAL(&s_state_lock);
+    s_reconnect_count = 0;
+    portEXIT_CRITICAL(&s_state_lock);
+}
+
 static esp_err_t wifi_apply_custom_dns(void)
 {
     esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -117,9 +138,9 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         xEventGroupClearBits(wifi_eg, WIFI_CONNECTED_BIT);
 
-        if (s_reconnect_count < WIFI_MAX_RECONNECT_ATTEMPTS) {
-            s_reconnect_count++;
-            ESP_LOGW(TAG, "Disconnected — reconnect attempt %d/%d", s_reconnect_count, WIFI_MAX_RECONNECT_ATTEMPTS);
+        int attempt = wifi_reconnect_count_increment();
+        if (attempt > 0) {
+            ESP_LOGW(TAG, "Disconnected — reconnect attempt %d/%d", attempt, WIFI_MAX_RECONNECT_ATTEMPTS);
             esp_wifi_connect();
         } else {
             ESP_LOGE(TAG, "Disconnected — max reconnect attempts reached, giving up");
@@ -134,7 +155,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         if (dns_err != ESP_OK) {
             ESP_LOGW(TAG, "Continuing with DHCP DNS after custom DNS apply failure");
         }
-        s_reconnect_count = 0;
+        wifi_reconnect_count_reset();
         xEventGroupClearBits(wifi_eg, WIFI_FAIL_BIT);
         xEventGroupSetBits(wifi_eg, WIFI_CONNECTED_BIT);
     }
@@ -216,7 +237,7 @@ esp_err_t wifi_sta_connect(const char *ssid, const char *password, uint32_t time
         goto invalid_arg;
 
     /* Fresh connection attempt starts with a clean retry budget and event state */
-    s_reconnect_count = 0;
+    wifi_reconnect_count_reset();
     xEventGroupClearBits(wifi_eg, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
 
     wifi_config_t cfg = {0};
