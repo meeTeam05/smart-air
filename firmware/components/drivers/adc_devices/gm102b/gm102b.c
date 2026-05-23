@@ -50,14 +50,17 @@ typedef struct {
 
 static const ratio_point_t NO2_CURVE[] = {
     {1.00f, 0.0f},
-    {1.50f, 0.5f},
-    {2.00f, 1.0f},
-    {2.50f, 2.0f},
-    {3.00f, 3.0f},
-    {3.50f, 4.0f},
-    {4.00f, 5.0f},
-    {4.50f, 7.0f},
-    {5.00f, 10.0f},
+    {1.21f, 0.5f},
+    {1.40f, 1.0f},
+    {1.83f, 2.0f},
+    {2.26f, 3.0f},
+    {2.65f, 4.0f},
+    {3.06f, 5.0f},
+    {3.42f, 6.0f},
+    {3.81f, 7.0f},
+    {4.12f, 8.0f},
+    {4.43f, 9.0f},
+    {4.59f, 10.0f},
 };
 static const int NO2_CURVE_LEN = sizeof(NO2_CURVE) / sizeof(NO2_CURVE[0]);
 
