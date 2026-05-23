@@ -31,6 +31,26 @@ typedef void (*mqtt_time_sync_cb_t)(uint32_t ts);
 void mqtt_register_time_sync_cb(mqtt_time_sync_cb_t cb);
 
 /**
+ * @brief Callback invoked when a shadow/get_response payload is received.
+ *
+ * The callback receives the full JSON payload and may apply only the
+ * supported delta/desired keys locally.
+ *
+ * @param json_payload Full shadow/get_response JSON string.
+ * @return ESP_OK on success, or an error code if the payload was malformed or
+ *         could not be applied safely.
+ */
+typedef esp_err_t (*mqtt_shadow_sync_cb_t)(const char *json_payload);
+
+/**
+ * @brief Register a callback to be called when a shadow/get_response arrives.
+ *        Call once from sysload_init() before mqtt_start().
+ *
+ * @param cb Callback function pointer. Pass NULL to deregister.
+ */
+void mqtt_register_shadow_sync_cb(mqtt_shadow_sync_cb_t cb);
+
+/**
  * @brief Callback invoked when a command of a registered type arrives.
  *
  * @param type         The "type" field value from the command JSON.

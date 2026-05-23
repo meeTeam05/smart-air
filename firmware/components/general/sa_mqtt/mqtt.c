@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static const char *TAG = "mqtt";
 
@@ -71,6 +72,7 @@ static const char *mqtt_connect_return_code_name(esp_mqtt_connect_return_code_t 
 
 static esp_mqtt_client_handle_t s_client = NULL;
 static mqtt_time_sync_cb_t s_time_sync_cb = NULL;
+static mqtt_shadow_sync_cb_t s_shadow_sync_cb = NULL;
 static portMUX_TYPE s_client_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_client_users;
 
@@ -89,7 +91,8 @@ static char s_secret_key[64];
 static char s_status_topic[96];   /* device/{id}/status */
 static char s_cmd_topic[96];      /* device/{id}/command */
 static char s_response_topic[96]; /* device/{id}/response */
-static char s_shadow_topic[128];  /* device/{id}/shadow/get_response */
+static char s_shadow_get_topic[96];           /* device/{id}/shadow/get */
+static char s_shadow_get_response_topic[128]; /* device/{id}/shadow/get_response */
 static char s_ota_topic[96];      /* device/{id}/ota/update */
 static char *s_rx_topic = NULL;
 static char *s_rx_payload = NULL;
@@ -216,6 +219,29 @@ static esp_err_t mqtt_publish_command_ack_internal(const char *command_id, bool 
     return ESP_OK;
 }
 
+static esp_err_t mqtt_publish_shadow_get_request(esp_mqtt_client_handle_t client)
+{
+    if (client == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char payload[48];
+    time_t now = time(NULL);
+    unsigned long ts = now > 0 ? (unsigned long)now : 0UL;
+    int written = snprintf(payload, sizeof(payload), "{\"ts\":%lu}", ts);
+    if (written < 0 || written >= (int)sizeof(payload)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    int msg_id = esp_mqtt_client_publish(client, s_shadow_get_topic, payload, 0, 1, 0);
+    if (msg_id < 0) {
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Published shadow/get → %s (msg_id=%d)", s_shadow_get_topic, msg_id);
+    return ESP_OK;
+}
+
 static esp_err_t mqtt_subscribe_required_topics(esp_mqtt_client_handle_t client)
 {
     const struct {
@@ -223,7 +249,7 @@ static esp_err_t mqtt_subscribe_required_topics(esp_mqtt_client_handle_t client)
         const char *label;
     } subscriptions[] = {
         {s_cmd_topic, "command"},
-        {s_shadow_topic, "shadow"},
+        {s_shadow_get_response_topic, "shadow/get_response"},
         {s_ota_topic, "ota"},
     };
 
@@ -265,12 +291,6 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
             break;
         }
 
-        /* Publish retained online status */
-        char msg[80];
-        snprintf(msg, sizeof(msg), "{\"online\":true,\"firmware\":\"%s\"}", CONFIG_FIRMWARE_VERSION);
-        esp_mqtt_client_publish(client, s_status_topic, msg, 0, 1, 1);
-        ESP_LOGI(TAG, "Published online status → %s", s_status_topic);
-
         /* FW-05: subscribe inside CONNECTED so re-connects re-subscribe */
         esp_err_t subscribe_err = mqtt_subscribe_required_topics(client);
         if (subscribe_err != ESP_OK) {
@@ -279,6 +299,19 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
             mqtt_client_release();
             break;
         }
+
+        /* Publish retained online status after subscriptions are ready so
+         * shadow/get_response can be received immediately. */
+        char msg[80];
+        snprintf(msg, sizeof(msg), "{\"online\":true,\"firmware\":\"%s\"}", CONFIG_FIRMWARE_VERSION);
+        esp_mqtt_client_publish(client, s_status_topic, msg, 0, 1, 1);
+        ESP_LOGI(TAG, "Published online status → %s", s_status_topic);
+
+        esp_err_t shadow_get_err = mqtt_publish_shadow_get_request(client);
+        if (shadow_get_err != ESP_OK) {
+            ESP_LOGW(TAG, "shadow/get publish failed after connect: %s", esp_err_to_name(shadow_get_err));
+        }
+
         mqtt_client_release();
         break;
     }
@@ -380,6 +413,17 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                 cJSON_Delete(root);
             } else {
                 ESP_LOGW(TAG, "command message is not valid JSON");
+            }
+        }
+
+        if (strcmp(topic, s_shadow_get_response_topic) == 0) {
+            if (s_shadow_sync_cb == NULL) {
+                ESP_LOGW(TAG, "shadow/get_response received without registered callback");
+            } else {
+                esp_err_t sync_err = s_shadow_sync_cb(payload);
+                if (sync_err != ESP_OK) {
+                    ESP_LOGW(TAG, "shadow/get_response apply failed: %s", esp_err_to_name(sync_err));
+                }
             }
         }
 
@@ -510,6 +554,11 @@ void mqtt_register_time_sync_cb(mqtt_time_sync_cb_t cb)
     s_time_sync_cb = cb;
 }
 
+void mqtt_register_shadow_sync_cb(mqtt_shadow_sync_cb_t cb)
+{
+    s_shadow_sync_cb = cb;
+}
+
 esp_err_t mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb)
 {
     if (type == NULL || type[0] == '\0' || cb == NULL) {
@@ -558,7 +607,8 @@ esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *
     snprintf(s_status_topic, sizeof(s_status_topic), "device/%s/status", s_device_id);
     snprintf(s_cmd_topic, sizeof(s_cmd_topic), "device/%s/command", s_device_id);
     snprintf(s_response_topic, sizeof(s_response_topic), "device/%s/response", s_device_id);
-    snprintf(s_shadow_topic, sizeof(s_shadow_topic), "device/%s/shadow/get_response", s_device_id);
+    snprintf(s_shadow_get_topic, sizeof(s_shadow_get_topic), "device/%s/shadow/get", s_device_id);
+    snprintf(s_shadow_get_response_topic, sizeof(s_shadow_get_response_topic), "device/%s/shadow/get_response", s_device_id);
     snprintf(s_ota_topic, sizeof(s_ota_topic), "device/%s/ota/update", s_device_id);
 
     ESP_LOGI(TAG, "Starting MQTT client (id=%s, broker=%s)", s_device_id, s_broker_uri);

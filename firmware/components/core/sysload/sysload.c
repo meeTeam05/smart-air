@@ -46,6 +46,7 @@
 
 static const char *TAG = "sysload";
 static const uint32_t MIN_VALID_UNIX_TS = 946684800UL;
+static const char *const SHADOW_SYNC_RELAY_KEYS[] = {"relay_1", "relay_2", "relay_3"};
 
 #define SYSLOAD_BOOT_RESTART_DELAY_MS      2000
 #define SYSLOAD_PROVISION_RESTART_DELAY_MS 5000
@@ -358,6 +359,173 @@ static esp_err_t queue_calibration_request(calibration_kind_t kind, const char *
     return ESP_ERR_NOT_FINISHED;
 }
 #endif
+
+static cJSON *shadow_sync_select_patch(cJSON *root, const char **source_name)
+{
+    cJSON *delta = cJSON_GetObjectItemCaseSensitive(root, "delta");
+    if (cJSON_IsObject(delta)) {
+        if (source_name != NULL) {
+            *source_name = "delta";
+        }
+        return delta;
+    }
+
+    cJSON *desired = cJSON_GetObjectItemCaseSensitive(root, "desired");
+    if (cJSON_IsObject(desired)) {
+        if (source_name != NULL) {
+            *source_name = "desired";
+        }
+        return desired;
+    }
+
+    return NULL;
+}
+
+static bool shadow_sync_has_supported_key(cJSON *patch)
+{
+    if (patch == NULL) {
+        return false;
+    }
+
+    if (cJSON_GetObjectItemCaseSensitive(patch, "mode") != NULL) {
+        return true;
+    }
+
+    for (size_t i = 0; i < RELAY_CHANNEL_COUNT; i++) {
+        if (cJSON_GetObjectItemCaseSensitive(patch, SHADOW_SYNC_RELAY_KEYS[i]) != NULL) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void shadow_sync_log_unknown_keys(cJSON *patch)
+{
+    for (cJSON *item = patch != NULL ? patch->child : NULL; item != NULL; item = item->next) {
+        if (item->string == NULL) {
+            continue;
+        }
+
+        if (strcmp(item->string, "mode") == 0) {
+            continue;
+        }
+
+        bool is_relay_key = false;
+        for (size_t i = 0; i < RELAY_CHANNEL_COUNT; i++) {
+            if (strcmp(item->string, SHADOW_SYNC_RELAY_KEYS[i]) == 0) {
+                is_relay_key = true;
+                break;
+            }
+        }
+        if (is_relay_key) {
+            continue;
+        }
+
+        ESP_LOGI(TAG, "shadow sync ignored unsupported key: %s", item->string);
+    }
+}
+
+static esp_err_t handle_shadow_get_response(const char *json_payload)
+{
+    if (json_payload == NULL) {
+        ESP_LOGW(TAG, "shadow/get_response: missing payload");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    cJSON *root = cJSON_ParseWithLength(json_payload, strlen(json_payload));
+    if (root == NULL) {
+        ESP_LOGW(TAG, "shadow/get_response: invalid JSON payload");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const char *patch_source = NULL;
+    cJSON *patch = shadow_sync_select_patch(root, &patch_source);
+    if (patch == NULL) {
+        ESP_LOGW(TAG, "shadow/get_response: missing object delta/desired");
+        cJSON_Delete(root);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    shadow_sync_log_unknown_keys(patch);
+    if (!shadow_sync_has_supported_key(patch)) {
+        ESP_LOGI(TAG, "shadow/get_response: no supported keys in %s", patch_source);
+        cJSON_Delete(root);
+        return ESP_OK;
+    }
+
+    bool turned_off = false;
+    cJSON *j_mode = cJSON_GetObjectItemCaseSensitive(patch, "mode");
+    if (j_mode != NULL) {
+        if (!cJSON_IsString(j_mode)) {
+            ESP_LOGW(TAG, "shadow/get_response: mode must be string");
+            cJSON_Delete(root);
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        bool mode_on = false;
+        if (strcmp(j_mode->valuestring, "on") == 0) {
+            mode_on = true;
+        } else if (strcmp(j_mode->valuestring, "off") == 0) {
+            mode_on = false;
+        } else {
+            ESP_LOGW(TAG, "shadow/get_response: unsupported mode value '%s'", j_mode->valuestring);
+            cJSON_Delete(root);
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        esp_err_t mode_err = device_mode_set(mode_on);
+        if (mode_err != ESP_OK) {
+            ESP_LOGW(TAG, "shadow/get_response: device_mode_set failed: %s", esp_err_to_name(mode_err));
+            cJSON_Delete(root);
+            return mode_err;
+        }
+
+        turned_off = !mode_on;
+    }
+
+    if (turned_off) {
+        for (size_t i = 0; i < RELAY_CHANNEL_COUNT; i++) {
+            if (cJSON_GetObjectItemCaseSensitive(patch, SHADOW_SYNC_RELAY_KEYS[i]) != NULL) {
+                ESP_LOGI(TAG, "shadow/get_response: skipped relay keys because mode=off was applied");
+                break;
+            }
+        }
+        cJSON_Delete(root);
+        return ESP_OK;
+    }
+
+    bool mode_on_now = device_mode_get();
+    for (size_t i = 0; i < RELAY_CHANNEL_COUNT; i++) {
+        cJSON *j_relay = cJSON_GetObjectItemCaseSensitive(patch, SHADOW_SYNC_RELAY_KEYS[i]);
+        if (j_relay == NULL) {
+            continue;
+        }
+        if (!cJSON_IsBool(j_relay)) {
+            ESP_LOGW(TAG, "shadow/get_response: %s must be boolean", SHADOW_SYNC_RELAY_KEYS[i]);
+            cJSON_Delete(root);
+            return ESP_ERR_INVALID_ARG;
+        }
+        if (!mode_on_now) {
+            ESP_LOGI(TAG, "shadow/get_response: ignored %s because device mode is off", SHADOW_SYNC_RELAY_KEYS[i]);
+            continue;
+        }
+
+        esp_err_t relay_err = relay_set((int)i + 1, cJSON_IsTrue(j_relay));
+        if (relay_err != ESP_OK) {
+            ESP_LOGW(TAG,
+                     "shadow/get_response: relay_set(%d) failed: %s",
+                     (int)i + 1,
+                     esp_err_to_name(relay_err));
+            cJSON_Delete(root);
+            return relay_err;
+        }
+    }
+
+    ESP_LOGI(TAG, "shadow/get_response applied from %s", patch_source);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
 
 /* Gas sensor calibration MQTT command callbacks */
 
@@ -828,6 +996,7 @@ void sysload_init(void)
     /* 9.3 — Register time sync callback before mqtt_start to avoid race:
      *        broker may deliver a queued set_time command immediately on connect */
     mqtt_register_time_sync_cb(on_time_sync);
+    mqtt_register_shadow_sync_cb(handle_shadow_get_response);
 
     /* 9.4 — Start MQTT */
     start_mqtt_stage(broker_uri, resolved_id, secret_key);
