@@ -309,6 +309,8 @@ static esp_err_t calibration_task_start(void)
         calibration_task_fn, CALIBRATION_TASK_NAME, CALIBRATION_TASK_STACK_SIZE, NULL, CALIBRATION_TASK_PRIORITY, NULL, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed for calibration task");
+        vQueueDelete(s_calibration_queue);
+        s_calibration_queue = NULL;
         return ESP_FAIL;
     }
 

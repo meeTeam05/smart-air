@@ -121,6 +121,7 @@ Legend:
 - Description: `calibration_task_start()` allocates `s_calibration_queue`, then returns `ESP_FAIL` if `xTaskCreatePinnedToCore()` fails without deleting the queue or clearing the global pointer.
 - Impact: Rare low-memory task-start failures leak queue memory until reboot and make repeated recovery attempts less deterministic.
 - Fix suggestion: On task-create failure, call `vQueueDelete(s_calibration_queue)`, set the pointer back to `NULL`, and return the failure.
+- Disposition: `Fixed in working tree (pending commit)`. `calibration_task_start()` now deletes `s_calibration_queue` and clears the global pointer before returning when `xTaskCreatePinnedToCore()` fails.
 
 ### FW-03-012
 - Severity: `P3`
