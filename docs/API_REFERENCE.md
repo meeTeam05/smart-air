@@ -1053,6 +1053,8 @@ Tất cả centralized tại `src/constants.js`:
 14. Flutter navigate → device detail screen
 ```
 
+> Security note: bước BLE provisioning hiện chưa yêu cầu authenticated pairing, bonding, hay encrypted link trước khi app ghi SSID/password. Thiết kế hiện tại giả định thiết bị đang ở môi trường cài đặt vật lý tin cậy; client BLE bất kỳ trong vùng radio vẫn có thể thử ghi credential trong lúc onboarding.
+
 > Firmware local endpoint `POST /api/config` nhận JSON:
 > `{ "device_id": "aa:bb:cc:dd:ee:ff", "secret_key": "...", "broker_uri": "wss://minhnhat05.xyz/mqtt" }`.
 > `broker_uri` optional; nếu bỏ qua firmware xóa override cũ và dùng Kconfig default.

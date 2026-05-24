@@ -81,6 +81,7 @@ Legend:
 - Description: BLE provisioning exposes writable SSID/password characteristics with plain `WRITE`/`WRITE_NO_RSP` permissions and configures no pairing, bonding, MITM, or encryption gates before accepting credential writes.
 - Impact: Any nearby BLE client can provision rogue Wi-Fi credentials or hijack first-boot onboarding. This is a direct local-radio takeover path during provisioning.
 - Fix suggestion: Require authenticated encrypted BLE sessions before write access, enable bonding/MITM protection, and reject provisioning writes until the connection satisfies the chosen security level.
+- Disposition: `Blocked pending human judgment`. Current repo has no authenticated BLE pairing flow in firmware or app onboarding, so flipping NimBLE security requirements would change provisioning UX and likely require app changes. Added explicit radio-range trust assumptions in `docs/ARCHITECTURE.md` and `docs/API_REFERENCE.md`; secure-BLE redesign remains follow-up work.
 
 ### FW-03-008
 - Severity: `P1`

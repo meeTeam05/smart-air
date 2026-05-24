@@ -352,6 +352,12 @@ Current behavior:
 - persists Wi-Fi credentials into NVS namespace `wifi_prov`
 - notifies the app with JSON status, including device IP and device ID on success
 
+Current trust assumption for BLE step:
+
+- provisioning characteristics accept writes without authenticated pairing, bonding, or link encryption gates
+- any BLE client within radio range during onboarding can attempt to write Wi-Fi credentials
+- enabling authenticated BLE sessions would change current provisioning UX and needs coordinated app + firmware design
+
 BLE provisioning is only for Wi-Fi onboarding. It does not provision MQTT credentials.
 
 ### Step 2: local HTTP MQTT credential handoff
