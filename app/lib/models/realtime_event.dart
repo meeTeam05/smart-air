@@ -21,11 +21,17 @@ class RealtimeEvent {
   final Map<String, dynamic> payload;
 
   factory RealtimeEvent.fromJson(Map<String, dynamic> json) {
+    final occurredAtRaw = json['occurred_at'];
+    final occurredAt = occurredAtRaw is String
+        ? DateTime.tryParse(occurredAtRaw)?.toLocal()
+        : null;
+
     return RealtimeEvent(
       id: json['id'].toString(),
       type: json['type'] as String? ?? '',
       deviceId: json['device_id'] as String? ?? '',
-      occurredAt: DateTime.parse(json['occurred_at'] as String).toLocal(),
+      occurredAt: occurredAt ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true).toLocal(),
       payload: json['payload'] is Map
           ? Map<String, dynamic>.from(json['payload'] as Map)
           : const {},

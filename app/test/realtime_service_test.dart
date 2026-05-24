@@ -45,4 +45,20 @@ void main() {
     expect(valid.single.id, '42');
     expect(valid.single.payload['temperature'], 28.1);
   });
+
+  test('SseDecoder tolerates missing occurred_at in otherwise valid frames', () {
+    final decoder = SseDecoder();
+
+    final events = decoder.add(
+      'id: 43\n'
+      'event: telemetry.point\n'
+      'data: {"device_id":"aa:bb:cc:dd:ee:ff","payload":{"temperature":28.1}}\n\n',
+    );
+
+    expect(events, hasLength(1));
+    expect(events.single.id, '43');
+    expect(events.single.occurredAt,
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true).toLocal());
+    expect(events.single.payload['temperature'], 28.1);
+  });
 }
