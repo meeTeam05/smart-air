@@ -321,6 +321,7 @@ Mode ON:
 
 > `delta` = những field mà `reported` khác `desired`. ESP32 chỉ cần execute delta, không cần apply toàn bộ desired.
 > Firmware hiện chỉ apply các desired keys `mode`, `relay_1`, `relay_2`, `relay_3`. Key khác phải bị chặn ở API layer hoặc được bổ sung support rõ ràng trước khi đưa vào contract.
+> API cũng phải reject mọi desired payload có `relay_N=true` khi mode hiệu lực resolve thành `off` (`body.mode` → desired đang lưu → reported hiện tại), vì firmware sẽ bỏ qua relay apply trong trạng thái đó.
 
 ---
 

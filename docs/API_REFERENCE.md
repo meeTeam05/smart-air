@@ -639,6 +639,8 @@ Authorization: `checkDeviceAccess()`
 { "mode": "on", "relay_1": true }
 ```
 
+Nếu mode hiệu lực là `off` thì mọi `relay_N=true` đều bị reject. Mode hiệu lực resolve theo thứ tự: `body.mode` → `desired.mode` đang lưu → `reported.mode` hiện tại.
+
 **200 OK:** `{ "success": true }`
 
 | Error                  | Code | Message                                                                                |
@@ -647,6 +649,7 @@ Authorization: `checkDeviceAccess()`
 | Key không hỗ trợ       | 400  | `"Unsupported desired keys: ... Supported keys: mode, relay_1, relay_2, relay_3."`    |
 | `mode` sai kiểu        | 400  | `"mode must be on or off"`                                                             |
 | `relay_N` sai kiểu     | 400  | `"relay_N must be boolean"`                                                            |
+| `relay_N=true` khi mode hiệu lực = `off` | 400 | `"relay_N cannot be true when effective desired mode is off"` |
 | Body vượt size limit   | 400  | `"desired shadow payload exceeds size limit"`                                          |
 | Invalid MAC            | 400  | `"Invalid device ID"`                                                                  |
 | Không phải thành viên  | 403  | `"Forbidden"`                                                                          |

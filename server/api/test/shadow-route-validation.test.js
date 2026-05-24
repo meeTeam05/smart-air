@@ -7,7 +7,7 @@ import shadowRoutes from '../src/routes/shadow.js';
 
 const DEVICE_ID = 'aa:bb:cc:dd:ee:ff';
 
-function buildApp() {
+function buildApp({ shadowRow = null } = {}) {
     const app = Fastify({ logger: false });
 
     app.decorate('authenticate', async (request) => {
@@ -21,7 +21,9 @@ function buildApp() {
             }
             if (sql.includes('FROM device_shadows')) {
                 assert.deepEqual(params, [DEVICE_ID]);
-                return { rows: [], rowCount: 0 };
+                return shadowRow
+                    ? { rows: [shadowRow], rowCount: 1 }
+                    : { rows: [], rowCount: 0 };
             }
             if (sql.includes('INSERT INTO device_shadows')) {
                 assert.deepEqual(params, [DEVICE_ID, JSON.stringify({ mode: 'on', relay_1: true })]);
@@ -109,6 +111,58 @@ test('PUT /devices/:id/shadow/desired rejects unsupported keys before size valid
         assert.equal(res.statusCode, 400);
         assert.deepEqual(res.json(), {
             error: 'Unsupported desired keys: fan_speed, notes. Supported keys: mode, relay_1, relay_2, relay_3.',
+        });
+    } finally {
+        await app.close();
+    }
+});
+
+test('PUT /devices/:id/shadow/desired rejects relay=true when payload mode is off', async () => {
+    const app = buildApp();
+
+    try {
+        await app.register(shadowRoutes);
+        const res = await app.inject({
+            method: 'PUT',
+            url: `/devices/${DEVICE_ID}/shadow/desired`,
+            payload: {
+                mode: 'off',
+                relay_1: true,
+            },
+        });
+
+        assert.equal(res.statusCode, 400);
+        assert.deepEqual(res.json(), {
+            error: 'relay_1 cannot be true when effective desired mode is off',
+        });
+    } finally {
+        await app.close();
+    }
+});
+
+test('PUT /devices/:id/shadow/desired rejects relay=true when stored mode is off', async () => {
+    const app = buildApp({
+        shadowRow: {
+            reported: { mode: 'off', relay_1: false },
+            desired: {},
+            updated_at: '2026-05-24T00:00:00.000Z',
+            cache_version: '2026-05-24T00:00:00.000000Z',
+        },
+    });
+
+    try {
+        await app.register(shadowRoutes);
+        const res = await app.inject({
+            method: 'PUT',
+            url: `/devices/${DEVICE_ID}/shadow/desired`,
+            payload: {
+                relay_1: true,
+            },
+        });
+
+        assert.equal(res.statusCode, 400);
+        assert.deepEqual(res.json(), {
+            error: 'relay_1 cannot be true when effective desired mode is off',
         });
     } finally {
         await app.close();
