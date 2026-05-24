@@ -26,6 +26,11 @@ Map<String, dynamic> _asMap(Object? value) {
   return const {};
 }
 
+bool? _asBool(Object? value) {
+  if (value is bool) return value;
+  return null;
+}
+
 TelemetryPoint? _latestTelemetryPoint(List<TelemetryPoint> points) {
   if (points.isEmpty) return null;
   return points.reduce((a, b) => a.ts.isAfter(b.ts) ? a : b);
@@ -92,18 +97,35 @@ class DevicesNotifier extends AsyncNotifier<List<Device>> {
   }
 
   void _handleRealtimeEvent(RealtimeEvent event) {
-    if (event.type != 'device.status') return;
     final current = state.valueOrNull;
     if (current == null) return;
 
-    final firmware = event.payload['firmware'] as String?;
+    if (event.type == 'device.status') {
+      final firmware = event.payload['firmware'] as String?;
+      state = AsyncData([
+        for (final device in current)
+          if (device.id == event.deviceId)
+            device.copyWith(
+              online: event.payload['online'] == true,
+              lastSeen: event.occurredAt,
+              firmwareVer: firmware ?? device.firmwareVer,
+            )
+          else
+            device,
+      ]);
+      return;
+    }
+
+    if (event.type != 'shadow.reported') return;
+    final reported = _asMap(event.payload['reported']);
     state = AsyncData([
       for (final device in current)
         if (device.id == event.deviceId)
           device.copyWith(
-            online: event.payload['online'] == true,
-            lastSeen: event.occurredAt,
-            firmwareVer: firmware ?? device.firmwareVer,
+            mode: reported['mode'] as String? ?? device.mode,
+            relay1: _asBool(reported['relay_1']) ?? device.relay1,
+            relay2: _asBool(reported['relay_2']) ?? device.relay2,
+            relay3: _asBool(reported['relay_3']) ?? device.relay3,
           )
         else
           device,
