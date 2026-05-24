@@ -11,8 +11,7 @@ import '../../services/ble_service.dart';
 import '../../services/device_service.dart';
 
 class WifiSetupScreen extends ConsumerStatefulWidget {
-  const WifiSetupScreen(
-      {super.key, required this.homeId, required this.mac});
+  const WifiSetupScreen({super.key, required this.homeId, required this.mac});
   final String homeId;
   final String mac;
 
@@ -61,7 +60,8 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       final registration =
           await ref.read(deviceServiceProvider).provisionDevice(
                 deviceId: deviceId,
-                name: 'Smart Air ${deviceId.substring(deviceId.length - 5).toUpperCase()}',
+                name:
+                    'Smart Air ${deviceId.substring(deviceId.length - 5).toUpperCase()}',
                 homeId: widget.homeId,
               );
 
@@ -91,7 +91,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       }
 
       if (!announced) {
-        throw Exception(
+        throw const NetworkException(
             'Device did not come online — check WiFi password and try again');
       }
 
@@ -117,8 +117,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
   void _showError(String msg) {
     if (!mounted) return;
     setState(() => _status = '');
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -141,7 +140,8 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
             const SizedBox(height: 24),
             TextFormField(
               controller: _ssidCtrl,
-              decoration: const InputDecoration(labelText: 'WiFi Network (SSID)'),
+              decoration:
+                  const InputDecoration(labelText: 'WiFi Network (SSID)'),
               enabled: !_provisioning,
             ),
             const SizedBox(height: 16),
