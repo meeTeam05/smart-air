@@ -57,22 +57,20 @@ Direction: Broker → ESP32   ký hiệu: ←
 ```json
 {
   "online": true,
-  "firmware": "1.0.3",
-  "ip": "192.168.1.42",
-  "ts": 1712345678
+  "firmware": "1.0.3"
 }
 ```
 
 **LWT — Last Will Testament (offline):**
 ```json
 {
-  "online": false,
-  "ts": 1712345678
+  "online": false
 }
 ```
 
 > ESP32 cấu hình LWT message này khi khởi tạo MQTT client. Broker tự publish khi device mất kết nối đột ngột.
 > `retain = true` để Flutter app nhận được trạng thái ngay khi subscribe.
+> `firmware` chỉ có trên online status hiện tại; offline LWT chỉ giữ `online:false`.
 > Server chỉ xử lý payload là JSON object có `online` boolean; payload sai schema được ACK và bỏ qua.
 
 ---
