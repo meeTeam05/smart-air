@@ -98,7 +98,12 @@ static esp_err_t config_post_handler(httpd_req_t *req)
             continue;
         }
         if (rc <= 0) {
-            return ESP_FAIL;
+            ESP_LOGW(TAG,
+                     "POST /api/config recv failed (rc=%d received=%u/%lu)",
+                     rc,
+                     (unsigned)received,
+                     (unsigned long)req->content_len);
+            return send_json_error(req, "400 Bad Request", "request body receive failed");
         }
         timeout_count = 0;
         received += (size_t)rc;

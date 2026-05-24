@@ -61,6 +61,7 @@ Legend:
 - Description: Non-timeout `httpd_req_recv()` failures return raw `ESP_FAIL` without sending any HTTP response body or status code.
 - Impact: Provisioning clients see a dropped/opaque failure instead of a machine-readable reason, which makes retry logic unreliable and obscures production diagnostics.
 - Fix suggestion: Map receive failures to explicit HTTP error responses when the socket is still usable, and log the failing receive state for postmortem analysis.
+- Disposition: `Fixed in working tree (pending commit)`. Non-timeout `httpd_req_recv()` failures in `config_post_handler()` now log the receive state and attempt a `400 Bad Request` JSON response instead of returning raw `ESP_FAIL`.
 
 ### FW-03-006
 - Severity: `P1`
