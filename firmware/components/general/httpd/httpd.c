@@ -196,8 +196,19 @@ esp_err_t httpd_server_start(const char *device_id, const char *ip)
         return err;
     }
 
-    httpd_register_uri_handler(server, &uri_info);
-    httpd_register_uri_handler(server, &uri_config);
+    err = httpd_register_uri_handler(server, &uri_info);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_register_uri_handler(/api/info) failed (%s)", esp_err_to_name(err));
+        httpd_stop(server);
+        return err;
+    }
+
+    err = httpd_register_uri_handler(server, &uri_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_register_uri_handler(/api/config) failed (%s)", esp_err_to_name(err));
+        httpd_stop(server);
+        return err;
+    }
 
     ESP_LOGI(TAG, "HTTP server started on port %d (device: %s)", SA_HTTPD_PORT, device_id);
     return ESP_OK;
