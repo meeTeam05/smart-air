@@ -232,8 +232,9 @@ class DeviceService {
 
   /// Updates the desired state of the device shadow.
   ///
-  /// IMPORTANT: This is for declarative shadow configuration (e.g. thresholds,
-  /// schedules). DO NOT use this for relay/mode command toggles;
+  /// IMPORTANT: This is only for the declarative shadow keys the firmware
+  /// currently supports (`mode`, `relay_1`, `relay_2`, `relay_3`).
+  /// DO NOT use this for relay/mode command toggles;
   /// use [setRelay] or [setMode] instead for real-time control.
   Future<void> setDesired(String deviceId, Map<String, dynamic> desired) async {
     try {

@@ -592,8 +592,8 @@ Xóa device. **owner/admin** (via `requireRole`).
 ## 6. Shadow — Trạng thái thiết bị
 
 Shadow = snapshot state gồm:
-- **`reported`**: ESP32 tự báo (nhiệt độ, độ ẩm, firmware, timestamp)
-- **`desired`**: App set (fan_speed, led, timer...)
+- **`reported`**: ESP32 tự báo state hiện tại (`mode`, `relay_1..3`, sensor fields, `ts`)
+- **`desired`**: App set target state cho các key firmware hiện hỗ trợ qua shadow (`mode`, `relay_1..3`)
 
 Cache: Redis `shadow:{deviceId}` TTL 1h (`REDIS_TTL_SHADOW`), fallback DB `device_shadows`.
 Malformed Redis JSON is deleted. Cache writes are versioned by `updatedAt`, and a failed write clears the key so stale Redis state cannot outrun Postgres.
@@ -607,14 +607,19 @@ Authorization: `checkDeviceAccess()`
 ```json
 {
   "reported": {
+    "mode": "on",
+    "relay_1": false,
+    "relay_2": false,
+    "relay_3": false,
     "temperature": 28.5,
     "humidity": 65.2,
-    "firmware": "1.0.0",
+    "co_ppm": 3.1,
+    "no2_ppm": 0.2,
     "ts": 1777631000
   },
   "desired": {
-    "fan_speed": 2,
-    "led": true
+    "mode": "on",
+    "relay_1": true
   },
   "updatedAt": "2026-05-01T10:05:00.000Z"
 }
@@ -937,13 +942,13 @@ data: {"id":"12345","type":"telemetry.point","device_id":"aa:bb:cc:dd:ee:ff","oc
 | `device.status`   | Device row online/last_seen update succeeds | `{ online, firmware }`                                 |
 | `shadow.reported` | Reported shadow update succeeds             | `{ reported, patch }`                                  |
 | `command.updated` | Command row changes status                  | `{ command_id, status, payload?, error_message? }`     |
+| `ota.progress`    | OTA progress Redis write succeeds           | OTA progress payload                                   |
 
 | Error                        | Code                              | Message                               |
 | ---------------------------- | --------------------------------- | ------------------------------------- |
 | Invalid `Last-Event-ID`      | 400                               | `"Invalid Last-Event-ID"`             |
 | Global realtime capacity hit | 503                               | `"Realtime capacity exceeded"`        |
 | Per-IP realtime capacity hit | 429                               | `"Realtime per-IP capacity exceeded"` |
-| `ota.progress`               | OTA progress Redis write succeeds | OTA progress payload                  |
 
 REST remains canonical for initial snapshots, history, reconnect backfill beyond the SSE replay window, and fallback.
 Realtime events are retained for short reconnect replay (`REALTIME_EVENT_RETENTION_HOURS`, default 24h).
