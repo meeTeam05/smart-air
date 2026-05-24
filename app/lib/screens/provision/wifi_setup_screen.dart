@@ -48,6 +48,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       // sendCredentials() keeps BLE alive and returns the device's WiFi STA MAC
       // (device_id) and local IP once the notify arrives.
       await _bleService.connect(widget.mac);
+      if (!mounted) return;
       setState(() => _status = 'Sending WiFi credentials…');
       final provision =
           await _bleService.sendCredentials(_ssidCtrl.text, _passCtrl.text);
@@ -55,6 +56,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
 
       final deviceId = provision.deviceId;
 
+      if (!mounted) return;
       setState(() => _status = 'Registering device…');
       final registration =
           await ref.read(deviceServiceProvider).provisionDevice(
@@ -63,6 +65,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
                 homeId: widget.homeId,
               );
 
+      if (!mounted) return;
       setState(() => _status = 'Sending MQTT credentials to device…');
       await ref.read(deviceServiceProvider).configureProvisionedDevice(
             host: provision.ip,
@@ -73,6 +76,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       // Step 2 — Device connected WiFi; poll backend until MQTT status arrives.
       // The firmware connects MQTT → publishes online status.
       // Server MQTT bridge stores announcement in Redis (TTL 5 min).
+      if (!mounted) return;
       setState(() => _status = 'Waiting for device to come online…');
       final deviceService = ref.read(deviceServiceProvider);
       bool announced = false;
