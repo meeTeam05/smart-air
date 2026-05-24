@@ -15,7 +15,6 @@ class AppIcons {
 
   // Nav
   static const IconData home          = LucideIcons.home;
-  static const IconData automation    = LucideIcons.zap;
   static const IconData notifications = LucideIcons.bell;
   static const IconData profile       = LucideIcons.user;
 

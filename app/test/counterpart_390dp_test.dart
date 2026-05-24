@@ -29,7 +29,6 @@ import 'package:smart_air/screens/provision/step2_ble_scan.dart';
 import 'package:smart_air/screens/provision/step3_wifi.dart';
 import 'package:smart_air/screens/provision/step4_cloud.dart';
 import 'package:smart_air/screens/provision/step5_name.dart';
-import 'package:smart_air/screens/automation_screen.dart';
 import 'package:smart_air/screens/notifications_screen.dart';
 import 'package:smart_air/screens/profile/profile_screen.dart';
 
@@ -270,16 +269,6 @@ void main() {
   });
 
   group('390dp Counterpart Verification — Tabs', () {
-    testWidgets('AutomationTab → AutomationScreen renders at 390dp',
-        (tester) async {
-      await tester.pumpWidget(_test390dpScreen(const AutomationScreen()));
-      await tester.pump();
-
-      // Verify automation screen elements
-      expect(find.text('Automations'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
     testWidgets('NotificationsTab → NotificationsScreen renders at 390dp',
         (tester) async {
       await tester.pumpWidget(_test390dpScreen(const NotificationsScreen()));

@@ -7,7 +7,6 @@ import '../screens/auth/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
 import '../screens/home_screen.dart';
-import '../screens/automation_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/homes/homes_screen.dart';
@@ -54,7 +53,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
 
-      // Shell routes (4 tabs with persistent bottom nav)
+      // Shell routes (3 tabs with persistent bottom nav)
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return AppShell(navigationShell: navigationShell);
@@ -66,15 +65,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/home',
                 builder: (_, __) => const HomeScreen(),
-              ),
-            ],
-          ),
-          // Automation tab
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/automation',
-                builder: (_, __) => const AutomationScreen(),
               ),
             ],
           ),

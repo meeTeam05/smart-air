@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'atmosphere_bottom_nav.dart';
 
 /// App shell with persistent bottom navigation.
-/// Wraps the 4 tab screens (Home, Automation, Notifications, Profile).
+/// Wraps the 3 tab screens (Home, Notifications, Profile).
 /// Used by GoRouter ShellRoute to provide consistent navigation chrome.
 class AppShell extends StatelessWidget {
   final StatefulNavigationShell navigationShell;

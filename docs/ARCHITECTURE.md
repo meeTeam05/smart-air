@@ -906,7 +906,6 @@ The app currently uses:
 Current shell structure:
 
 - `/home`
-- `/automation`
 - `/notifications`
 - `/profile`
 
