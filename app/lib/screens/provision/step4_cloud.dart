@@ -36,10 +36,15 @@ class _Step4CloudScreenState extends ConsumerState<Step4CloudScreen> {
   bool _pollRequestInFlight = false;
   String? _error;
 
+  bool get _hasRequiredRouteState =>
+      widget.homeId.isNotEmpty && widget.deviceId.isNotEmpty;
+
   @override
   void initState() {
     super.initState();
-    _begin();
+    if (_hasRequiredRouteState) {
+      _begin();
+    }
   }
 
   @override
@@ -116,6 +121,47 @@ class _Step4CloudScreenState extends ConsumerState<Step4CloudScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+
+    if (!_hasRequiredRouteState) {
+      return BleStepShell(
+        currentStep: 3,
+        title: 'Confirm cloud connection',
+        subtitle:
+            'Provisioning link is incomplete. Start again from the device scan step.',
+        body: Column(
+          children: [
+            AtmosphereCard(
+              padding: const EdgeInsets.all(AtmosphereTokens.space20),
+              child: Column(
+                children: [
+                  Icon(AppIcons.warn, color: c.danger, size: 30),
+                  const SizedBox(height: AtmosphereTokens.space16),
+                  Text(
+                    'Missing provisioning details',
+                    style: TextStyle(
+                      color: c.ink,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: AtmosphereTokens.space8),
+                  Text(
+                    'This step needs both a home and device ID. Start provisioning again.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: c.ink2, fontSize: 13, height: 1.45),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        primaryLabel: 'Start over',
+        onPrimary: () => context.go('/home'),
+        secondaryLabel: 'Cancel',
+        onSecondary: () => context.go('/home'),
+        onCancel: () => context.go('/home'),
+      );
+    }
 
     return BleStepShell(
       currentStep: 3,
