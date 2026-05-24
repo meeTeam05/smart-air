@@ -36,15 +36,31 @@ List<TelemetryPoint> _normalizeTelemetryPoints(
   DateTime? now,
 }) {
   final cutoff = (now ?? DateTime.now()).subtract(_telemetryLiveWindow);
-  final byTs = <int, TelemetryPoint>{};
+  final byIdentity = <String, ({TelemetryPoint point, int seq})>{};
+  var seq = 0;
   for (final point in points) {
     if (point.ts.isBefore(cutoff)) continue;
-    byTs[point.ts.millisecondsSinceEpoch] = point;
+    byIdentity[_telemetryIdentityKey(point)] = (point: point, seq: seq++);
   }
-  final normalized = byTs.values.toList()..sort((a, b) => a.ts.compareTo(b.ts));
-  if (normalized.length <= _telemetryLiveMaxPoints) return normalized;
-  return normalized.sublist(normalized.length - _telemetryLiveMaxPoints);
+  final normalized = byIdentity.values.toList()
+    ..sort((a, b) {
+      final byTs = a.point.ts.compareTo(b.point.ts);
+      if (byTs != 0) return byTs;
+      return a.seq.compareTo(b.seq);
+    });
+  final values = normalized.map((entry) => entry.point).toList();
+  if (values.length <= _telemetryLiveMaxPoints) return values;
+  return values.sublist(values.length - _telemetryLiveMaxPoints);
 }
+
+String _telemetryIdentityKey(TelemetryPoint point) => [
+      point.ts.millisecondsSinceEpoch,
+      point.mode ?? '',
+      point.temperature,
+      point.humidity,
+      point.coPpm,
+      point.no2Ppm,
+    ].join('|');
 
 TelemetryPoint? _telemetryPointFromEvent(RealtimeEvent event) {
   final payload = event.payload;

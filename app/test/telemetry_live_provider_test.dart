@@ -73,7 +73,9 @@ void main() {
     expect(fakeService.fetchCount, 1);
   });
 
-  test('telemetryLiveProvider dedupes realtime points by timestamp', () async {
+  test(
+      'telemetryLiveProvider keeps distinct realtime points with same timestamp',
+      () async {
     final events = StreamController<RealtimeEvent>.broadcast();
     final now = DateTime.now();
     final fakeService = _FakeDeviceService(
@@ -123,8 +125,66 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     final live = container.read(telemetryLiveProvider('device-1')).value!;
+    expect(live.points, hasLength(2));
+    expect(
+        live.points.map((point) => point.temperature), containsAll([24, 25.5]));
+    expect(fakeService.fetchCount, 1);
+  });
+
+  test('telemetryLiveProvider still dedupes exact duplicate realtime points',
+      () async {
+    final events = StreamController<RealtimeEvent>.broadcast();
+    final now = DateTime.now();
+    final fakeService = _FakeDeviceService(
+      telemetry: [
+        TelemetryPoint(
+          ts: now,
+          temperature: 24,
+          humidity: 60,
+          mode: 'on',
+        ),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        deviceServiceProvider.overrideWithValue(fakeService),
+        realtimeEventsProvider.overrideWith((ref) => events.stream),
+        realtimeConnectionStatusProvider
+            .overrideWith((ref) => RealtimeStatus.connected),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await events.close();
+    });
+
+    final subscription = container.listen(
+      telemetryLiveProvider('device-1'),
+      (_, __) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+
+    await container.read(telemetryLiveProvider('device-1').future);
+    events.add(
+      RealtimeEvent(
+        id: '42',
+        type: 'telemetry.point',
+        deviceId: 'device-1',
+        occurredAt: now,
+        payload: {
+          'ts': now.toUtc().toIso8601String(),
+          'temperature': 24,
+          'humidity': 60,
+          'mode': 'on',
+        },
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final live = container.read(telemetryLiveProvider('device-1')).value!;
     expect(live.points, hasLength(1));
-    expect(live.latest?.temperature, 25.5);
+    expect(live.latest?.temperature, 24);
     expect(fakeService.fetchCount, 1);
   });
 
