@@ -189,7 +189,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
 
               final sensorTiles = [
                 SensorTile(
-                  value: temp?.toStringAsFixed(1),
+                  value: temp?.toStringAsFixed(2),
                   unit: '°C',
                   label: 'Temperature',
                   icon: AppIcons.temp,
@@ -200,7 +200,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                   dimmed: !isOn,
                 ),
                 SensorTile(
-                  value: humidity?.toStringAsFixed(1),
+                  value: humidity?.toStringAsFixed(2),
                   unit: '%',
                   label: 'Humidity',
                   icon: AppIcons.humidity,
@@ -211,7 +211,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                   dimmed: !isOn,
                 ),
                 SensorTile(
-                  value: coPpm?.toStringAsFixed(1),
+                  value: coPpm?.toStringAsFixed(2),
                   unit: 'ppm',
                   label: 'CO',
                   icon: AppIcons.cloud,
@@ -221,7 +221,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                   dimmed: !isOn,
                 ),
                 SensorTile(
-                  value: no2Ppm?.toStringAsFixed(1),
+                  value: no2Ppm?.toStringAsFixed(2),
                   unit: 'ppm',
                   label: 'NO₂',
                   icon: AppIcons.smog,

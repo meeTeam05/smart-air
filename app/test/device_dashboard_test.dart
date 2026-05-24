@@ -209,10 +209,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('24.6'), findsOneWidget);
-    expect(find.text('61.2'), findsOneWidget);
-    expect(find.text('5.4'), findsOneWidget);
-    expect(find.text('0.3'), findsOneWidget);
+    expect(find.text('24.60'), findsOneWidget);
+    expect(find.text('61.20'), findsOneWidget);
+    expect(find.text('5.40'), findsOneWidget);
+    expect(find.text('0.30'), findsOneWidget);
   });
 
   testWidgets('settings action opens device settings directly', (
@@ -353,7 +353,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('26.1'), findsOneWidget);
+    expect(find.text('26.10'), findsOneWidget);
+    expect(find.text('62.00'), findsOneWidget);
+    expect(find.text('6.00'), findsOneWidget);
+    expect(find.text('0.40'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(fakeService.telemetryFetchCount, 1);
     await events.close();
