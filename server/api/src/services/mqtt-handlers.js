@@ -261,7 +261,11 @@ export async function handleShadowGet(fastify, deviceId, payload) {
     }
 
     const shadow = await getShadow(fastify, deviceId);
-    await publishShadowGetResponse(fastify, deviceId, shadow, 'shadow get_response publish failed after shadow/get');
+    try {
+        await publishShadowGetResponse(fastify, deviceId, shadow, 'shadow get_response publish failed after shadow/get');
+    } catch {
+        // shadow/get_response is best-effort; do not poison the inbound ack loop.
+    }
 }
 
 const VALID_COMMAND_STATUS = new Set(['done', 'error']);

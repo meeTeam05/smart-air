@@ -318,6 +318,8 @@ test('handleShadowGet publishes desired and delta response', async () => {
             async get() {
                 return null;
             },
+            async eval() {},
+            async del() {},
             async set() {},
         },
         db: {
@@ -347,6 +349,46 @@ test('handleShadowGet publishes desired and delta response', async () => {
     assert.deepEqual(published[0].payload.desired, { relay_1: true });
     assert.deepEqual(published[0].payload.delta, { relay_1: true });
     assert.deepEqual(published[0].options, { qos: 1 });
+});
+
+test('handleShadowGet swallows shadow/get_response publish failures', async () => {
+    const log = createLogger();
+    let publishAttempts = 0;
+    const fastify = {
+        log,
+        redis: {
+            async get() {
+                return null;
+            },
+            async set() {},
+        },
+        db: {
+            async query(sql) {
+                if (sql.includes('FROM devices')) return { rows: [{}] };
+                if (sql.includes('FROM device_shadows')) {
+                    return {
+                        rows: [{
+                            reported: { relay_1: false },
+                            desired: { relay_1: true },
+                            updated_at: new Date('2026-05-01T00:00:00Z'),
+                        }],
+                    };
+                }
+                return { rows: [] };
+            },
+        },
+        async mqttPublish() {
+            publishAttempts += 1;
+            throw new Error('MQTT bridge is not ready');
+        },
+    };
+
+    await assert.doesNotReject(() => handleShadowGet(fastify, 'aa:bb:cc:dd:ee:ff', { ts: 1777631761 }));
+
+    assert.equal(publishAttempts, 1);
+    assert.ok(
+        log.warnCalls.some((call) => call[1] === 'shadow get_response publish failed after shadow/get')
+    );
 });
 
 test('handleShadowReport skips realtime event for stale payload ts', async () => {
