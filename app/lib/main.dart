@@ -6,10 +6,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_theme.dart';
 import 'app_state.dart';
 import 'core/router.dart';
+import 'core/env.dart';
 
 void main() {
   // Disable runtime font fetching - all fonts must be bundled
   GoogleFonts.config.allowRuntimeFetching = false;
+  Env.validate();
   
   if (kIsWeb) {
     runApp(const _WebUnsupportedApp());
