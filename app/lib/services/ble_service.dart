@@ -26,7 +26,6 @@ class BleService {
   factory BleService() => instance;
 
   BluetoothDevice? _device;
-  StreamSubscription<BluetoothAdapterState>? _adapterSub;
   StreamSubscription<List<int>>? _notifySub;
 
   // ── Permission ─────────────────────────────────────────────────────────────
@@ -310,8 +309,6 @@ class BleService {
   Future<void> dispose() async {
     await stopScan();
     await disconnect();
-    await _adapterSub?.cancel();
-    _adapterSub = null;
   }
 }
 
