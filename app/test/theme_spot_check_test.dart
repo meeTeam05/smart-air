@@ -9,7 +9,6 @@ import 'package:smart_air/models/user.dart';
 import 'package:smart_air/screens/auth/login_screen.dart';
 import 'package:smart_air/screens/home_screen.dart';
 import 'package:smart_air/screens/devices/device_dashboard_screen.dart';
-import 'package:smart_air/screens/devices/device_chart_screen.dart';
 import 'package:smart_air/screens/profile/profile_screen.dart';
 import 'package:smart_air/services/device_service.dart';
 import 'package:smart_air/services/home_service.dart';
@@ -195,88 +194,6 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.byType(DeviceDashboardScreen), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-  });
-
-  group('Charts Screen', () {
-    testWidgets('renders in light theme', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            deviceServiceProvider.overrideWithValue(
-              _FakeDeviceService(
-                devices: const [
-                  Device(
-                    id: 'device-1',
-                    name: 'Living Room',
-                    homeId: 'home-1',
-                    online: true,
-                  ),
-                ],
-                telemetry: {
-                  'device-1': [
-                    TelemetryPoint(
-                      ts: DateTime(2026, 5, 11, 8),
-                      temperature: 23.4,
-                      humidity: 55.0,
-                    ),
-                  ],
-                },
-              ),
-            ),
-          ],
-          child: MaterialApp(
-            theme: ThemeData.light(),
-            home: const DeviceChartScreen(deviceId: 'device-1'),
-          ),
-        ),
-      );
-
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      expect(find.byType(DeviceChartScreen), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('renders in dark theme', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            deviceServiceProvider.overrideWithValue(
-              _FakeDeviceService(
-                devices: const [
-                  Device(
-                    id: 'device-1',
-                    name: 'Living Room',
-                    homeId: 'home-1',
-                    online: true,
-                  ),
-                ],
-                telemetry: {
-                  'device-1': [
-                    TelemetryPoint(
-                      ts: DateTime(2026, 5, 11, 8),
-                      temperature: 23.4,
-                      humidity: 55.0,
-                    ),
-                  ],
-                },
-              ),
-            ),
-          ],
-          child: MaterialApp(
-            theme: ThemeData.dark(),
-            home: const DeviceChartScreen(deviceId: 'device-1'),
-          ),
-        ),
-      );
-
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      expect(find.byType(DeviceChartScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

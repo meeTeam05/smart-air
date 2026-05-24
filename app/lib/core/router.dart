@@ -18,7 +18,6 @@ import '../screens/provision/step3_wifi.dart';
 import '../screens/provision/step4_cloud.dart';
 import '../screens/provision/step5_name.dart';
 import '../screens/devices/device_dashboard_screen.dart';
-import '../screens/devices/device_chart_screen.dart';
 import '../screens/devices/command_history_screen.dart';
 import '../screens/devices/settings/general_screen.dart';
 import '../screens/devices/settings/calibration_wizard_screen.dart';
@@ -141,11 +140,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/devices/:id',
         builder: (_, state) =>
             DeviceDashboardScreen(deviceId: state.pathParameters['id']!),
-      ),
-      GoRoute(
-        path: '/devices/:id/chart',
-        builder: (_, state) =>
-            DeviceChartScreen(deviceId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/devices/:id/commands',

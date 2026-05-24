@@ -161,9 +161,10 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
         title: device?.name ?? widget.deviceId,
         actions: [
           IconButton(
-            icon: Icon(AppIcons.more, color: c.ink),
-            tooltip: 'More actions',
-            onPressed: () => _showMoreMenu(context),
+            icon: Icon(AppIcons.cog, color: c.ink),
+            tooltip: 'Device settings',
+            onPressed: () =>
+                context.push('/devices/${widget.deviceId}/settings'),
           ),
         ],
       ),
@@ -597,35 +598,6 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
         setState(() => _relayLoading[channel] = false);
       }
     }
-  }
-
-  void _showMoreMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(AppIcons.chart),
-              title: const Text('View charts'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/devices/${widget.deviceId}/chart');
-              },
-            ),
-            ListTile(
-              leading: const Icon(AppIcons.cog),
-              title: const Text('Device settings'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/devices/${widget.deviceId}/settings');
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   String _relativeTime(DateTime dt) {

@@ -30,7 +30,6 @@ class AppIcons {
 
   // Action
   static const IconData plus       = LucideIcons.plus;
-  static const IconData more       = LucideIcons.moreHorizontal;
   static const IconData back       = LucideIcons.arrowLeft;
   static const IconData refresh    = LucideIcons.refreshCw;
   static const IconData edit       = LucideIcons.pencil;

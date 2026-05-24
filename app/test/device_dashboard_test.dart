@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:smart_air/models/command.dart';
 import 'package:smart_air/models/device.dart';
 import 'package:smart_air/models/realtime_event.dart';
@@ -212,6 +213,70 @@ void main() {
     expect(find.text('61.2'), findsOneWidget);
     expect(find.text('5.4'), findsOneWidget);
     expect(find.text('0.3'), findsOneWidget);
+  });
+
+  testWidgets('settings action opens device settings directly', (
+    WidgetTester tester,
+  ) async {
+    final fakeService = _FakeDeviceService(
+      devices: const [
+        Device(
+          id: 'device-1',
+          name: 'Living Room',
+          homeId: 'home-1',
+          online: true,
+        ),
+      ],
+      shadows: const {
+        'device-1': DeviceShadow(
+          reported: {
+            'mode': 'on',
+            'temperature': 24.0,
+            'humidity': 55.0,
+          },
+        ),
+      },
+      telemetry: const {
+        'device-1': [],
+      },
+    );
+    final router = GoRouter(
+      initialLocation: '/devices/device-1',
+      routes: [
+        GoRoute(
+          path: '/devices/:id',
+          builder: (_, state) =>
+              DeviceDashboardScreen(deviceId: state.pathParameters['id']!),
+        ),
+        GoRoute(
+          path: '/devices/:id/settings',
+          builder: (_, __) => const Scaffold(body: Text('Settings page')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceServiceProvider.overrideWithValue(fakeService),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byTooltip('Device settings'), findsOneWidget);
+    expect(find.text('View charts'), findsNothing);
+
+    await tester.tap(find.byTooltip('Device settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings page'), findsOneWidget);
   });
 
   testWidgets(

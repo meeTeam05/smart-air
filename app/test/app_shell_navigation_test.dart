@@ -45,7 +45,7 @@ void main() {
     expect(find.text('Automation'), findsNothing);
   });
 
-  testWidgets('router configuration no longer includes automation routes',
+  testWidgets('router configuration no longer includes removed shell or chart routes',
       (tester) async {
     final container = ProviderContainer(
       overrides: [
@@ -71,6 +71,7 @@ void main() {
 
     final paths = _collectPaths(container.read(routerProvider).configuration.routes);
     expect(paths, isNot(contains('/automation')));
+    expect(paths, isNot(contains('/devices/:id/chart')));
   });
 }
 
