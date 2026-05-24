@@ -143,16 +143,17 @@ export async function handleStatus(fastify, deviceId, payload) {
         return;
     }
 
+    const firmwareVersion = typeof payload.firmware === 'string' ? payload.firmware : null;
     await fastify.db.query(
-        'UPDATE devices SET online = $1, last_seen = NOW() WHERE id = $2',
-        [payload.online, deviceId]
+        'UPDATE devices SET online = $1, firmware_ver = COALESCE($2, firmware_ver), last_seen = NOW() WHERE id = $3',
+        [payload.online, firmwareVersion, deviceId]
     );
     await createRealtimeEvent(fastify, {
         type: 'device.status',
         deviceId,
         payload: {
             online: payload.online,
-            firmware: typeof payload.firmware === 'string' ? payload.firmware : null,
+            firmware: firmwareVersion,
         },
     });
     if (payload.online) {

@@ -268,7 +268,7 @@ test('handleStatus ignores malformed status payloads without DB update', async (
     assert.equal(log.warnCalls.length, 1);
 });
 
-test('handleStatus updates online true and false payloads', async () => {
+test('handleStatus persists firmware version without clearing it when omitted', async () => {
     const updates = [];
     const fastify = {
         log: createLogger(),
@@ -282,7 +282,7 @@ test('handleStatus updates online true and false payloads', async () => {
             async query(sql, params) {
                 if (sql.includes('FROM devices')) return { rows: [{}] };
                 if (sql.includes('UPDATE devices SET online')) {
-                    updates.push(params[0]);
+                    updates.push({ sql, params });
                     return { rows: [], rowCount: 1 };
                 }
                 if (sql.includes('INSERT INTO realtime_events')) {
@@ -301,10 +301,13 @@ test('handleStatus updates online true and false payloads', async () => {
         },
     };
 
-    await handleStatus(fastify, 'aa:bb:cc:dd:ee:ff', { online: true });
+    await handleStatus(fastify, 'aa:bb:cc:dd:ee:ff', { online: true, firmware: '1.2.3' });
     await handleStatus(fastify, 'aa:bb:cc:dd:ee:ff', { online: false });
 
-    assert.deepEqual(updates, [true, false]);
+    assert.equal(updates.length, 2);
+    assert.match(updates[0].sql, /firmware_ver = COALESCE\(\$2, firmware_ver\)/);
+    assert.deepEqual(updates[0].params, [true, '1.2.3', 'aa:bb:cc:dd:ee:ff']);
+    assert.deepEqual(updates[1].params, [false, null, 'aa:bb:cc:dd:ee:ff']);
 });
 
 test('handleShadowGet publishes desired and delta response', async () => {
