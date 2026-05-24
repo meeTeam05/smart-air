@@ -506,7 +506,7 @@ Kiểm tra ESP32 đã announce online chưa (polling sau BLE provisioning).
 
 **Internal:** Redis key `announce:{deviceId}`, TTL 300s (`REDIS_TTL_ANNOUNCE`).
 
-> Polling mỗi 2-3s sau provisioning cho đến khi `announced: true` hoặc timeout 30s.
+> Polling mỗi 2-3s sau provisioning cho đến khi `announced: true` hoặc timeout 60s.
 
 ---
 
