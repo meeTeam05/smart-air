@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -463,19 +465,47 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     }
   }
 
-  Future<void> _waitForCommandAndRefresh(String commandId) async {
+  Future<bool> _waitForCommandAndRefresh(String commandId) async {
     ref.invalidate(commandsProvider(widget.deviceId));
-    final command =
-        await ref.read(deviceServiceProvider).waitForCommandCompletion(
-              widget.deviceId,
-              commandId,
-              timeout: const Duration(seconds: 30),
-              pollInterval: const Duration(seconds: 2),
-            );
-    await _refreshLiveData(refreshTelemetry: false);
-    if (command.status != 'done') {
-      throw StateError('Command finished with status ${command.status}');
+    final deviceService = ref.read(deviceServiceProvider);
+    Command command;
+    try {
+      command = await deviceService.waitForCommandCompletion(
+        widget.deviceId,
+        commandId,
+        timeout: const Duration(seconds: 30),
+        pollInterval: const Duration(seconds: 2),
+      );
+    } on TimeoutException catch (err) {
+      final commands = await deviceService.getCommands(
+        widget.deviceId,
+        limit: 100,
+      );
+      final pending =
+          commands.where((item) => item.id == commandId).firstOrNull;
+      if (pending == null) rethrow;
+      command = pending;
+      if (command.status != 'pending' && command.status != 'sent') {
+        throw err;
+      }
     }
+
+    await _refreshLiveData(refreshTelemetry: false);
+    if (command.status == 'done') return true;
+    if (command.status == 'pending' || command.status == 'sent') return false;
+    throw StateError('Command finished with status ${command.status}');
+  }
+
+  void _showQueuedCommandSnackBar() {
+    final c = context.colors;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'Command queued. It will run when the device reconnects.',
+        ),
+        backgroundColor: c.warn,
+      ),
+    );
   }
 
   Future<void> _handleModeToggle(bool value) async {
@@ -510,7 +540,10 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
       final commandId = await ref
           .read(deviceServiceProvider)
           .setMode(widget.deviceId, newMode);
-      await _waitForCommandAndRefresh(commandId);
+      final completed = await _waitForCommandAndRefresh(commandId);
+      if (!completed && mounted) {
+        _showQueuedCommandSnackBar();
+      }
     } catch (e) {
       if (mounted) {
         final c = context.colors;
@@ -545,7 +578,10 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
       final commandId = await ref
           .read(deviceServiceProvider)
           .setRelay(widget.deviceId, channel, !currentState);
-      await _waitForCommandAndRefresh(commandId);
+      final completed = await _waitForCommandAndRefresh(commandId);
+      if (!completed && mounted) {
+        _showQueuedCommandSnackBar();
+      }
     } catch (e) {
       if (mounted) {
         final c = context.colors;

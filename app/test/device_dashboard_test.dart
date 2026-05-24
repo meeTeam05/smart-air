@@ -344,6 +344,61 @@ void main() {
     expect(fakeService.telemetryFetchCount, 1);
   });
 
+  testWidgets(
+      'shows queued message instead of failure when relay command stays pending',
+      (
+    WidgetTester tester,
+  ) async {
+    final fakeService = _FakeDeviceService(
+      devices: const [
+        Device(
+          id: 'device-1',
+          name: 'Living Room',
+          homeId: 'home-1',
+          online: true,
+        ),
+      ],
+      shadows: const {
+        'device-1': DeviceShadow(
+          reported: {
+            'mode': 'on',
+            'relay_1': false,
+          },
+        ),
+      },
+      telemetry: const {
+        'device-1': [],
+      },
+      waitShouldTimeout: true,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceServiceProvider.overrideWithValue(fakeService),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
+        ],
+        child: const MaterialApp(
+          home: DeviceDashboardScreen(deviceId: 'device-1'),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final relaySwitch = find.byType(AtmosphereSwitch).at(1);
+    await tester.ensureVisible(relaySwitch);
+    await tester.tap(relaySwitch, warnIfMissed: false);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Command queued. It will run when the device reconnects.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Failed to toggle relay:'), findsNothing);
+  });
+
   testWidgets('dashboard can unmount while realtime stream is still open', (
     WidgetTester tester,
   ) async {
@@ -431,6 +486,7 @@ class _FakeDeviceService extends DeviceService {
     required this.telemetry,
     this.shadowCompleter,
     this.shadowError,
+    this.waitShouldTimeout = false,
   }) : super(Dio());
 
   final List<Device> devices;
@@ -438,6 +494,7 @@ class _FakeDeviceService extends DeviceService {
   final Map<String, List<TelemetryPoint>> telemetry;
   final Completer<DeviceShadow>? shadowCompleter;
   final Object? shadowError;
+  final bool waitShouldTimeout;
   final List<Command> commands = [];
   int telemetryFetchCount = 0;
   bool relay1On = false;
@@ -513,6 +570,9 @@ class _FakeDeviceService extends DeviceService {
     Duration pollInterval = const Duration(seconds: 2),
   }) async {
     waitCalled = true;
+    if (waitShouldTimeout) {
+      throw TimeoutException('pending');
+    }
     commands
       ..clear()
       ..add(
