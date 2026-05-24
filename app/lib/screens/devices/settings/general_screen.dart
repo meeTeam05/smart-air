@@ -85,6 +85,12 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
 
     final roomsAsync = ref.watch(roomsProvider(device.homeId));
     final rooms = roomsAsync.valueOrNull ?? [];
+    final roomSubtitle = roomsAsync.isLoading && roomsAsync.valueOrNull == null
+        ? 'Loading rooms...'
+        : device.roomId != null
+            ? rooms.where((r) => r.id == device.roomId).firstOrNull?.name ??
+                'Unknown room'
+            : 'No room assigned';
 
     return Scaffold(
       backgroundColor: c.bg,
@@ -172,17 +178,23 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
                       style: AtmosphereTextStyles.body(c.ink2),
                     ),
                     subtitle: Text(
-                      device.roomId != null
-                          ? rooms
-                                  .where((r) => r.id == device.roomId)
-                                  .firstOrNull
-                                  ?.name ??
-                              'Unknown room'
-                          : 'No room assigned',
+                      roomSubtitle,
                       style: AtmosphereTextStyles.body(c.ink),
                     ),
-                    trailing: Icon(AppIcons.chev, color: c.ink3),
-                    onTap: () => _showRoomPicker(context, device, rooms),
+                    trailing: roomsAsync.isLoading &&
+                            roomsAsync.valueOrNull == null
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: c.brand,
+                            ),
+                          )
+                        : Icon(AppIcons.chev, color: c.ink3),
+                    onTap: roomsAsync.isLoading && roomsAsync.valueOrNull == null
+                        ? null
+                        : () => _showRoomPicker(context, device, rooms),
                   ),
                   Divider(height: 1, color: c.line),
                   // Firmware version
