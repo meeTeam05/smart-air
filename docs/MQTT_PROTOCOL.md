@@ -308,18 +308,19 @@ Mode ON:
 ```json
 {
   "desired": {
-    "power": false,
-    "mode": 2
+    "mode": "on",
+    "relay_1": true
   },
   "delta": {
-    "power": false,
-    "mode": 2
+    "mode": "on",
+    "relay_1": true
   },
   "ts": 1712345678
 }
 ```
 
 > `delta` = những field mà `reported` khác `desired`. ESP32 chỉ cần execute delta, không cần apply toàn bộ desired.
+> Firmware hiện chỉ apply các desired keys `mode`, `relay_1`, `relay_2`, `relay_3`. Key khác phải bị chặn ở API layer hoặc được bổ sung support rõ ràng trước khi đưa vào contract.
 
 ---
 

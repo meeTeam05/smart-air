@@ -633,10 +633,10 @@ Authorization: `checkDeviceAccess()`
 
 Authorization: `checkDeviceAccess()`
 
-**Request body:** JSON object bất kỳ, ngoại trừ các reserved keys `mode`, `relay_1`, `relay_2`, `relay_3`. Các key này phải đi qua typed endpoints riêng cho device mode và relay control.
+**Request body:** JSON object chỉ gồm các desired device-state keys hiện được firmware hỗ trợ: `mode`, `relay_1`, `relay_2`, `relay_3`.
 
 ```json
-{ "fan_speed": 3, "led": false }
+{ "mode": "on", "relay_1": true }
 ```
 
 **200 OK:** `{ "success": true }`
@@ -644,7 +644,9 @@ Authorization: `checkDeviceAccess()`
 | Error                  | Code | Message                                                                                |
 | ---------------------- | ---- | -------------------------------------------------------------------------------------- |
 | Body không phải object | 400  | `"body must be a plain JSON object"`                                                   |
-| Reserved keys          | 400  | `"Reserved keys detected: ... Use typed endpoints for device mode and relay control."` |
+| Key không hỗ trợ       | 400  | `"Unsupported desired keys: ... Supported keys: mode, relay_1, relay_2, relay_3."`    |
+| `mode` sai kiểu        | 400  | `"mode must be on or off"`                                                             |
+| `relay_N` sai kiểu     | 400  | `"relay_N must be boolean"`                                                            |
 | Body vượt size limit   | 400  | `"desired shadow payload exceeds size limit"`                                          |
 | Invalid MAC            | 400  | `"Invalid device ID"`                                                                  |
 | Không phải thành viên  | 403  | `"Forbidden"`                                                                          |
@@ -653,9 +655,11 @@ Authorization: `checkDeviceAccess()`
 1. Validate plain object + size limit, rồi `setDesired()` UPSERT DB + write-through Redis cache
 2. Nếu device online → MQTT publish `device/{id}/shadow/get_response`:
    ```json
-   { "desired": { "fan_speed": 3, "led": false }, "delta": { "fan_speed": 3, "led": false }, "ts": 1777631761 }
+   { "desired": { "mode": "on", "relay_1": true }, "delta": { "mode": "on", "relay_1": true }, "ts": 1777631761 }
    ```
 3. Nếu offline → chỉ lưu DB, push khi device online lại hoặc khi device publish `shadow/get`
+
+> `PUT /shadow/desired` là declarative target state cho các keys firmware hỗ trợ qua `shadow/get_response`. Typed command endpoints vẫn tồn tại cho imperative command/history flow.
 
 ---
 
