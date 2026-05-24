@@ -708,6 +708,7 @@ curl -X POST https://minhnhat05.xyz/api/devices/dc:b4:d9:13:ed:8c/command \
 **Command lifecycle:** `pending` → `sent` → `done` | `error` | `timeout`
 
 > Status cuối do firmware quyết định hoặc timeout job. CHECK constraint: `('pending','sent','done','error','timeout')`.
+> Firmware dedupe duplicate MQTT QoS 1 replays theo `command_id` trong RAM cache 20 entries: duplicate khi command gốc còn chạy sẽ bị bỏ qua, duplicate sau khi đã có kết quả sẽ re-publish cùng `done|error`, và cache không giữ qua reboot.
 
 **Các lệnh thực tế:**
 

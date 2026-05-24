@@ -77,12 +77,31 @@ static portMUX_TYPE s_client_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_client_users;
 
 #define MAX_CMD_HANDLERS 8
+#define MQTT_COMMAND_ID_LEN 40
+#define MQTT_TRACKED_COMMANDS_MAX 20
 typedef struct {
     char type[MQTT_MAX_COMMAND_TYPE_LEN + 1];
     mqtt_command_cb_t cb;
 } cmd_handler_entry_t;
 static cmd_handler_entry_t s_cmd_handlers[MAX_CMD_HANDLERS];
 static int s_cmd_handler_count = 0;
+
+typedef enum {
+    MQTT_COMMAND_STATE_EMPTY = 0,
+    MQTT_COMMAND_STATE_PENDING,
+    MQTT_COMMAND_STATE_DONE,
+    MQTT_COMMAND_STATE_ERROR,
+} mqtt_command_state_t;
+
+typedef struct {
+    char command_id[MQTT_COMMAND_ID_LEN];
+    mqtt_command_state_t state;
+    uint32_t generation;
+} tracked_command_entry_t;
+
+static tracked_command_entry_t s_tracked_commands[MQTT_TRACKED_COMMANDS_MAX];
+static portMUX_TYPE s_tracked_commands_lock = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_tracked_command_generation;
 
 /* Buffers filled once in mqtt_start() and kept alive for the MQTT client/task */
 static char s_broker_uri[128];
@@ -147,6 +166,107 @@ static esp_err_t mqtt_pending_rx_append(const esp_mqtt_event_handle_t ev, char *
     return ESP_OK;
 }
 
+static const char *mqtt_command_state_name(mqtt_command_state_t state)
+{
+    switch (state) {
+    case MQTT_COMMAND_STATE_PENDING:
+        return "pending";
+    case MQTT_COMMAND_STATE_DONE:
+        return "done";
+    case MQTT_COMMAND_STATE_ERROR:
+        return "error";
+    default:
+        return "empty";
+    }
+}
+
+static void mqtt_command_cache_reset(void)
+{
+    portENTER_CRITICAL(&s_tracked_commands_lock);
+    memset(s_tracked_commands, 0, sizeof(s_tracked_commands));
+    s_tracked_command_generation = 0;
+    portEXIT_CRITICAL(&s_tracked_commands_lock);
+}
+
+static int mqtt_command_cache_find_locked(const char *command_id)
+{
+    for (size_t i = 0; i < MQTT_TRACKED_COMMANDS_MAX; i++) {
+        if (s_tracked_commands[i].state != MQTT_COMMAND_STATE_EMPTY &&
+            strcmp(s_tracked_commands[i].command_id, command_id) == 0) {
+            return (int)i;
+        }
+    }
+
+    return -1;
+}
+
+static int mqtt_command_cache_select_slot_locked(void)
+{
+    int oldest_terminal = -1;
+    uint32_t oldest_terminal_generation = UINT32_MAX;
+    int oldest_any = -1;
+    uint32_t oldest_any_generation = UINT32_MAX;
+
+    for (size_t i = 0; i < MQTT_TRACKED_COMMANDS_MAX; i++) {
+        if (s_tracked_commands[i].state == MQTT_COMMAND_STATE_EMPTY) {
+            return (int)i;
+        }
+
+        if (s_tracked_commands[i].generation < oldest_any_generation) {
+            oldest_any_generation = s_tracked_commands[i].generation;
+            oldest_any = (int)i;
+        }
+
+        if (s_tracked_commands[i].state != MQTT_COMMAND_STATE_PENDING &&
+            s_tracked_commands[i].generation < oldest_terminal_generation) {
+            oldest_terminal_generation = s_tracked_commands[i].generation;
+            oldest_terminal = (int)i;
+        }
+    }
+
+    return oldest_terminal >= 0 ? oldest_terminal : oldest_any;
+}
+
+static bool mqtt_command_cache_lookup(const char *command_id, mqtt_command_state_t *state_out)
+{
+    bool found = false;
+
+    if (command_id == NULL || command_id[0] == '\0') {
+        return false;
+    }
+
+    portENTER_CRITICAL(&s_tracked_commands_lock);
+    int index = mqtt_command_cache_find_locked(command_id);
+    if (index >= 0) {
+        found = true;
+        if (state_out != NULL) {
+            *state_out = s_tracked_commands[index].state;
+        }
+    }
+    portEXIT_CRITICAL(&s_tracked_commands_lock);
+
+    return found;
+}
+
+static void mqtt_command_cache_set(const char *command_id, mqtt_command_state_t state)
+{
+    if (command_id == NULL || command_id[0] == '\0') {
+        return;
+    }
+
+    portENTER_CRITICAL(&s_tracked_commands_lock);
+    int index = mqtt_command_cache_find_locked(command_id);
+    if (index < 0) {
+        index = mqtt_command_cache_select_slot_locked();
+    }
+    if (index >= 0) {
+        strlcpy(s_tracked_commands[index].command_id, command_id, sizeof(s_tracked_commands[index].command_id));
+        s_tracked_commands[index].state = state;
+        s_tracked_commands[index].generation = ++s_tracked_command_generation;
+    }
+    portEXIT_CRITICAL(&s_tracked_commands_lock);
+}
+
 static esp_mqtt_client_handle_t mqtt_client_acquire(void)
 {
     esp_mqtt_client_handle_t client = NULL;
@@ -192,6 +312,8 @@ static esp_err_t mqtt_publish_command_ack_internal(const char *command_id, bool 
     if (command_id == NULL || command_id[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
+
+    mqtt_command_cache_set(command_id, success ? MQTT_COMMAND_STATE_DONE : MQTT_COMMAND_STATE_ERROR);
 
     esp_mqtt_client_handle_t client = mqtt_client_acquire();
     if (client == NULL) {
@@ -350,14 +472,51 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                 bool cmd_ok = true;
                 bool ack_deferred = false;
                 bool command_handled = false;
+                bool duplicate_command = false;
+                const char *command_id = NULL;
 
                 /* Dispatch command handlers */
+                cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
                 cJSON *j_type = cJSON_GetObjectItemCaseSensitive(root, "type");
                 cJSON *j_ts = cJSON_GetObjectItemCaseSensitive(root, "ts");
-                if (!cJSON_IsString(j_type)) {
+                if (cJSON_IsString(j_cmd_id) && j_cmd_id->valuestring[0] != '\0') {
+                    command_id = j_cmd_id->valuestring;
+                }
+
+                if (command_id != NULL) {
+                    mqtt_command_state_t cached_state = MQTT_COMMAND_STATE_EMPTY;
+                    if (mqtt_command_cache_lookup(command_id, &cached_state)) {
+                        duplicate_command = true;
+                        command_handled = true;
+                        if (cached_state == MQTT_COMMAND_STATE_PENDING) {
+                            ack_deferred = true;
+                            ESP_LOGI(TAG,
+                                     "Duplicate command '%s' ignored while previous execution still pending",
+                                     command_id);
+                        } else {
+                            esp_err_t ack_err =
+                                mqtt_publish_command_ack_internal(command_id, cached_state == MQTT_COMMAND_STATE_DONE);
+                            if (ack_err != ESP_OK) {
+                                ESP_LOGW(TAG,
+                                         "Duplicate command ack publish failed for '%s': %s",
+                                         command_id,
+                                         esp_err_to_name(ack_err));
+                            } else {
+                                ESP_LOGI(TAG,
+                                         "Duplicate command '%s' reused cached status %s",
+                                         command_id,
+                                         mqtt_command_state_name(cached_state));
+                            }
+                        }
+                    } else {
+                        mqtt_command_cache_set(command_id, MQTT_COMMAND_STATE_PENDING);
+                    }
+                }
+
+                if (!duplicate_command && !cJSON_IsString(j_type)) {
                     cmd_ok = false;
                     ESP_LOGW(TAG, "command message missing string type");
-                } else if (strcmp(j_type->valuestring, "set_time") == 0) {
+                } else if (!duplicate_command && strcmp(j_type->valuestring, "set_time") == 0) {
                     command_handled = true;
                     if (cJSON_IsNumber(j_ts) && s_time_sync_cb != NULL) {
                         s_time_sync_cb((uint32_t)j_ts->valuedouble);
@@ -366,12 +525,12 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                         cmd_ok = false;
                         ESP_LOGW(TAG, "set_time command missing ts or callback");
                     }
-                } else if (strcmp(j_type->valuestring, "set_config") == 0) {
+                } else if (!duplicate_command && strcmp(j_type->valuestring, "set_config") == 0) {
                     command_handled = true;
                     cmd_ok = false;
                     ESP_LOGW(TAG,
                              "set_config is not accepted over MQTT; use local POST /api/config before first login");
-                } else {
+                } else if (!duplicate_command) {
                     for (int i = 0; i < s_cmd_handler_count; i++) {
                         if (strcmp(j_type->valuestring, s_cmd_handlers[i].type) == 0) {
                             command_handled = true;
@@ -394,15 +553,14 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                     }
                 }
 
-                if (!ack_deferred) {
+                if (!ack_deferred && !duplicate_command) {
                     /* Send ack AFTER execution with actual status */
-                    cJSON *j_cmd_id = cJSON_GetObjectItemCaseSensitive(root, "command_id");
-                    if (cJSON_IsString(j_cmd_id)) {
-                        esp_err_t ack_err = mqtt_publish_command_ack_internal(j_cmd_id->valuestring, cmd_ok);
+                    if (command_id != NULL) {
+                        esp_err_t ack_err = mqtt_publish_command_ack_internal(command_id, cmd_ok);
                         if (ack_err != ESP_OK) {
                             ESP_LOGW(TAG,
                                      "Command ack publish failed for '%s': %s",
-                                     j_cmd_id->valuestring,
+                                     command_id,
                                      esp_err_to_name(ack_err));
                         }
                     } else {
@@ -602,6 +760,7 @@ esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *
             sizeof(s_broker_uri));
     strlcpy(s_device_id, device_id, sizeof(s_device_id));
     strlcpy(s_secret_key, secret_key, sizeof(s_secret_key));
+    mqtt_command_cache_reset();
 
     /* Build topic strings from device ID */
     snprintf(s_status_topic, sizeof(s_status_topic), "device/%s/status", s_device_id);
@@ -648,6 +807,7 @@ esp_err_t mqtt_stop(void)
 
     mqtt_client_wait_for_users();
     mqtt_pending_rx_reset();
+    mqtt_command_cache_reset();
     esp_mqtt_client_stop(client);
     esp_mqtt_client_destroy(client);
     ESP_LOGI(TAG, "MQTT client stopped");

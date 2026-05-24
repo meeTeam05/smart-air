@@ -409,25 +409,33 @@ App                   API / PostgreSQL     EMQX               ESP32
 
 ## 5. Idempotency & Retry Rules
 
-> **Ghi chú:** Firmware hiện tại (v1.0) không implement idempotency tracking. Command handlers (`relay_set`, `device_mode`) không track processed commands. Section này mô tả planned behavior cho future versions.
+> **Ghi chú:** Firmware hiện tại track `command_id` trong RAM để chặn re-execute khi MQTT QoS 1 redeliver cùng một command trong cùng vòng đời boot/MQTT client.
 
-### 5.1 ESP32 phải làm gì khi nhận command (planned)
+### 5.1 ESP32 xử lý duplicate command thế nào
 
 ```
 Nhận message trên device/{id}/command
     │
     ├─ Parse JSON, lấy command_id
     │
-    ├─ Kiểm tra command_id trong processed_cmds[] (lưu trong RAM, tối đa 20 entries)
+    ├─ Kiểm tra command_id trong RAM cache (tối đa 20 entries)
     │       │
-    │       ├─ ĐÃ xử lý rồi → publish response cũ (status: duplicate_cmd) → bỏ qua
+    │       ├─ ĐANG pending → bỏ qua duplicate, chờ handler gốc publish ack cuối
     │       │
-    │       └─ CHƯA xử lý → thực thi action (inline hoặc qua worker) → lưu command_id vào processed_cmds[] → publish response
+    │       ├─ ĐÃ done/error → publish lại cùng response cũ, không chạy lại handler
+    │       │
+    │       └─ CHƯA thấy → ghi state=pending → thực thi handler
+    │
+    └─ Khi command hoàn tất
+            ├─ sync handler: publish `response` với `done|error`
+            └─ async handler: worker gọi `mqtt_publish_command_ack()` với `done|error`
 ```
 
-> Tại sao cần: MQTT QoS 1 đảm bảo "at least once" — broker có thể gửi lại cùng 1 message nếu không nhận được PUBACK. Không có idempotency, lệnh "bật đèn" có thể chạy 2 lần.
+> Tại sao cần: MQTT QoS 1 đảm bảo "at least once" — broker có thể gửi lại cùng 1 message nếu không nhận được PUBACK. Không có `command_id` dedupe, một lệnh side-effect như calibration có thể chạy lặp lại.
 
-**Current behavior (v1.0):** Command handlers idempotent tại application level (`relay_set` short-circuits khi state không đổi, `device_mode_set` idempotent check), nhưng không track `command_id`.
+**Current behavior (v1.0):** Firmware giữ tối đa 20 `command_id` gần nhất trong RAM. Duplicate khi command gốc còn `pending` sẽ bị bỏ qua; duplicate sau khi command đã có kết quả sẽ re-publish cùng status `done|error`.
+
+**Giới hạn:** Cache chỉ ở RAM, không durable qua reboot hay `mqtt_stop()`/`mqtt_start()` mới. MQTT reconnect bình thường trong cùng boot vẫn giữ cache này.
 
 ### 5.2 API retry policy
 
