@@ -114,6 +114,7 @@ Server publish command dưới dạng `{ "command_id": "...", "type": "...", ...
 Generic REST command chỉ nhận `relay_set`, `device_mode`, `set_time`, `calibrate_co`, `calibrate_no2`.
 `set_config` không được server gửi qua generic command vì đổi credential firmware; OTA dùng topic riêng `device/{id}/ota/update`, không dùng `ota_update` trên command topic.
 Firmware phải trả `{"status":"error"}` cho command thiếu `type`, thiếu field bắt buộc, hoặc không có handler trong build hiện tại. `relay_set` được ACK `done` trong cả normal mode và demo mode khi build bật `CONFIG_SA_ENABLE_RELAYS=y`; nếu relay feature bị tắt trong build thì firmware vẫn trả `error`.
+Firmware drop mọi inbound `command` payload lớn hơn `512` bytes trước khi parse JSON.
 
 #### 3.3.1 Command: `relay_set`
 
@@ -331,6 +332,7 @@ Mode ON:
 > `delta` = những field mà `reported` khác `desired`. ESP32 chỉ cần execute delta, không cần apply toàn bộ desired.
 > Firmware hiện chỉ apply các desired keys `mode`, `relay_1`, `relay_2`, `relay_3`. Key khác phải bị chặn ở API layer hoặc được bổ sung support rõ ràng trước khi đưa vào contract.
 > API cũng phải reject mọi desired payload có `relay_N=true` khi mode hiệu lực resolve thành `off` (`body.mode` → desired đang lưu → reported hiện tại), vì firmware sẽ bỏ qua relay apply trong trạng thái đó.
+> Firmware drop mọi inbound `shadow/get_response` payload lớn hơn `512` bytes trước khi parse JSON.
 
 ---
 
@@ -350,6 +352,8 @@ Mode ON:
 | `url`     | HTTPS only — ESP32 từ chối nếu không có `https://`      |
 | `sha256`  | Hash của file binary, verify sau khi download xong      |
 | `version` | String, dùng để log và hiển thị trong app               |
+
+> Firmware drop mọi inbound `ota/update` payload lớn hơn `512` bytes trước khi parse JSON. `url` cũng phải fit buffer OTA nội bộ `255` bytes cộng null terminator.
 
 ---
 

@@ -80,6 +80,7 @@ static uint32_t s_client_users;
 #define MAX_CMD_HANDLERS 8
 #define MQTT_COMMAND_ID_LEN 40
 #define MQTT_TRACKED_COMMANDS_MAX 20
+#define MQTT_MAX_INBOUND_PAYLOAD_LEN 512
 typedef struct {
     char type[MQTT_MAX_COMMAND_TYPE_LEN + 1];
     mqtt_command_cb_t cb;
@@ -118,6 +119,24 @@ static char *s_rx_topic = NULL;
 static char *s_rx_payload = NULL;
 static int s_rx_total_len;
 
+static bool mqtt_event_topic_equals(const char *topic, int topic_len, const char *expected)
+{
+    size_t expected_len = strlen(expected);
+    return topic != NULL && topic_len >= 0 && (size_t)topic_len == expected_len &&
+           memcmp(topic, expected, expected_len) == 0;
+}
+
+static int mqtt_inbound_payload_limit(const char *topic, int topic_len)
+{
+    if (mqtt_event_topic_equals(topic, topic_len, s_cmd_topic) ||
+        mqtt_event_topic_equals(topic, topic_len, s_shadow_get_response_topic) ||
+        mqtt_event_topic_equals(topic, topic_len, s_ota_topic)) {
+        return MQTT_MAX_INBOUND_PAYLOAD_LEN;
+    }
+
+    return 0;
+}
+
 static void mqtt_pending_rx_reset(void)
 {
     free(s_rx_topic);
@@ -129,14 +148,20 @@ static void mqtt_pending_rx_reset(void)
 
 static esp_err_t mqtt_pending_rx_append(const esp_mqtt_event_handle_t ev, char **topic_out, char **payload_out)
 {
-    if (ev == NULL || topic_out == NULL || payload_out == NULL || ev->data == NULL || ev->data_len < 0 ||
-        ev->current_data_offset < 0 || ev->total_data_len < ev->data_len) {
+    if (ev == NULL || topic_out == NULL || payload_out == NULL || ev->topic == NULL || ev->topic_len < 0 ||
+        ev->data == NULL || ev->data_len < 0 || ev->current_data_offset < 0 || ev->total_data_len < 0 ||
+        ev->total_data_len < ev->data_len) {
         mqtt_pending_rx_reset();
         return ESP_ERR_INVALID_ARG;
     }
 
     if (ev->current_data_offset == 0) {
+        int payload_limit = mqtt_inbound_payload_limit(ev->topic, ev->topic_len);
+
         mqtt_pending_rx_reset();
+        if (payload_limit <= 0 || ev->total_data_len > payload_limit) {
+            return ESP_ERR_INVALID_SIZE;
+        }
 
         s_rx_topic = strndup(ev->topic, (size_t)ev->topic_len);
         s_rx_payload = malloc((size_t)ev->total_data_len + 1U);
