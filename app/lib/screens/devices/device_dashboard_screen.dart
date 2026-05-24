@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app_theme.dart';
 import '../../models/command.dart';
+import '../../models/device.dart';
 import '../../models/telemetry.dart';
 import '../../providers/devices_provider.dart';
 import '../../services/device_service.dart';
@@ -58,6 +59,69 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     final latestTelemetry = telemetryState?.latest;
     final commandsAsync = ref.watch(commandsProvider(widget.deviceId));
     final recentCommands = commandsAsync.valueOrNull ?? const <Command>[];
+    final blockingError = _blockingErrorMessage(
+      device: device,
+      devicesAsync: devicesAsync,
+      shadow: shadow,
+      shadowAsync: shadowAsync,
+      telemetryState: telemetryState,
+      telemetryLiveAsync: telemetryLiveAsync,
+    );
+    final blockingLoad = _isBlockingLoad(
+      device: device,
+      devicesAsync: devicesAsync,
+      shadow: shadow,
+      shadowAsync: shadowAsync,
+      telemetryState: telemetryState,
+      telemetryLiveAsync: telemetryLiveAsync,
+    );
+
+    if (blockingError != null) {
+      return _buildBlockingStateScaffold(
+        title: device?.name ?? widget.deviceId,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(AppIcons.warn, size: 36, color: c.danger),
+            const SizedBox(height: AtmosphereTokens.space16),
+            Text(
+              'Unable to load device dashboard.',
+              textAlign: TextAlign.center,
+              style: AtmosphereTextStyles.h2(c.ink),
+            ),
+            const SizedBox(height: AtmosphereTokens.space8),
+            Text(
+              blockingError,
+              textAlign: TextAlign.center,
+              style: AtmosphereTextStyles.body(c.ink2),
+            ),
+            const SizedBox(height: AtmosphereTokens.space20),
+            FilledButton(
+              onPressed: () => _refreshLiveData(refreshDevices: true),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (blockingLoad) {
+      return _buildBlockingStateScaffold(
+        title: device?.name ?? widget.deviceId,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: AtmosphereTokens.space16),
+            Text(
+              'Loading device dashboard…',
+              textAlign: TextAlign.center,
+              style: AtmosphereTextStyles.h2(c.ink),
+            ),
+          ],
+        ),
+      );
+    }
 
     final temp =
         latestTelemetry?.temperature ?? reported['temperature'] as num?;
@@ -65,22 +129,22 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     final coPpm = latestTelemetry?.coPpm ?? reported['co_ppm'] as num?;
     final no2Ppm = latestTelemetry?.no2Ppm ?? reported['no2_ppm'] as num?;
     // Keep at most 30 recent points so the mini sparkline stays readable.
-    List<double> _trim(List<double> l) =>
+    List<double> trimSparkline(List<double> l) =>
         l.length > 30 ? l.sublist(l.length - 30) : l;
 
-    final tempSparkline = _trim(telemetryPoints
+    final tempSparkline = trimSparkline(telemetryPoints
         .where((p) => p.temperature != null)
         .map((p) => p.temperature!)
         .toList());
-    final humiditySparkline = _trim(telemetryPoints
+    final humiditySparkline = trimSparkline(telemetryPoints
         .where((p) => p.humidity != null)
         .map((p) => p.humidity!)
         .toList());
-    final coSparkline = _trim(telemetryPoints
+    final coSparkline = trimSparkline(telemetryPoints
         .where((p) => p.coPpm != null)
         .map((p) => p.coPpm!)
         .toList());
-    final no2Sparkline = _trim(telemetryPoints
+    final no2Sparkline = trimSparkline(telemetryPoints
         .where((p) => p.no2Ppm != null)
         .map((p) => p.no2Ppm!)
         .toList());
@@ -311,10 +375,14 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                           const SizedBox(height: AtmosphereTokens.space8),
                           if (recentCommands.isEmpty)
                             Text(
-                              commandsAsync.isLoading
-                                  ? 'Loading command activity...'
-                                  : 'No command activity yet.',
-                              style: AtmosphereTextStyles.body(c.ink2),
+                              commandsAsync.hasError
+                                  ? 'Unable to load command activity.'
+                                  : commandsAsync.isLoading
+                                      ? 'Loading command activity...'
+                                      : 'No command activity yet.',
+                              style: AtmosphereTextStyles.body(
+                                commandsAsync.hasError ? c.danger : c.ink2,
+                              ),
                             )
                           else
                             ...recentCommands.take(3).map(
@@ -530,5 +598,64 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+
+  String? _blockingErrorMessage({
+    required Device? device,
+    required AsyncValue<List<Device>> devicesAsync,
+    required DeviceShadow? shadow,
+    required AsyncValue<DeviceShadow> shadowAsync,
+    required TelemetrySeriesState? telemetryState,
+    required AsyncValue<TelemetrySeriesState> telemetryLiveAsync,
+  }) {
+    if (devicesAsync.hasError && device == null) {
+      return 'Unable to load device details.';
+    }
+    if (shadowAsync.hasError && shadow == null) {
+      return 'Unable to load device status.';
+    }
+    if (telemetryLiveAsync.hasError && telemetryState == null) {
+      return 'Unable to load live telemetry.';
+    }
+    if (device == null) {
+      return 'Device not found.';
+    }
+    return null;
+  }
+
+  bool _isBlockingLoad({
+    required Device? device,
+    required AsyncValue<List<Device>> devicesAsync,
+    required DeviceShadow? shadow,
+    required AsyncValue<DeviceShadow> shadowAsync,
+    required TelemetrySeriesState? telemetryState,
+    required AsyncValue<TelemetrySeriesState> telemetryLiveAsync,
+  }) {
+    return (devicesAsync.isLoading && device == null) ||
+        (shadowAsync.isLoading && shadow == null) ||
+        (telemetryLiveAsync.isLoading && telemetryState == null);
+  }
+
+  Widget _buildBlockingStateScaffold({
+    required String title,
+    required Widget child,
+  }) {
+    final c = context.colors;
+    return Scaffold(
+      backgroundColor: c.bg,
+      appBar: AtmosphereAppBar.back(
+        title: title,
+        actions: const [],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AtmosphereTokens.space24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: child,
+          ),
+        ),
+      ),
+    );
   }
 }

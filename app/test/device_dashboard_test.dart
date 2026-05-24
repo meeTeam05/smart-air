@@ -67,6 +67,94 @@ void main() {
     expect(find.byType(SensorTile), findsNWidgets(4));
   });
 
+  testWidgets('shows loading state while dashboard data is bootstrapping', (
+    WidgetTester tester,
+  ) async {
+    final shadowCompleter = Completer<DeviceShadow>();
+    final fakeService = _FakeDeviceService(
+      devices: const [
+        Device(
+          id: 'device-1',
+          name: 'Living Room',
+          homeId: 'home-1',
+          online: true,
+        ),
+      ],
+      shadows: const {
+        'device-1': DeviceShadow(
+          reported: {'mode': 'on'},
+        ),
+      },
+      telemetry: const {
+        'device-1': [],
+      },
+      shadowCompleter: shadowCompleter,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceServiceProvider.overrideWithValue(fakeService),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
+        ],
+        child: const MaterialApp(
+          home: DeviceDashboardScreen(deviceId: 'device-1'),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(find.text('Loading device dashboard…'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    shadowCompleter.complete(const DeviceShadow(reported: {'mode': 'on'}));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('shows error state when dashboard status fails to load', (
+    WidgetTester tester,
+  ) async {
+    final fakeService = _FakeDeviceService(
+      devices: const [
+        Device(
+          id: 'device-1',
+          name: 'Living Room',
+          homeId: 'home-1',
+          online: true,
+        ),
+      ],
+      shadows: const {
+        'device-1': DeviceShadow(
+          reported: {'mode': 'on'},
+        ),
+      },
+      telemetry: const {
+        'device-1': [],
+      },
+      shadowError: Exception('shadow failed'),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceServiceProvider.overrideWithValue(fakeService),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
+        ],
+        child: const MaterialApp(
+          home: DeviceDashboardScreen(deviceId: 'device-1'),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Unable to load device dashboard.'), findsOneWidget);
+    expect(find.text('Unable to load device status.'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
   testWidgets('uses latest telemetry values when device is on', (
     WidgetTester tester,
   ) async {
@@ -341,11 +429,15 @@ class _FakeDeviceService extends DeviceService {
     required this.devices,
     required this.shadows,
     required this.telemetry,
+    this.shadowCompleter,
+    this.shadowError,
   }) : super(Dio());
 
   final List<Device> devices;
   final Map<String, DeviceShadow> shadows;
   final Map<String, List<TelemetryPoint>> telemetry;
+  final Completer<DeviceShadow>? shadowCompleter;
+  final Object? shadowError;
   final List<Command> commands = [];
   int telemetryFetchCount = 0;
   bool relay1On = false;
@@ -358,6 +450,12 @@ class _FakeDeviceService extends DeviceService {
 
   @override
   Future<DeviceShadow> getShadow(String deviceId) async {
+    if (shadowCompleter != null) {
+      return shadowCompleter!.future;
+    }
+    if (shadowError != null) {
+      throw shadowError!;
+    }
     if (actionStarted && !waitCalled) {
       shadowRefreshedBeforeWait = true;
     }
