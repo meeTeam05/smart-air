@@ -18,38 +18,22 @@ void main() {
   }
 }
 
-class SmartAirApp extends ConsumerStatefulWidget {
+class SmartAirApp extends ConsumerWidget {
   const SmartAirApp({super.key});
 
   @override
-  ConsumerState<SmartAirApp> createState() => _SmartAirAppState();
-}
-
-class _SmartAirAppState extends ConsumerState<SmartAirApp> {
-  @override
-  void initState() {
-    super.initState();
-    AppState.themeMode.addListener(_onThemeChange);
-  }
-
-  @override
-  void dispose() {
-    AppState.themeMode.removeListener(_onThemeChange);
-    super.dispose();
-  }
-
-  void _onThemeChange() => setState(() {});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
-    return MaterialApp.router(
-      title: 'Atmosphere',
-      themeMode: AppState.themeMode.value,
-      theme: AtmosphereTheme.light(),
-      darkTheme: AtmosphereTheme.dark(),
-      debugShowCheckedModeBanner: false,
-      routerConfig: router,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: AppState.themeMode,
+      builder: (context, themeMode, _) => MaterialApp.router(
+        title: 'Atmosphere',
+        themeMode: themeMode,
+        theme: AtmosphereTheme.light(),
+        darkTheme: AtmosphereTheme.dark(),
+        debugShowCheckedModeBanner: false,
+        routerConfig: router,
+      ),
     );
   }
 }
