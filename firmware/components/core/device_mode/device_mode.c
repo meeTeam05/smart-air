@@ -291,6 +291,15 @@ esp_err_t device_mode_set(bool on)
     return first_err;
 }
 
+esp_err_t device_mode_publish_current_shadow(void)
+{
+    if (s_shadow_topic[0] == '\0') {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return s_mode_on ? publish_mode_on_shadow() : publish_mode_off_shadow();
+}
+
 bool device_mode_get(void)
 {
     return s_mode_on;

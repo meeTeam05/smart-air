@@ -16,6 +16,7 @@
 #include "mqtt.h"
 
 #include "config.h"
+#include "device_mode.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -428,6 +429,11 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         snprintf(msg, sizeof(msg), "{\"online\":true,\"firmware\":\"%s\"}", CONFIG_FIRMWARE_VERSION);
         esp_mqtt_client_publish(client, s_status_topic, msg, 0, 1, 1);
         ESP_LOGI(TAG, "Published online status → %s", s_status_topic);
+
+        esp_err_t shadow_report_err = device_mode_publish_current_shadow();
+        if (shadow_report_err != ESP_OK) {
+            ESP_LOGW(TAG, "current shadow publish failed after connect: %s", esp_err_to_name(shadow_report_err));
+        }
 
         esp_err_t shadow_get_err = mqtt_publish_shadow_get_request(client);
         if (shadow_get_err != ESP_OK) {

@@ -11,6 +11,7 @@ idf_component_register(
         mbedtls
         esp_hw_support
     PRIV_REQUIRES
+        device_mode
         ota
         json
         led

@@ -285,6 +285,17 @@ Mode ON:
 }
 ```
 
+4. **MQTT reconnect bootstrap** (ngay sau `device/{id}/status online`, trước `shadow/get`):
+```json
+{
+  "mode": "on",
+  "relay_1": false,
+  "relay_2": true,
+  "relay_3": false,
+  "ts": 1712345678
+}
+```
+
 > Shadow report không có wrapper `{"reported":{...}}` — payload là flat JSON.
 > Server merge các shadow reports vào Redis cache + DB backup.
 > `ts` là ordering key cho `reported`: report có `ts` cũ hơn state hiện tại sẽ bị bỏ qua để không overwrite state mới hơn.

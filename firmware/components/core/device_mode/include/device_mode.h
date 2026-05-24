@@ -39,6 +39,13 @@ esp_err_t device_mode_init(const char *device_id);
  */
 esp_err_t device_mode_set(bool on);
 
+/**
+ * @brief Publish the current full shadow snapshot for the active mode.
+ *
+ * @return ESP_OK on success, or an error code if shadow publish fails.
+ */
+esp_err_t device_mode_publish_current_shadow(void);
+
 /** 
  * @brief Get the current device mode (on/off).
  * 
