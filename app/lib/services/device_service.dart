@@ -326,7 +326,9 @@ class DeviceService {
         'limit': limit,
       });
       return (res.data as List)
-          .map((e) => TelemetryPoint.fromJson(e as Map<String, dynamic>))
+          .whereType<Map>()
+          .map((e) => TelemetryPoint.tryFromJson(Map<String, dynamic>.from(e)))
+          .whereType<TelemetryPoint>()
           .toList();
     } on DioException catch (e) {
       throw _map(e);
