@@ -111,6 +111,7 @@ Legend:
 - Description: Boot performs synchronous SNTP wait before MQTT start, OTA task start, and sensor task start. With current config this can block the boot path for up to `CONFIG_SA_SNTP_SYNC_TIMEOUT_MS` even though the architecture treats SNTP as best-effort.
 - Impact: DNS or NTP slowness adds predictable startup delay, postponing provisioning HTTP availability, command handling, telemetry, and OTA validation without improving correctness when fallback clocks already exist.
 - Fix suggestion: Start SNTP asynchronously, continue boot immediately, and update RTC/system time in a background callback once sync completes.
+- Disposition: `No code change — documented performance tradeoff`. Repo truth still does a synchronous best-effort SNTP wait with default `CONFIG_SA_SNTP_SYNC_TIMEOUT_MS=10000`, but converting it to async would reorder MQTT/OTA/sensor startup and is broader than this bounded audit fix lane. Added explicit blocking-behavior note to `docs/ARCHITECTURE.md`.
 
 ### FW-03-011
 - Severity: `P3`

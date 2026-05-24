@@ -432,6 +432,7 @@ Behavioral notes:
 
 - `set_time` is handled specially by the MQTT layer and forwarded to a time sync callback
 - boot also performs a best-effort SNTP sync after Wi-Fi connect; if SNTP fails or times out, firmware falls through to existing fallback behavior
+- current implementation still waits synchronously for that SNTP attempt, so boot can pause up to `CONFIG_SA_SNTP_SYNC_TIMEOUT_MS` (repo default `10000` ms) before MQTT/OTA/sensor startup continues
 - unsupported command types are acknowledged with `status: "error"`
 - `set_config` is explicitly rejected over MQTT; local `/api/config` is the supported path
 - OTA does not use the generic command topic; it uses `device/{id}/ota/update`
