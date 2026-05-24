@@ -472,6 +472,7 @@ Nhận message trên device/{id}/command
 - **Auth:** Mỗi device có `secret_key` riêng sinh ra lúc đăng ký, lưu trong NVS. Không hardcode.
 - **Provisioning order:** App phải gọi `POST /api/devices` trước; backend tạo EMQX user + ACL rồi mới chuyển `secret_key` xuống firmware.
 - **Flutter/WSS:** EMQX WebSocket hiện dùng MQTT username/password từ built-in database; JWT REST API chưa được dùng cho MQTT/WSS.
+- **Storage:** Build repo hiện vẫn để `CONFIG_NVS_ENCRYPTION=n` và `CONFIG_FLASH_ENCRYPTION_ENABLED=n`, nên `secret_key` và Wi-Fi password đang nằm ở plaintext trong flash/NVS trừ khi deployment pipeline bật cơ chế mã hóa khác ngoài repo mặc định.
 
 > Kênh app chuyển `secret_key` xuống firmware là local device provisioning, không phải MQTT contract công khai của backend.
 > Firmware hiện hỗ trợ `POST http://<device-ip>/api/config` với JSON `{ "device_id": "...", "secret_key": "...", "broker_uri": "wss://minhnhat05.xyz/mqtt" }`; `broker_uri` optional. Nếu bỏ qua, firmware xóa override cũ và dùng Kconfig default. Endpoint này chỉ dùng trước lần MQTT login đầu tiên, validate `device_id` phải trùng MAC thật của ESP32, sau đó firmware lưu NVS và reboot.

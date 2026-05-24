@@ -286,6 +286,11 @@ That means demo mode can still use real GPIO relays when relay support is enable
 - persisted device mode
 - persisted relay states
 
+Current storage assumption:
+
+- repo-default build keeps `CONFIG_NVS_ENCRYPTION=n` and `CONFIG_FLASH_ENCRYPTION_ENABLED=n`
+- Wi-Fi password and MQTT `secret_key` therefore rest in plaintext flash/NVS unless deployment flow adds extra protection outside current repo config
+
 The device ID itself is not mutable configuration. It is always derived from the Wi-Fi STA MAC and normalized to lowercase `aa:bb:cc:dd:ee:ff`.
 
 `config_get_mqtt_creds()` falls back to Kconfig defaults when NVS values are absent. `config_set_mqtt_config()` validates:

@@ -91,6 +91,7 @@ Legend:
 - Description: Firmware persists Wi-Fi password and MQTT `secret_key` to NVS in plaintext, while current build config has both `CONFIG_NVS_ENCRYPTION` and `CONFIG_FLASH_ENCRYPTION_ENABLED` disabled.
 - Impact: Anyone with flash access, debug access, or a raw storage dump can recover network and broker credentials. That turns physical access or service-chain exposure into long-lived credential compromise.
 - Fix suggestion: Enable flash encryption and NVS encryption in the manufacturing/runtime flow, or move secrets to hardware-backed secure storage and update provisioning/reset flows accordingly.
+- Disposition: `Blocked pending human judgment`. Repo truth confirms plaintext secret storage and disabled `CONFIG_NVS_ENCRYPTION` / `CONFIG_FLASH_ENCRYPTION_ENABLED`, but enabling those protections safely needs manufacturing key provisioning, flash/OTA compatibility review, and deployment-flow changes beyond a narrow firmware patch. Added explicit storage-assumption notes in `docs/MQTT_PROTOCOL.md` and `docs/ARCHITECTURE.md`.
 
 ### FW-03-009
 - Severity: `P2`
