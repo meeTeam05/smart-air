@@ -5,8 +5,9 @@
  *
  * Architecture:
  *   - mqtt_start() creates mqtt_task (Core 1, Priority 6, 6144 B).
- *   - mqtt_task initialises esp_mqtt_client and calls start; then deletes
- *     itself — the library manages the connection lifecycle internally.
+ *   - mqtt_task initialises esp_mqtt_client, registers events, calls start,
+ *     reports that setup result back to mqtt_start(), then deletes itself.
+ *   - after setup succeeds, the library manages the connection lifecycle internally.
  *   - All subscriptions are (re)registered in MQTT_EVENT_CONNECTED per FW-05.
  *   - MQTT_EVENT_DATA payload is copied before the handler returns per FW-04.
  *
@@ -104,6 +105,11 @@ typedef struct {
 static tracked_command_entry_t s_tracked_commands[MQTT_TRACKED_COMMANDS_MAX];
 static portMUX_TYPE s_tracked_commands_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_tracked_command_generation;
+
+typedef struct {
+    TaskHandle_t waiter;
+    esp_err_t result;
+} mqtt_start_ctx_t;
 
 /* Buffers filled once in mqtt_start() and kept alive for the MQTT client/task */
 static char s_broker_uri[128];
@@ -689,6 +695,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
 
 static void mqtt_task(void *arg)
 {
+    mqtt_start_ctx_t *start_ctx = (mqtt_start_ctx_t *)arg;
     esp_mqtt_client_config_t cfg = {
         .broker =
             {
@@ -717,23 +724,47 @@ static void mqtt_task(void *arg)
                 .reconnect_timeout_ms = 5000,
             },
     };
+    esp_err_t err = ESP_OK;
 
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&cfg);
     if (client == NULL) {
         ESP_LOGE(TAG, "esp_mqtt_client_init failed");
-        vTaskDelete(NULL);
-        return;
+        err = ESP_FAIL;
+        goto done;
     }
 
     portENTER_CRITICAL(&s_client_lock);
     s_client = client;
     portEXIT_CRITICAL(&s_client_lock);
 
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(client);
+    err = esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_mqtt_client_register_event failed (%s)", esp_err_to_name(err));
+        goto fail_client;
+    }
+
+    err = esp_mqtt_client_start(client);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_mqtt_client_start failed (%s)", esp_err_to_name(err));
+        goto fail_client;
+    }
 
     /* Task work is done — library runs the connection loop internally */
+done:
+    if (start_ctx != NULL) {
+        start_ctx->result = err;
+        xTaskNotifyGive(start_ctx->waiter);
+    }
     vTaskDelete(NULL);
+
+fail_client:
+    portENTER_CRITICAL(&s_client_lock);
+    if (s_client == client) {
+        s_client = NULL;
+    }
+    portEXIT_CRITICAL(&s_client_lock);
+    esp_mqtt_client_destroy(client);
+    goto done;
 }
 
 /* ── Public API ──────────────────────────────────────────────────────────── */
@@ -786,6 +817,11 @@ esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *
         return ESP_ERR_INVALID_ARG;
     }
 
+    mqtt_start_ctx_t start_ctx = {
+        .waiter = xTaskGetCurrentTaskHandle(),
+        .result = ESP_FAIL,
+    };
+
     strlcpy(s_broker_uri,
             (broker_uri != NULL && broker_uri[0] != '\0') ? broker_uri : SA_MQTT_BROKER_URI,
             sizeof(s_broker_uri));
@@ -804,12 +840,14 @@ esp_err_t mqtt_start(const char *broker_uri, const char *device_id, const char *
     ESP_LOGI(TAG, "Starting MQTT client (id=%s, broker=%s)", s_device_id, s_broker_uri);
 
     /* Per task map: Core 1, Priority 6, 6144 B */
-    BaseType_t rc = xTaskCreatePinnedToCore(mqtt_task, "mqtt_task", 6144, NULL, 6, NULL, APP_CPU_NUM);
+    ulTaskNotifyTake(pdTRUE, 0);
+    BaseType_t rc = xTaskCreatePinnedToCore(mqtt_task, "mqtt_task", 6144, &start_ctx, 6, NULL, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed");
         return ESP_FAIL;
     }
-    return ESP_OK;
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    return start_ctx.result;
 }
 
 int mqtt_publish(const char *topic, const char *payload, int qos, bool retain)

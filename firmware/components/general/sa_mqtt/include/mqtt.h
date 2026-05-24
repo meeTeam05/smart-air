@@ -95,15 +95,17 @@ esp_err_t mqtt_publish_command_ack(const char *command_id, bool success);
  * @brief Start the MQTT client and connect to the broker asynchronously.
  *
  * Spawns mqtt_task (Core 1, Priority 6, 6144 B stack).
- * Returns immediately after the task is created — the actual TCP/TLS
- * connection happens in the background.
+ * Returns after the task has completed local MQTT client setup
+ * (init + event registration + client start). The actual TCP/TLS
+ * connection still happens in the background.
  *
  * @param broker_uri  Full broker URI, e.g. "wss://minhnhat05.xyz/mqtt"
  * @param device_id   MQTT client ID / username. Must be the lowercase
  *                    Wi-Fi STA MAC resolved by config_get_device_id().
  * @param secret_key  Per-device MQTT password (stored in NVS / Kconfig).
  *
- * @return ESP_OK on success, ESP_FAIL if task creation fails.
+ * @return ESP_OK if setup succeeded and the client connection loop is running.
+ *         An error code if task creation or initial MQTT client setup failed.
  */
 esp_err_t mqtt_start(const char *broker_uri,
                      const char *device_id,

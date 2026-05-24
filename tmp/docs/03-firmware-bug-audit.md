@@ -41,6 +41,7 @@ Legend:
 - Description: `mqtt_task()` ignores return codes from both `esp_mqtt_client_register_event()` and `esp_mqtt_client_start()`. If either step fails, `s_client` remains set and the task deletes itself without surfacing the failure back to `sysload`.
 - Impact: Boot can continue as if MQTT started even though no event callbacks or broker session ever come up. Telemetry, command handling, shadow sync, and OTA triggers then fail silently.
 - Fix suggestion: Check both return codes, clear `s_client` on failure, destroy the client, and propagate a hard error path so boot can retry or enter an explicit fault state.
+- Disposition: `Fixed in working tree (pending commit)`. `mqtt_start()` now waits for `mqtt_task()` to report setup success/failure, while `mqtt_task()` checks `esp_mqtt_client_register_event()` and `esp_mqtt_client_start()`, clears `s_client`, destroys the client, and returns the error to `sysload` on failure.
 
 ### FW-03-004
 - Severity: `P2`
