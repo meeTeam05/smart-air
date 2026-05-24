@@ -475,6 +475,7 @@ Nhận message trên device/{id}/command
 
 > Kênh app chuyển `secret_key` xuống firmware là local device provisioning, không phải MQTT contract công khai của backend.
 > Firmware hiện hỗ trợ `POST http://<device-ip>/api/config` với JSON `{ "device_id": "...", "secret_key": "...", "broker_uri": "wss://minhnhat05.xyz/mqtt" }`; `broker_uri` optional. Nếu bỏ qua, firmware xóa override cũ và dùng Kconfig default. Endpoint này chỉ dùng trước lần MQTT login đầu tiên, validate `device_id` phải trùng MAC thật của ESP32, sau đó firmware lưu NVS và reboot.
+> Security note: hop này hiện là plain HTTP trên LAN, không có TLS, request auth, hay one-time bootstrap token trong firmware. Triển khai hiện tại giả định installer tin cậy local network trong lúc provisioning; shared/untrusted LAN có thể intercept hoặc race `secret_key`.
 
 ### 6.1 Provisioning sequence bắt buộc
 

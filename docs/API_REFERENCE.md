@@ -1057,6 +1057,7 @@ Tất cả centralized tại `src/constants.js`:
 > `{ "device_id": "aa:bb:cc:dd:ee:ff", "secret_key": "...", "broker_uri": "wss://minhnhat05.xyz/mqtt" }`.
 > `broker_uri` optional; nếu bỏ qua firmware xóa override cũ và dùng Kconfig default.
 > Endpoint này là local device provisioning, không phải public server REST endpoint.
+> Security note: transport hiện là plain HTTP trên LAN, không có TLS, request auth, hay one-time bootstrap token trong firmware. Flow này chỉ phù hợp khi thiết bị đang ở mạng cài đặt tạm thời và installer tin cậy toàn bộ local network trong lúc provisioning; shared/untrusted LAN có thể sniff hoặc race `secret_key`.
 
 ### Flow 2 — Realtime Dashboard
 

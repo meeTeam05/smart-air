@@ -71,6 +71,7 @@ Legend:
 - Description: Local provisioning accepts `device_id`, `broker_uri`, and `secret_key` over unauthenticated plain HTTP using `esp_http_server` on port `80`. There is no TLS, no request authentication, and no one-time bootstrap token in firmware.
 - Impact: Any actor on the same LAN during first-time provisioning can race the legitimate installer, inject a rogue MQTT secret, or sniff the device secret in transit if the local network is not fully trusted.
 - Fix suggestion: Replace this with an authenticated bootstrap path such as secured BLE pairing plus one-time token, temporary AP + HTTPS, or another authenticated local trust handshake. If this tradeoff is intentionally accepted, document the threat model and deployment assumptions explicitly.
+- Disposition: `Intentional tradeoff documented`. Repo still uses local `POST http://<device-ip>/api/config` with no transport/auth protection, so no safe minimal firmware-only fix exists in this audit slice. Added explicit trusted-LAN threat-model notes in `docs/API_REFERENCE.md`, `docs/MQTT_PROTOCOL.md`, and `docs/ARCHITECTURE.md`; redesign remains product/security follow-up.
 
 ### FW-03-007
 - Severity: `P1`

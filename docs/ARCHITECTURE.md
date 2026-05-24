@@ -332,6 +332,12 @@ BLE and local provisioning flow:
 +-------------------------------------+        +---------------------------------------+        +------------------------------------+
 ```
 
+Current trust assumption for step 6:
+
+- transport is plain HTTP on the local LAN
+- firmware does not require TLS, request authentication, or a one-time bootstrap token for `/api/config`
+- this is only acceptable when provisioning happens on a trusted installer-controlled network; hostile or shared LANs can sniff or race the one-time `secret_key`
+
 ### Step 1: BLE Wi-Fi provisioning
 
 `firmware/components/general/ble_prov/ble_prov.c` implements BLE provisioning using NimBLE.
