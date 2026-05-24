@@ -174,6 +174,54 @@ test('updateReported guards stale shadow reports by payload ts', async () => {
     assert.equal(redisWrites[0].value.version, currentRow.cache_version);
 });
 
+test('updateReported clamps future shadow report ts before storing or ordering', async () => {
+    const realDateNow = Date.now;
+    Date.now = () => new Date('2026-05-02T03:04:05.000Z').getTime();
+
+    let upsertParams = null;
+    const fastify = {
+        log: createLogger(),
+        redis: {
+            async eval() {
+                return 1;
+            },
+        },
+        db: {
+            async query(sql, params) {
+                if (sql.includes('INSERT INTO device_shadows')) {
+                    upsertParams = params;
+                    return {
+                        rows: [{
+                            reported: { mode: 'on', relay_1: true, ts: 1777691045 },
+                            desired: {},
+                            updated_at: new Date('2026-05-02T03:04:05.000Z'),
+                            cache_version: '2026-05-02T03:04:05.000000Z',
+                        }],
+                        rowCount: 1,
+                    };
+                }
+                throw new Error(`Unexpected SQL: ${sql}`);
+            },
+        },
+    };
+
+    try {
+        const result = await updateReported(
+            fastify,
+            DEVICE_ID,
+            { mode: 'on', relay_1: true, ts: 4_102_444_800 }
+        );
+
+        assert.ok(upsertParams, 'shadow upsert missing');
+        assert.equal(upsertParams[2], 1777691045);
+        assert.equal(JSON.parse(upsertParams[1]).ts, 1777691045);
+        assert.equal(result.applied, true);
+        assert.equal(result.shadow.reported.ts, 1777691045);
+    } finally {
+        Date.now = realDateNow;
+    }
+});
+
 test('shadow cache writes use updatedAt compare-and-set semantics', async () => {
     const evalCalls = [];
     const fastify = {

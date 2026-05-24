@@ -1,5 +1,7 @@
 import { REDIS_TTL_SHADOW } from '../constants.js';
 
+const MAX_FUTURE_SHADOW_SKEW_SEC = 300;
+
 const SHADOW_CACHE_SET_SCRIPT = `
 local existing = redis.call('GET', KEYS[1])
 if existing then
@@ -207,8 +209,18 @@ async function _updateField(fastify, deviceId, field, value) {
     return shadow;
 }
 
+function normalizeShadowReportTs(reportTs, nowSec = Math.floor(Date.now() / 1000)) {
+    if (reportTs > nowSec + MAX_FUTURE_SHADOW_SKEW_SEC) return nowSec;
+    return reportTs;
+}
+
 export async function updateReported(fastify, deviceId, data) {
     const reportTs = Number(data.ts);
+    const hasFiniteReportTs = Number.isFinite(reportTs);
+    const normalizedReportTs = hasFiniteReportTs ? normalizeShadowReportTs(reportTs) : reportTs;
+    const normalizedData = hasFiniteReportTs && normalizedReportTs !== reportTs
+        ? { ...data, ts: normalizedReportTs }
+        : data;
     const { rows } = await fastify.db.query(
         `INSERT INTO device_shadows (device_id, reported, updated_at)
          VALUES ($1, $2, NOW())
@@ -224,7 +236,7 @@ export async function updateReported(fastify, deviceId, data) {
             -1
          ) <= $3
          RETURNING ${SHADOW_DB_COLUMNS}`,
-        [deviceId, JSON.stringify(data), reportTs]
+        [deviceId, JSON.stringify(normalizedData), normalizedReportTs]
     );
 
     const applied = rows.length > 0;
@@ -236,7 +248,7 @@ export async function updateReported(fastify, deviceId, data) {
         shadow,
         row ? shadowCacheVersionFromRow(row) : ''
     );
-    return { shadow, applied };
+    return { shadow, applied, normalizedTs: normalizedReportTs };
 }
 
 export const setDesired     = (f, id, data) => _updateField(f, id, 'desired', data);
