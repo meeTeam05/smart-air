@@ -204,6 +204,7 @@ esp_err_t wifi_sta_init(void)
     }
 
     bool wifi_inited = false;
+    esp_err_t err = ESP_OK;
 
     s_wifi_eg = xEventGroupCreate();
     if (s_wifi_eg == NULL) {
@@ -212,11 +213,12 @@ esp_err_t wifi_sta_init(void)
 
     s_netif = esp_netif_create_default_wifi_sta();
     if (s_netif == NULL) {
-        return ESP_FAIL;
+        err = ESP_FAIL;
+        goto fail;
     }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_err_t err = esp_wifi_init(&cfg);
+    err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
         goto fail;
     }

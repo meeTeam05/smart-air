@@ -31,6 +31,7 @@ Legend:
 - Description: `wifi_sta_init()` creates `s_wifi_eg` first, then returns immediately if `esp_netif_create_default_wifi_sta()` fails. That early return skips cleanup of the already-created event group.
 - Impact: Low-memory or partial-init boot failures leak one event group handle per attempt until reboot. Minor in normal boots, but it weakens clean recovery under repeated init stress.
 - Fix suggestion: Route all post-allocation failures through the common `fail:` cleanup path or explicitly delete `s_wifi_eg` before the early return.
+- Disposition: `Fixed in working tree (pending commit)`. `esp_netif_create_default_wifi_sta()` failure now jumps into the shared `fail:` cleanup path, so the already-created event group is deleted before returning.
 
 ### FW-03-003
 - Severity: `P2`
