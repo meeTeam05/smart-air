@@ -59,7 +59,10 @@ esp_err_t factory_reset_run(void)
     sensor_task_set_enabled(false);
 
     /* 1. Clean WiFi shutdown */
-    wifi_sta_deinit();
+    err = wifi_sta_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Continuing factory reset after wifi_sta_deinit error (%s)", esp_err_to_name(err));
+    }
 
     /* 2. Clean MQTT shutdown (suppresses spurious reconnects during reboot) */
     mqtt_stop();

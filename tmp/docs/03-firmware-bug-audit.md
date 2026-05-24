@@ -101,6 +101,7 @@ Legend:
 - Description: Wi-Fi init/deinit paths use `ESP_ERROR_CHECK()` for operations that can legitimately fail with recoverable or benign states, including cleanup during factory reset. `factory_reset_run()` depends on `wifi_sta_deinit()`, so a not-connected or invalid-state Wi-Fi call can abort the whole firmware instead of returning an error.
 - Impact: Factory reset and boot recovery paths can crash before NVS erase finishes, leaving the device stuck in a fault loop or partially reset state under real-world Wi-Fi failures.
 - Fix suggestion: Replace `ESP_ERROR_CHECK()` with explicit `esp_err_t` handling, tolerate benign cleanup states such as already-disconnected/stopped, and propagate errors back to callers instead of aborting.
+- Disposition: `Fixed in working tree (pending commit)`. `wifi_sta_deinit()` now logs and tolerates benign Wi-Fi cleanup states instead of aborting, returns the first real teardown error, and `factory_reset_run()` logs that error but continues erasing NVS/rebooting.
 
 ### FW-03-010
 - Severity: `P3`

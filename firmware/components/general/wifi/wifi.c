@@ -39,6 +39,29 @@ static uint32_t s_wifi_eg_users;
 
 #define WIFI_MAX_RECONNECT_ATTEMPTS 10
 
+static bool wifi_cleanup_err_is_benign(esp_err_t err)
+{
+    return err == ESP_OK || err == ESP_ERR_WIFI_NOT_INIT || err == ESP_ERR_WIFI_NOT_STARTED
+           || err == ESP_ERR_WIFI_NOT_CONNECT;
+}
+
+static void wifi_record_cleanup_result(const char *step, esp_err_t step_err, esp_err_t *first_err)
+{
+    if (step_err == ESP_OK) {
+        return;
+    }
+
+    if (wifi_cleanup_err_is_benign(step_err)) {
+        ESP_LOGW(TAG, "%s during Wi-Fi cleanup: %s", step, esp_err_to_name(step_err));
+        return;
+    }
+
+    ESP_LOGE(TAG, "%s during Wi-Fi cleanup failed: %s", step, esp_err_to_name(step_err));
+    if (first_err != NULL && *first_err == ESP_OK) {
+        *first_err = step_err;
+    }
+}
+
 static EventGroupHandle_t wifi_event_group_acquire(void)
 {
     EventGroupHandle_t wifi_eg = NULL;
@@ -352,6 +375,7 @@ esp_err_t wifi_sta_deinit(void)
     esp_netif_t *netif = NULL;
     esp_event_handler_instance_t wifi_handler = NULL;
     esp_event_handler_instance_t ip_handler = NULL;
+    esp_err_t err = ESP_OK;
 
     portENTER_CRITICAL(&s_state_lock);
     wifi_eg = s_wifi_eg;
@@ -371,21 +395,25 @@ esp_err_t wifi_sta_deinit(void)
         xEventGroupSetBits(wifi_eg, WIFI_FAIL_BIT);
     }
     if (wifi_handler != NULL) {
-        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_handler));
+        wifi_record_cleanup_result("esp_event_handler_instance_unregister(WIFI_EVENT)",
+                                   esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_handler),
+                                   &err);
     }
     if (ip_handler != NULL) {
-        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_handler));
+        wifi_record_cleanup_result("esp_event_handler_instance_unregister(IP_EVENT)",
+                                   esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_handler),
+                                   &err);
     }
     wifi_event_group_wait_for_users();
 
-    ESP_ERROR_CHECK(esp_wifi_disconnect());
-    ESP_ERROR_CHECK(esp_wifi_stop());
-    ESP_ERROR_CHECK(esp_wifi_deinit());
+    wifi_record_cleanup_result("esp_wifi_disconnect", esp_wifi_disconnect(), &err);
+    wifi_record_cleanup_result("esp_wifi_stop", esp_wifi_stop(), &err);
+    wifi_record_cleanup_result("esp_wifi_deinit", esp_wifi_deinit(), &err);
     if (netif != NULL) {
         esp_netif_destroy(netif);
     }
     if (wifi_eg != NULL) {
         vEventGroupDelete(wifi_eg);
     }
-    return ESP_OK;
+    return err;
 }
