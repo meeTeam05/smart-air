@@ -162,14 +162,6 @@ export async function handleStatus(fastify, deviceId, payload) {
         } catch (e) {
             fastify.log.error({ err: e, deviceId }, 'flushPending failed on device online');
         }
-        const shadow = await getShadow(fastify, deviceId);
-        if (Object.keys(shadow.desired).length > 0) {
-            try {
-                await publishShadowGetResponse(fastify, deviceId, shadow, 'shadow sync publish failed after status online');
-            } catch {
-                // Status handling should still ACK; the device can request shadow/get again.
-            }
-        }
     }
 }
 

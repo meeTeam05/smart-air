@@ -274,9 +274,9 @@ test('handleStatus updates online true and false payloads', async () => {
         log: createLogger(),
         redis: {
             async set() {},
-            async get() {
-                return null;
-            },
+        },
+        async mqttPublish() {
+            throw new Error('handleStatus should not publish shadow/get_response on online status');
         },
         db: {
             async query(sql, params) {
@@ -296,7 +296,6 @@ test('handleStatus updates online true and false payloads', async () => {
                         }],
                     };
                 }
-                if (sql.includes('FROM device_shadows')) return { rows: [] };
                 return { rows: [], rowCount: 0 };
             },
         },

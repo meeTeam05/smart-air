@@ -438,7 +438,6 @@ Nhận message trên device/{id}/command
 ### 5.3 ESP32 reconnect
 
 - Sau khi reconnect WiFi/MQTT: firmware nên publish `shadow/get` để xin desired state mới nhất.
-- Server cũng push desired state khi nhận `status` online=true nếu shadow desired không rỗng.
 - Server flush pending commands từ PostgreSQL `commands` khi nhận `status` online=true.
 - ESP32 xử lý commands tuần tự (single-threaded MQTT event handler).
 
