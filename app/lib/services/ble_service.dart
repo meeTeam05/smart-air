@@ -27,6 +27,7 @@ class BleService {
 
   BluetoothDevice? _device;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
+  StreamSubscription<List<int>>? _notifySub;
 
   // ── Permission ─────────────────────────────────────────────────────────────
 
@@ -171,8 +172,9 @@ class BleService {
 
     // Subscribe notify before writing credentials so we don't miss the response
     await notifyChar.setNotifyValue(true);
+    await _notifySub?.cancel();
     final buffer = StringBuffer();
-    notifyChar.onValueReceived.listen((data) {
+    _notifySub = notifyChar.onValueReceived.listen((data) {
       buffer.write(utf8.decode(data));
       // Emit to stream only when we have a complete JSON object
       final s = buffer.toString();
@@ -291,6 +293,8 @@ class BleService {
 
   /// Disconnects from the current device (no-op if not connected).
   Future<void> disconnect() async {
+    await _notifySub?.cancel();
+    _notifySub = null;
     if (_device != null) {
       try {
         await _device!.disconnect();
