@@ -186,9 +186,9 @@ export async function handleTelemetry(fastify, deviceId, payload, packet = null,
         const insertResult = await fastify.db.query(
             `WITH normalized AS (
                  SELECT CASE
-                     WHEN $2 < $3 THEN to_timestamp($3)
-                     WHEN $2 > EXTRACT(EPOCH FROM NOW()) + 300 THEN NOW()
-                     ELSE to_timestamp($2)
+                     WHEN $2::double precision < $3::double precision THEN to_timestamp($3::double precision)
+                     WHEN $2::double precision > EXTRACT(EPOCH FROM NOW()) + 300 THEN NOW()
+                     ELSE to_timestamp($2::double precision)
                  END AS ts
              )
              INSERT INTO telemetry (device_id, ts, payload, mqtt_message_id)

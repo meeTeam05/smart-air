@@ -238,6 +238,8 @@ test('handleTelemetry clamps future telemetry against database NOW()', async () 
     const realtimeCall = calls.find((call) => call.sql.includes('INSERT INTO realtime_events'));
     assert.ok(telemetryCall, 'telemetry insert missing');
     assert.match(telemetryCall.sql, /EXTRACT\(EPOCH FROM NOW\(\)\)/);
+    assert.match(telemetryCall.sql, /to_timestamp\(\$2::double precision\)/);
+    assert.match(telemetryCall.sql, /to_timestamp\(\$3::double precision\)/);
     assert.equal(telemetryCall.params[1], 4_102_444_800);
     assert.deepEqual(JSON.parse(realtimeCall.params[3]), {
         ts: '2026-05-15T10:00:00.000Z',
