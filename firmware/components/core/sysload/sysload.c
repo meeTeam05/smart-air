@@ -451,7 +451,7 @@ static esp_err_t handle_shadow_get_response(const char *json_payload)
 
     shadow_sync_log_unknown_keys(patch);
     if (!shadow_sync_has_supported_key(patch)) {
-        ESP_LOGI(TAG, "shadow/get_response: no supported keys in %s", patch_source);
+        ESP_LOGI(TAG, "shadow/get_response: %s has no mode/relay changes to apply", patch_source);
         cJSON_Delete(root);
         return ESP_OK;
     }
