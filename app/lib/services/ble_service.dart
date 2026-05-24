@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../core/app_config.dart';
 import 'ble_models.dart';
 
 /// Singleton that owns the full BLE lifecycle for Smart Air provisioning + test mode.
@@ -81,7 +82,7 @@ class BleService {
                   ? platformName
                   : 'Unknown (${r.device.remoteId.str.substring(r.device.remoteId.str.length - 5)})';
 
-          if (!name.contains(SmartAirGatt.deviceNamePrefix)) continue;
+          if (!BleConfig.matchesProvisioningName(name)) continue;
 
           controller.add(BleDeviceInfo(
             remoteId: r.device.remoteId.str,

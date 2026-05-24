@@ -34,7 +34,7 @@ class BleConfig {
 
   static bool matchesProvisioningName(String name) {
     final normalized = name.trim();
-    return normalized.contains(provisioningDeviceNamePrefix) ||
+    return normalized.startsWith(provisioningDeviceNamePrefix) ||
         normalized.startsWith(legacyDeviceNamePrefix);
   }
 }
