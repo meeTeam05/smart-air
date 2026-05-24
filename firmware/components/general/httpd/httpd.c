@@ -25,6 +25,7 @@
 
 static const char *TAG = "httpd";
 #define MAX_CONFIG_BODY_LEN 512
+#define MAX_CONFIG_RECV_TIMEOUTS 3
 
 /* ── Handler context ─────────────────────────────────────────────────────── */
 
@@ -81,14 +82,25 @@ static esp_err_t config_post_handler(httpd_req_t *req)
 
     char body[MAX_CONFIG_BODY_LEN + 1] = {0};
     size_t received = 0;
+    int timeout_count = 0;
     while (received < (size_t)req->content_len) {
         int rc = httpd_req_recv(req, body + received, (size_t)req->content_len - received);
         if (rc == HTTPD_SOCK_ERR_TIMEOUT) {
+            timeout_count++;
+            if (timeout_count >= MAX_CONFIG_RECV_TIMEOUTS) {
+                ESP_LOGW(TAG,
+                         "POST /api/config recv timed out after %d attempts (received=%u/%lu)",
+                         timeout_count,
+                         (unsigned)received,
+                         (unsigned long)req->content_len);
+                return send_json_error(req, "408 Request Timeout", "request body receive timeout");
+            }
             continue;
         }
         if (rc <= 0) {
             return ESP_FAIL;
         }
+        timeout_count = 0;
         received += (size_t)rc;
     }
     body[received] = '\0';

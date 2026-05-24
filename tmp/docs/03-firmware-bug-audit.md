@@ -51,6 +51,7 @@ Legend:
 - Description: `config_post_handler()` loops forever on `HTTPD_SOCK_ERR_TIMEOUT` and never enforces a timeout budget or retry ceiling while receiving the POST body.
 - Impact: A slow or malicious provisioning client can pin the request handler indefinitely, delaying other work and creating a trivial availability problem during bootstrap. On small systems this also increases watchdog risk because provisioning never fails closed.
 - Fix suggestion: Track elapsed time or retry count, abort after a bounded receive budget, and return an explicit `408` or `400` JSON error.
+- Disposition: `Fixed in working tree (pending commit)`. `config_post_handler()` now aborts after three consecutive `HTTPD_SOCK_ERR_TIMEOUT` results, logs the stalled receive state, and returns `408 Request Timeout` JSON instead of looping forever.
 
 ### FW-03-005
 - Severity: `P2`
