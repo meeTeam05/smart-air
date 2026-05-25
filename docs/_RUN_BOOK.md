@@ -239,6 +239,34 @@ rtk proxy docker compose logs --tail=200 emqx
 
 Focus on:
 
+### App shows `Failed to load notifications`
+
+Likely meaning:
+
+- mobile app is calling `GET /api/notifications`
+- the public API is still on an older build without that route, or
+- the API code is updated but the database migration for `notification_events` has not run yet
+
+Do this in order:
+
+```bash
+cd /home/nhat/Working_Space/my-project/smart-air/server/api
+rtk npm run migrate
+
+cd /home/nhat/Working_Space/my-project/smart-air/server
+rtk proxy docker compose up -d --build api
+```
+
+Then verify:
+
+- API live endpoint is healthy
+- authenticated `GET /api/notifications` returns `200`
+
+If it still fails:
+
+- `404 Not found` usually means the API container is still running an older build
+- `500` with missing relation errors usually means the `notification_events` migration did not apply
+
 - `Connection refused`
 - `Not authorized`
 - `authentication_failure`
