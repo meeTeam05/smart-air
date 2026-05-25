@@ -48,6 +48,19 @@ App hiện được tổ chức theo các tầng chính sau:
 
 Ở mức kiến trúc, `services` chịu trách nhiệm giao tiếp bên ngoài, `providers` chịu trách nhiệm state orchestration, còn `screens/widgets` là tầng trình bày.
 
+```mermaid
+flowchart LR
+    UI["screens + widgets"] --> Providers["Riverpod providers"]
+    Providers --> Services["services"]
+    Services --> Core["core config / Dio / secure storage / router"]
+    Services --> API["Cloud API"]
+    Services --> SSE["SSE /realtime"]
+    Services --> BLE["BLE provisioning"]
+    Services --> LocalHTTP["local HTTP /api/info + /api/config"]
+    Models["models"] --> Providers
+    Design["Atmosphere design system"] --> UI
+```
+
 ## 4. Routing và navigation
 
 `app/lib/core/router.dart` là source of truth cho route map đang hoạt động.
@@ -97,6 +110,18 @@ Wizard provisioning là một flow 5 bước, truyền state chủ yếu qua que
 - `/provision/name`
 
 Những route này truyền `homeId`, `mac`, `deviceId`, và trong một số bước có thêm `ssid`.
+
+```mermaid
+flowchart TD
+    Splash["/"] --> Auth["/login + /register"]
+    Auth --> Shell["StatefulShellRoute.indexedStack"]
+    Shell --> Home["/home"]
+    Shell --> Notifications["/notifications"]
+    Shell --> Profile["/profile"]
+    Shell --> Homes["/homes + /homes/:homeId"]
+    Shell --> Device["/devices/:id + child routes"]
+    Shell --> Provision["/provision -> /scan -> /wifi -> /announce -> /name"]
+```
 
 ## 5. Kiến trúc auth và session
 
@@ -237,6 +262,27 @@ Provisioning là phần app có boundary phức tạp nhất vì nó nói chuy�
 - HTTP cục bộ trên IP của thiết bị
 - cloud API của `smart-air`
 
+```mermaid
+sequenceDiagram
+    participant App as Flutter app
+    participant BLE as BLE device
+    participant API as Fastify API
+    participant Local as http://device-ip
+    participant Cloud as announce endpoint
+
+    App->>BLE: scan + connect + write SSID/password
+    BLE-->>App: notify device_id + ip
+    App->>API: POST /devices
+    API-->>App: secret_key + device metadata
+    App->>Local: GET /api/info
+    App->>Local: POST /api/config
+    loop cho tới khi online hoặc timeout
+        App->>Cloud: GET /devices/announce/:deviceId
+        Cloud-->>App: announced=true/false
+    end
+    App->>API: updateDevice(name, roomId)
+```
+
 ### 8.1 Step 1 đến Step 5
 
 Wizard đang được implement thành 5 bước:
@@ -310,6 +356,16 @@ Dashboard thiết bị hiện dùng mô hình snapshot + delta:
 - delta sau đó qua `realtimeEventsProvider`
 
 Đây là cách app tránh mở polling dày cho mọi state đang hiển thị.
+
+```mermaid
+flowchart LR
+    REST["REST snapshot"] --> Providers["devices / shadow / commands / telemetry providers"]
+    SSE["GET /realtime"] --> Decoder["SseDecoder + RealtimeEvent"]
+    Decoder --> Providers
+    Providers --> UI["dashboard / notifications / profile UI"]
+    Decoder --> Status["realtime connection status"]
+    Status --> UI
+```
 
 ### 9.2 Device summary
 

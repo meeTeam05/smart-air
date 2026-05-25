@@ -43,6 +43,30 @@ Flutter app
   -> SSE over /api/realtime
 ```
 
+```mermaid
+flowchart LR
+    Internet["Internet"] --> Tunnel["Cloudflare Tunnel"]
+    Tunnel --> Nginx["Nginx"]
+
+    subgraph Core["Docker Compose core"]
+        API["Fastify API"]
+        EMQX["EMQX"]
+        DB["PostgreSQL / TimescaleDB"]
+        Redis["Redis"]
+        Grafana["Grafana"]
+        OTA["server/ota-files"]
+    end
+
+    Nginx -->|/api + /api/realtime| API
+    Nginx -->|/mqtt| EMQX
+    Nginx -->|/grafana| Grafana
+    Nginx -->|/ota| OTA
+
+    API -->|SQL| DB
+    API -->|cache / transient| Redis
+    API -->|MQTT bridge| EMQX
+```
+
 ### 2.1 Docker Compose services
 
 `server/docker-compose.yml` hiện định nghĩa các service chính sau:
@@ -156,6 +180,19 @@ Grafana là dashboard runtime cho telemetry và được publish qua `/grafana/`
 
 Trật tự này là một phần của kiến trúc. Readiness của API phụ thuộc vào việc DB, Redis, MQTT bridge, và realtime listener đều đã boot xong.
 
+```mermaid
+flowchart TD
+    Env["env validation"] --> Fastify["create Fastify instance"]
+    Fastify --> DBP["register db plugin"]
+    DBP --> RedisP["register redis plugin"]
+    RedisP --> AuthP["register auth plugin"]
+    AuthP --> MQTTP["register mqtt plugin"]
+    MQTTP --> RTP["register realtime plugin"]
+    RTP --> Jobs["register background jobs"]
+    Jobs --> Routes["register /api route groups"]
+    Routes --> Listen["listen 0.0.0.0:3000"]
+```
+
 ### 4.2 Plugin boundaries
 
 Các plugin chính hiện tại:
@@ -259,6 +296,21 @@ Luồng đăng ký thiết bị hiện tại đi qua API:
 
 Điểm quan trọng về kiến trúc: broker auth được provision bởi server, không phải cấu hình thủ công trong EMQX.
 
+```mermaid
+sequenceDiagram
+    participant App as Flutter app
+    participant API as Fastify API
+    participant DB as PostgreSQL
+    participant EMQX as EMQX Admin API
+
+    App->>API: POST /api/devices
+    API->>DB: kiểm tra quyền home / room
+    API->>API: sinh secret_key + hash
+    API->>EMQX: create user + ACL cho device_id
+    API->>DB: INSERT devices(secret_key_hash,...)
+    API-->>App: device metadata + one-time secret_key
+```
+
 ### 6.3 MQTT ingress từ thiết bị
 
 `plugins/mqtt.js` tạo MQTT client nội bộ `sa-api-bridge` và subscribe các topic:
@@ -290,6 +342,26 @@ EMQX
 ```
 
 Nếu handler throw lỗi, packet không được ack để EMQX redeliver. Điều này làm manual acknowledgement trở thành một phần của reliability architecture.
+
+```mermaid
+sequenceDiagram
+    participant Device as Firmware
+    participant EMQX as EMQX
+    participant MQTT as mqttPlugin
+    participant Handler as mqtt-handlers
+    participant DB as PostgreSQL
+    participant RT as realtime_events + pg_notify
+    participant SSE as realtime plugin
+    participant App as Flutter app
+
+    Device->>EMQX: publish status / telemetry / shadow / response / ota.progress
+    EMQX->>MQTT: QoS1 packet
+    MQTT->>Handler: parse topic + payload
+    Handler->>DB: persist canonical state
+    Handler->>RT: createRealtimeEvent(...)
+    RT->>SSE: LISTEN/NOTIFY fanout
+    SSE-->>App: authenticated SSE event
+```
 
 ### 6.4 Command dispatch
 
