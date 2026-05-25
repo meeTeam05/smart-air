@@ -48,10 +48,27 @@ static const led_color_t s_color_table[] = {
 static rmt_channel_handle_t s_chan = NULL;
 static rmt_encoder_handle_t s_encoder = NULL;
 static esp_timer_handle_t s_timer = NULL;
+static TaskHandle_t s_led_task = NULL;
 
 static portMUX_TYPE s_spinlock = portMUX_INITIALIZER_UNLOCKED;
 static volatile led_state_t s_state = LED_STATE_OFF;
 static volatile bool s_led_on = false;
+
+static void request_led_refresh(void)
+{
+    if (s_led_task == NULL) {
+        return;
+    }
+
+    if (xPortInIsrContext()) {
+        BaseType_t higher_priority_task_woken = pdFALSE;
+        vTaskNotifyGiveFromISR(s_led_task, &higher_priority_task_woken);
+        portYIELD_FROM_ISR(higher_priority_task_woken);
+        return;
+    }
+
+    xTaskNotifyGive(s_led_task);
+}
 
 static void write_color(uint8_t r, uint8_t g, uint8_t b)
 {
@@ -63,10 +80,34 @@ static void write_color(uint8_t r, uint8_t g, uint8_t b)
     rmt_tx_wait_all_done(s_chan, portMAX_DELAY);
 }
 
+static void led_task(void *arg)
+{
+    (void)arg;
+
+    while (true) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        led_state_t state;
+        bool on;
+
+        portENTER_CRITICAL(&s_spinlock);
+        state = s_state;
+        on = s_led_on;
+        portEXIT_CRITICAL(&s_spinlock);
+
+        if (on) {
+            write_color(s_color_table[state].r, s_color_table[state].g, s_color_table[state].b);
+        } else {
+            write_color(0, 0, 0);
+        }
+    }
+}
+
 static void blink_timer_cb(void *arg)
 {
+    (void)arg;
+
     led_state_t state;
-    bool on;
 
     portENTER_CRITICAL(&s_spinlock);
     state = s_state;
@@ -75,13 +116,35 @@ static void blink_timer_cb(void *arg)
     } else {
         s_led_on = true;
     }
-    on = s_led_on;
     portEXIT_CRITICAL(&s_spinlock);
 
-    if (on) {
-        write_color(s_color_table[state].r, s_color_table[state].g, s_color_table[state].b);
-    } else {
-        write_color(0, 0, 0);
+    request_led_refresh();
+}
+
+static void cleanup_init_failure(void)
+{
+    if (s_led_task != NULL) {
+        vTaskDelete(s_led_task);
+        s_led_task = NULL;
+    }
+
+    if (s_timer != NULL) {
+        esp_timer_delete(s_timer);
+        s_timer = NULL;
+    }
+
+    if (s_encoder != NULL) {
+        rmt_del_encoder(s_encoder);
+        s_encoder = NULL;
+    }
+
+    if (s_chan != NULL) {
+        esp_err_t err = rmt_disable(s_chan);
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+            ESP_LOGW(TAG, "rmt_disable during cleanup failed (%s)", esp_err_to_name(err));
+        }
+        rmt_del_channel(s_chan);
+        s_chan = NULL;
     }
 }
 
@@ -117,12 +180,14 @@ esp_err_t led_init(void)
     err = rmt_new_bytes_encoder(&enc_cfg, &s_encoder);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "rmt_new_bytes_encoder failed (%s)", esp_err_to_name(err));
+        cleanup_init_failure();
         return err;
     }
 
     err = rmt_enable(s_chan);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "rmt_enable failed (%s)", esp_err_to_name(err));
+        cleanup_init_failure();
         return err;
     }
 
@@ -139,12 +204,21 @@ esp_err_t led_init(void)
     err = esp_timer_create(&timer_args, &s_timer);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_timer_create failed (%s)", esp_err_to_name(err));
+        cleanup_init_failure();
         return err;
+    }
+
+    BaseType_t rc = xTaskCreatePinnedToCore(led_task, "led_task", 2048, NULL, 4, &s_led_task, APP_CPU_NUM);
+    if (rc != pdPASS) {
+        ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed");
+        cleanup_init_failure();
+        return ESP_ERR_NO_MEM;
     }
 
     err = esp_timer_start_periodic(s_timer, 500 * 1000ULL); /* µs */
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_timer_start_periodic failed (%s)", esp_err_to_name(err));
+        cleanup_init_failure();
         return err;
     }
 
@@ -162,6 +236,7 @@ void led_set_state(led_state_t state)
     s_state = state;
     s_led_on = true; /* start each new state with LED on */
     portEXIT_CRITICAL(&s_spinlock);
+    request_led_refresh();
 #else
     (void)state;
 #endif

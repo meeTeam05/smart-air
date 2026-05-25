@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/app_config.dart';
 import '../core/app_exception.dart';
 import '../models/command.dart';
 import '../models/device.dart';
@@ -18,9 +19,34 @@ class DeviceService {
   final Dio _dio;
 
   String _normalizeDeviceId(String value) => value.trim().toLowerCase();
+  Map<String, dynamic> _bodyAsMap(Object? data) {
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw const ApiException(0, 'Unexpected server response');
+  }
+
+  List<Map<String, dynamic>> _bodyAsMapList(Object? data) {
+    if (data is! List) {
+      throw const ApiException(0, 'Unexpected server response');
+    }
+    return data.map((item) {
+      if (item is Map) return Map<String, dynamic>.from(item);
+      throw const ApiException(0, 'Unexpected server response');
+    }).toList();
+  }
+
+  String _commandIdFromBody(Object? data) {
+    final body = _bodyAsMap(data);
+    final commandId = body['command_id'] as String?;
+    if (commandId == null || commandId.isEmpty) {
+      throw const ApiException(0, 'Unexpected server response');
+    }
+    return commandId;
+  }
+
   String _normalizeProvisioningHost(String value) {
     final trimmed = value.trim();
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    if (trimmed.startsWith('${ApiConfig.localProvisioningScheme}://') ||
+        trimmed.startsWith('https://')) {
       return Uri.parse(trimmed).host;
     }
     return trimmed;
@@ -39,7 +65,7 @@ class DeviceService {
 
     while (DateTime.now().isBefore(deadline)) {
       try {
-        final res = await localDio.get('/api/info');
+        final res = await localDio.get(ApiConfig.localInfoPath);
         final data = res.data;
         if (data is Map<String, dynamic>) {
           final actualDeviceId = _normalizeDeviceId(
@@ -84,7 +110,7 @@ class DeviceService {
         'home_id': homeId,
         if (roomId != null) 'room_id': roomId,
       });
-      final data = res.data as Map<String, dynamic>;
+      final data = _bodyAsMap(res.data);
       final secretKey = data['secret_key'] as String?;
       if (secretKey == null || secretKey.isEmpty) {
         throw const ApiException(0, 'Provisioning response missing secret_key');
@@ -123,7 +149,7 @@ class DeviceService {
     final normalizedHost = _normalizeProvisioningHost(host);
     final localDio = Dio(
       BaseOptions(
-        baseUrl: 'http://$normalizedHost',
+        baseUrl: '${ApiConfig.localProvisioningScheme}://$normalizedHost',
         connectTimeout: const Duration(seconds: 2),
         sendTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 2),
@@ -134,7 +160,7 @@ class DeviceService {
     await _waitForProvisioningApiReady(localDio, normalizedDeviceId);
 
     try {
-      await localDio.post('/api/config', data: {
+      await localDio.post(ApiConfig.localConfigPath, data: {
         'device_id': normalizedDeviceId,
         'secret_key': secretKey,
         if (brokerUri != null && brokerUri.trim().isNotEmpty)
@@ -157,7 +183,7 @@ class DeviceService {
     try {
       final normalizedDeviceId = _normalizeDeviceId(mac);
       final res = await _dio.get('/devices/announce/$normalizedDeviceId');
-      return (res.data as Map<String, dynamic>)['announced'] == true;
+      return _bodyAsMap(res.data)['announced'] == true;
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -166,7 +192,7 @@ class DeviceService {
   Future<List<Device>> getDevices() async {
     try {
       final res = await _dio.get('/devices');
-      return (res.data as List).map((e) => Device.fromJson(e)).toList();
+      return _bodyAsMapList(res.data).map(Device.fromJson).toList();
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -179,7 +205,7 @@ class DeviceService {
         if (name != null) 'name': name,
         if (roomId != null) 'room_id': roomId,
       });
-      return Device.fromJson(res.data as Map<String, dynamic>);
+      return Device.fromJson(_bodyAsMap(res.data));
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -198,7 +224,7 @@ class DeviceService {
     try {
       final normalizedDeviceId = _normalizeDeviceId(deviceId);
       final res = await _dio.get('/devices/$normalizedDeviceId/shadow');
-      return DeviceShadow.fromJson(res.data as Map<String, dynamic>);
+      return DeviceShadow.fromJson(_bodyAsMap(res.data));
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -206,8 +232,9 @@ class DeviceService {
 
   /// Updates the desired state of the device shadow.
   ///
-  /// IMPORTANT: This is for declarative shadow configuration (e.g. thresholds,
-  /// schedules). DO NOT use this for relay/mode command toggles;
+  /// IMPORTANT: This is only for the declarative shadow keys the firmware
+  /// currently supports (`mode`, `relay_1`, `relay_2`, `relay_3`).
+  /// DO NOT use this for relay/mode command toggles;
   /// use [setRelay] or [setMode] instead for real-time control.
   Future<void> setDesired(String deviceId, Map<String, dynamic> desired) async {
     try {
@@ -225,7 +252,7 @@ class DeviceService {
       final normalizedDeviceId = _normalizeDeviceId(deviceId);
       final res = await _dio.post('/devices/$normalizedDeviceId/command',
           data: {'payload': payload});
-      return res.data['command_id'] as String;
+      return _commandIdFromBody(res.data);
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -243,7 +270,7 @@ class DeviceService {
         '/devices/$normalizedDeviceId/relay/$channel',
         data: {'state': state},
       );
-      return res.data['command_id'] as String;
+      return _commandIdFromBody(res.data);
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -261,7 +288,7 @@ class DeviceService {
         '/devices/$normalizedDeviceId/mode',
         data: {'mode': mode},
       );
-      return res.data['command_id'] as String;
+      return _commandIdFromBody(res.data);
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -273,7 +300,7 @@ class DeviceService {
       final normalizedDeviceId = _normalizeDeviceId(deviceId);
       final res = await _dio.get('/devices/$normalizedDeviceId/commands',
           queryParameters: {'limit': limit, 'offset': offset});
-      return (res.data as List).map((e) => Command.fromJson(e)).toList();
+      return _bodyAsMapList(res.data).map(Command.fromJson).toList();
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -324,7 +351,9 @@ class DeviceService {
         'limit': limit,
       });
       return (res.data as List)
-          .map((e) => TelemetryPoint.fromJson(e as Map<String, dynamic>))
+          .whereType<Map>()
+          .map((e) => TelemetryPoint.tryFromJson(Map<String, dynamic>.from(e)))
+          .whereType<TelemetryPoint>()
           .toList();
     } on DioException catch (e) {
       throw _map(e);
@@ -333,8 +362,9 @@ class DeviceService {
 
   AppException _map(DioException e) {
     if (e.error is AppException) return e.error as AppException;
-    final msg = e.response?.data?['error'] as String? ?? 'Unknown error';
-    return ApiException(e.response?.statusCode ?? 0, msg);
+    final body = e.response?.data;
+    final msg = body is Map ? body['error'] as String? : null;
+    return ApiException(e.response?.statusCode ?? 0, msg ?? 'Unknown error');
   }
 }
 

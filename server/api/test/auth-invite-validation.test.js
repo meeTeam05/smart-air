@@ -85,3 +85,43 @@ test('home invite validates email type and normalizes valid email lookup', async
 
     await app.close();
 });
+
+test('home invite returns success for existing members to avoid account enumeration', async () => {
+    const app = Fastify({ logger: false });
+    const inserts = [];
+
+    app.decorate('authenticate', async (request) => {
+        request.user = { sub: 'owner-1' };
+    });
+    app.decorate('withTransaction', async (fn) => fn(app.db));
+    app.decorate('db', {
+        async query(sql, params = []) {
+            if (sql.includes('FROM home_members hm')) {
+                return { rows: [{ role: 'owner' }], rowCount: 1 };
+            }
+            if (sql.includes('SELECT id FROM users')) {
+                return { rows: [{ id: 'user-2' }], rowCount: 1 };
+            }
+            if (sql.includes('INSERT INTO home_members')) {
+                inserts.push(params);
+                const err = new Error('duplicate member');
+                err.code = '23505';
+                throw err;
+            }
+            return { rows: [], rowCount: 0 };
+        },
+    });
+    await app.register(homesRoutes);
+
+    const duplicateMember = await app.inject({
+        method: 'POST',
+        url: `/homes/${HOME_ID}/invite`,
+        payload: { email: 'member@example.com' },
+    });
+
+    assert.equal(duplicateMember.statusCode, 200);
+    assert.deepEqual(duplicateMember.json(), { success: true });
+    assert.deepEqual(inserts, [[HOME_ID, 'user-2', 'member']]);
+
+    await app.close();
+});

@@ -1,6 +1,9 @@
 /**
  * @file gm702b.c
+ * 
  * @brief Winsen GM-702B CO Gas Sensor driver implementation.
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  *
  * Reads analog voltage from DFRobot SEN0564 breakout board via ADC1.
  * Converts voltage → resistance → Rs/R0 ratio → CO ppm via lookup table.
@@ -18,6 +21,7 @@
 #include <freertos/task.h>
 
 static const char *TAG = "gm702b";
+static portMUX_TYPE s_state_lock = portMUX_INITIALIZER_UNLOCKED;
 
 #define CHECK(x)                                                                     \
     do {                                                                             \
@@ -55,8 +59,9 @@ static const ratio_point_t CO_CURVE[] = {
 };
 static const int CO_CURVE_LEN = sizeof(CO_CURVE) / sizeof(CO_CURVE[0]);
 
-#define CALIBRATION_SAMPLES  20
-#define CALIBRATION_DELAY_MS 50
+#define CALIBRATION_SAMPLES           20
+#define CALIBRATION_DELAY_MS          50
+#define CALIBRATION_MIN_VALID_SAMPLES ((CALIBRATION_SAMPLES * 3) / 4)
 
 /**
  * @brief Log-log interpolation between two points.
@@ -110,6 +115,22 @@ static float voltage_to_rs(float vout_v, float rl, float vc)
     return rl * (vc - vout_v) / vout_v;
 }
 
+static void gm702b_get_calibration_state(gm702b_t *dev, float *r0, bool *calibrated)
+{
+    portENTER_CRITICAL(&s_state_lock);
+    *r0 = dev->r0;
+    *calibrated = dev->calibrated;
+    portEXIT_CRITICAL(&s_state_lock);
+}
+
+static void gm702b_set_calibration_state(gm702b_t *dev, float r0, bool calibrated)
+{
+    portENTER_CRITICAL(&s_state_lock);
+    dev->r0 = r0;
+    dev->calibrated = calibrated;
+    portEXIT_CRITICAL(&s_state_lock);
+}
+
 /* ── Public API ────────────────────────────────────────────────────────── */
 
 esp_err_t gm702b_init(gm702b_t *dev, adc_channel_t channel, float rl, float vc)
@@ -134,17 +155,31 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
 
     float rs_sum = 0.0f;
     int valid = 0;
+    esp_err_t last_err = ESP_FAIL;
 
     ESP_LOGI(TAG, "Calibrating R0 in clean air (%d samples)...", CALIBRATION_SAMPLES);
 
     for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
         int mv;
         esp_err_t err = adc_bus_read_voltage(dev->channel, &mv);
-        if (err != ESP_OK)
+        if (err != ESP_OK) {
+            last_err = err;
+            ESP_LOGW(TAG, "Calibration sample %d/%d failed: %s", i + 1, CALIBRATION_SAMPLES, esp_err_to_name(err));
             continue;
+        }
 
         float vout = (float)mv / 1000.0f;
         float rs = voltage_to_rs(vout, dev->rl, dev->vc);
+        if (!isfinite(rs) || rs <= 0.0f) {
+            last_err = ESP_ERR_INVALID_STATE;
+            ESP_LOGW(TAG,
+                     "Calibration sample %d/%d invalid: Vout=%.3fV produced Rs=%.3f ohm",
+                     i + 1,
+                     CALIBRATION_SAMPLES,
+                     vout,
+                     rs);
+            continue;
+        }
         rs_sum += rs;
         valid++;
 
@@ -153,11 +188,19 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
 
     if (valid == 0) {
         ESP_LOGE(TAG, "Calibration failed — no valid readings");
-        return ESP_FAIL;
+        return last_err;
     }
 
-    dev->r0 = rs_sum / (float)valid;
-    dev->calibrated = true;
+    if (valid < CALIBRATION_MIN_VALID_SAMPLES) {
+        ESP_LOGE(TAG,
+                 "Calibration failed — insufficient valid readings (%d/%d, need at least %d)",
+                 valid,
+                 CALIBRATION_SAMPLES,
+                 CALIBRATION_MIN_VALID_SAMPLES);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    gm702b_set_calibration_state(dev, rs_sum / (float)valid, true);
 
     ESP_LOGI(TAG, "Calibration complete: R0 = %.0f ohm (%d samples)", dev->r0, valid);
     return ESP_OK;
@@ -167,8 +210,12 @@ esp_err_t gm702b_read(gm702b_t *dev, float *co_ppm)
 {
     CHECK_ARG(dev && co_ppm);
 
-    if (!dev->calibrated) {
-        ESP_LOGW(TAG, "Sensor not calibrated — returning raw ratio as ppm estimate");
+    float r0;
+    bool calibrated;
+    gm702b_get_calibration_state(dev, &r0, &calibrated);
+
+    if (!calibrated || r0 <= 0.0f) {
+        return ESP_ERR_INVALID_STATE;
     }
 
     int mv;
@@ -176,27 +223,27 @@ esp_err_t gm702b_read(gm702b_t *dev, float *co_ppm)
 
     float vout = (float)mv / 1000.0f;
     float rs = voltage_to_rs(vout, dev->rl, dev->vc);
-
-    if (dev->calibrated && dev->r0 > 0) {
-        float ratio = rs / dev->r0;
-        *co_ppm = ratio_to_ppm_co(ratio);
-    } else {
-        *co_ppm = 0.0f;
-    }
+    float ratio = rs / r0;
+    *co_ppm = ratio_to_ppm_co(ratio);
 
     return ESP_OK;
 }
 
 esp_err_t gm702b_read_ratio(gm702b_t *dev, float *ratio)
 {
-    CHECK_ARG(dev && ratio && dev->calibrated && dev->r0 > 0);
+    CHECK_ARG(dev && ratio);
+
+    float r0;
+    bool calibrated;
+    gm702b_get_calibration_state(dev, &r0, &calibrated);
+    CHECK_ARG(calibrated && r0 > 0);
 
     int mv;
     CHECK(adc_bus_read_voltage(dev->channel, &mv));
 
     float vout = (float)mv / 1000.0f;
     float rs = voltage_to_rs(vout, dev->rl, dev->vc);
-    *ratio = rs / dev->r0;
+    *ratio = rs / r0;
 
     return ESP_OK;
 }

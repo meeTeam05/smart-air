@@ -21,7 +21,16 @@ class SecureStorage {
   Future<Map<String, dynamic>?> getUserJson() async {
     final raw = await _storage.read(key: _userKey);
     if (raw == null) return null;
-    return jsonDecode(raw) as Map<String, dynamic>;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // Fall through and clear the corrupt session blob below.
+    }
+    await _storage.delete(key: _userKey);
+    return null;
   }
 
   Future<void> clear() => _storage.deleteAll();

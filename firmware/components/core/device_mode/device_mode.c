@@ -219,6 +219,16 @@ esp_err_t device_mode_init(const char *device_id)
     s_mode_on = persisted_mode_on;
     sensor_task_set_enabled(s_mode_on);
 
+#if SA_ENABLE_RELAYS
+    if (!persisted_mode_on) {
+        err = relay_force_all_off();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "relay_force_all_off failed during OFF-mode init: %s", esp_err_to_name(err));
+            return err;
+        }
+    }
+#endif
+
     ESP_LOGI(TAG, "init OK (mode=%s)", s_mode_on ? "on" : "off");
     return ESP_OK;
 }
@@ -230,23 +240,27 @@ esp_err_t device_mode_set(bool on)
     }
 
     esp_err_t first_err = ESP_OK;
+    esp_err_t err;
 
     if (!on) {
-        s_mode_on = false;
-
-        sensor_task_set_enabled(false);
-
-        esp_err_t err = publish_final_null_telemetry();
+        err = publish_final_null_telemetry();
         if (err != ESP_OK && first_err == ESP_OK) {
             first_err = err;
         }
 
+        bool relays_forced_off = true;
 #if SA_ENABLE_RELAYS
         err = relay_force_all_off();
         if (err != ESP_OK && first_err == ESP_OK) {
             first_err = err;
+            relays_forced_off = false;
         }
 #endif
+
+        if (relays_forced_off) {
+            s_mode_on = false;
+            sensor_task_set_enabled(false);
+        }
 
         err = publish_mode_off_shadow();
         if (err != ESP_OK && first_err == ESP_OK) {
@@ -262,13 +276,12 @@ esp_err_t device_mode_set(bool on)
     }
 
     s_mode_on = true;
+    sensor_task_set_enabled(true);
 
-    esp_err_t err = persist_mode(true);
+    err = persist_mode(true);
     if (err != ESP_OK && first_err == ESP_OK) {
         first_err = err;
     }
-
-    sensor_task_set_enabled(true);
 
     err = publish_mode_on_shadow();
     if (err != ESP_OK && first_err == ESP_OK) {
@@ -276,6 +289,15 @@ esp_err_t device_mode_set(bool on)
     }
 
     return first_err;
+}
+
+esp_err_t device_mode_publish_current_shadow(void)
+{
+    if (s_shadow_topic[0] == '\0') {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return s_mode_on ? publish_mode_on_shadow() : publish_mode_off_shadow();
 }
 
 bool device_mode_get(void)

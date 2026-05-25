@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../app_theme.dart';
+import '../../../core/back_navigation.dart';
 import '../../../models/device.dart';
 import '../../../models/home.dart';
 import '../../../providers/devices_provider.dart';
@@ -38,27 +39,40 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final fallbackRoute = '/devices/${widget.deviceId}';
 
     final devicesAsync = ref.watch(devicesProvider);
     if (devicesAsync.isLoading && devicesAsync.valueOrNull == null) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        appBar: const AtmosphereAppBar.back(title: 'Settings'),
-        body: Center(child: CircularProgressIndicator(color: c.brand)),
+      return BackNavigationScope(
+        fallbackRoute: fallbackRoute,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          appBar: AtmosphereAppBar.back(
+            title: 'Settings',
+            onBack: () => handleBackOrFallback(context, fallbackRoute),
+          ),
+          body: Center(child: CircularProgressIndicator(color: c.brand)),
+        ),
       );
     }
     if (devicesAsync.hasError) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        appBar: const AtmosphereAppBar.back(title: 'Settings'),
-        body: EmptyState(
-          icon: AppIcons.warn,
-          title: 'Failed to load device',
-          body: devicesAsync.error.toString(),
-          primaryAction: 'Retry',
-          onPrimaryAction: () => ref.invalidate(devicesProvider),
-          secondaryAction: 'Go home',
-          onSecondaryAction: () => context.go('/home'),
+      return BackNavigationScope(
+        fallbackRoute: fallbackRoute,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          appBar: AtmosphereAppBar.back(
+            title: 'Settings',
+            onBack: () => handleBackOrFallback(context, fallbackRoute),
+          ),
+          body: EmptyState(
+            icon: AppIcons.warn,
+            title: 'Failed to load device',
+            body: devicesAsync.error.toString(),
+            primaryAction: 'Retry',
+            onPrimaryAction: () => ref.invalidate(devicesProvider),
+            secondaryAction: 'Go home',
+            onSecondaryAction: () => context.go('/home'),
+          ),
         ),
       );
     }
@@ -68,226 +82,252 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
         .firstOrNull;
 
     if (device == null) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        appBar: const AtmosphereAppBar.back(title: 'Settings'),
-        body: EmptyState(
-          icon: AppIcons.device,
-          title: 'Device not found',
-          body: 'This device may have been removed or is no longer available.',
-          primaryAction: 'Refresh',
-          onPrimaryAction: () => ref.invalidate(devicesProvider),
-          secondaryAction: 'Go home',
-          onSecondaryAction: () => context.go('/home'),
+      return BackNavigationScope(
+        fallbackRoute: fallbackRoute,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          appBar: AtmosphereAppBar.back(
+            title: 'Settings',
+            onBack: () => handleBackOrFallback(context, fallbackRoute),
+          ),
+          body: EmptyState(
+            icon: AppIcons.device,
+            title: 'Device not found',
+            body:
+                'This device may have been removed or is no longer available.',
+            primaryAction: 'Refresh',
+            onPrimaryAction: () => ref.invalidate(devicesProvider),
+            secondaryAction: 'Go home',
+            onSecondaryAction: () => context.go('/home'),
+          ),
         ),
       );
     }
 
     final roomsAsync = ref.watch(roomsProvider(device.homeId));
     final rooms = roomsAsync.valueOrNull ?? [];
+    final roomSubtitle = roomsAsync.isLoading && roomsAsync.valueOrNull == null
+        ? 'Loading rooms...'
+        : device.roomId != null
+            ? rooms.where((r) => r.id == device.roomId).firstOrNull?.name ??
+                'Unknown room'
+            : 'No room assigned';
 
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: const AtmosphereAppBar.back(title: 'Settings'),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AtmosphereTokens.space20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // General section
-            Text(
-              'General',
-              style: AtmosphereTextStyles.h2(c.ink),
-            ),
-            const SizedBox(height: AtmosphereTokens.space12),
-            AtmosphereCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  // Device name
-                  ListTile(
-                    title: Text(
-                      'Device name',
-                      style: AtmosphereTextStyles.body(c.ink2),
-                    ),
-                    subtitle: _editingName
-                        ? TextField(
-                            controller: _nameController,
-                            autofocus: true,
-                            style: AtmosphereTextStyles.body(c.ink),
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              isDense: true,
+    return BackNavigationScope(
+      fallbackRoute: fallbackRoute,
+      child: Scaffold(
+        backgroundColor: c.bg,
+        appBar: AtmosphereAppBar.back(
+          title: 'Settings',
+          onBack: () => handleBackOrFallback(context, fallbackRoute),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(AtmosphereTokens.space20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // General section
+              Text(
+                'General',
+                style: AtmosphereTextStyles.h2(c.ink),
+              ),
+              const SizedBox(height: AtmosphereTokens.space12),
+              AtmosphereCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    // Device name
+                    ListTile(
+                      title: Text(
+                        'Device name',
+                        style: AtmosphereTextStyles.body(c.ink2),
+                      ),
+                      subtitle: _editingName
+                          ? TextField(
+                              controller: _nameController,
+                              autofocus: true,
+                              style: AtmosphereTextStyles.body(c.ink),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                              onSubmitted: (_) => _saveName(),
+                            )
+                          : Text(
+                              device.name,
+                              style: AtmosphereTextStyles.body(c.ink),
                             ),
-                            onSubmitted: (_) => _saveName(),
-                          )
-                        : Text(
-                            device.name,
-                            style: AtmosphereTextStyles.body(c.ink),
-                          ),
-                    trailing: _editingName
-                        ? IconButton(
-                            icon: Icon(AppIcons.check, color: c.brand),
-                            onPressed: _saveName,
-                          )
-                        : IconButton(
-                            icon: Icon(AppIcons.edit, color: c.ink3),
-                            onPressed: () {
-                              setState(() {
-                                _editingName = true;
-                                _nameController.text = device.name;
-                              });
-                            },
-                          ),
-                  ),
-                  Divider(height: 1, color: c.line),
-                  // Device ID
-                  ListTile(
-                    title: Text(
-                      'Device ID',
-                      style: AtmosphereTextStyles.body(c.ink2),
+                      trailing: _editingName
+                          ? IconButton(
+                              icon: Icon(AppIcons.check, color: c.brand),
+                              onPressed: _saveName,
+                            )
+                          : IconButton(
+                              icon: Icon(AppIcons.edit, color: c.ink3),
+                              onPressed: () {
+                                setState(() {
+                                  _editingName = true;
+                                  _nameController.text = device.name;
+                                });
+                              },
+                            ),
                     ),
-                    subtitle: Text(
-                      device.id,
-                      style: AtmosphereTextStyles.mono(c.ink),
-                    ),
-                    trailing: IconButton(
-                      icon: Icon(LucideIcons.copy, color: c.ink3),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: device.id));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Device ID copied'),
-                            backgroundColor: c.brand,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  Divider(height: 1, color: c.line),
-                  // Room
-                  ListTile(
-                    title: Text(
-                      'Room',
-                      style: AtmosphereTextStyles.body(c.ink2),
-                    ),
-                    subtitle: Text(
-                      device.roomId != null
-                          ? rooms
-                                  .where((r) => r.id == device.roomId)
-                                  .firstOrNull
-                                  ?.name ??
-                              'Unknown room'
-                          : 'No room assigned',
-                      style: AtmosphereTextStyles.body(c.ink),
-                    ),
-                    trailing: Icon(AppIcons.chev, color: c.ink3),
-                    onTap: () => _showRoomPicker(context, device, rooms),
-                  ),
-                  Divider(height: 1, color: c.line),
-                  // Firmware version
-                  ListTile(
-                    title: Text(
-                      'Firmware version',
-                      style: AtmosphereTextStyles.body(c.ink2),
-                    ),
-                    subtitle: Text(
-                      device.firmwareVer ?? 'Unknown',
-                      style: AtmosphereTextStyles.mono(c.ink),
-                    ),
-                    trailing: TextButton(
-                      onPressed: () =>
-                          context.push('/devices/${widget.deviceId}/ota'),
-                      child: Text(
-                        'Check update',
-                        style: AtmosphereTextStyles.body(c.brand),
+                    Divider(height: 1, color: c.line),
+                    // Device ID
+                    ListTile(
+                      title: Text(
+                        'Device ID',
+                        style: AtmosphereTextStyles.body(c.ink2),
+                      ),
+                      subtitle: Text(
+                        device.id,
+                        style: AtmosphereTextStyles.mono(c.ink),
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(LucideIcons.copy, color: c.ink3),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: device.id));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Device ID copied'),
+                              backgroundColor: c.brand,
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ),
-                ],
+                    Divider(height: 1, color: c.line),
+                    // Room
+                    ListTile(
+                      title: Text(
+                        'Room',
+                        style: AtmosphereTextStyles.body(c.ink2),
+                      ),
+                      subtitle: Text(
+                        roomSubtitle,
+                        style: AtmosphereTextStyles.body(c.ink),
+                      ),
+                      trailing:
+                          roomsAsync.isLoading && roomsAsync.valueOrNull == null
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: c.brand,
+                                  ),
+                                )
+                              : Icon(AppIcons.chev, color: c.ink3),
+                      onTap:
+                          roomsAsync.isLoading && roomsAsync.valueOrNull == null
+                              ? null
+                              : () => _showRoomPicker(context, device, rooms),
+                    ),
+                    Divider(height: 1, color: c.line),
+                    // Firmware version
+                    ListTile(
+                      title: Text(
+                        'Firmware version',
+                        style: AtmosphereTextStyles.body(c.ink2),
+                      ),
+                      subtitle: Text(
+                        device.firmwareVer ?? 'Unknown',
+                        style: AtmosphereTextStyles.mono(c.ink),
+                      ),
+                      trailing: TextButton(
+                        onPressed: () =>
+                            context.push('/devices/${widget.deviceId}/ota'),
+                        child: Text(
+                          'Check update',
+                          style: AtmosphereTextStyles.body(c.brand),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: AtmosphereTokens.space32),
+              const SizedBox(height: AtmosphereTokens.space32),
 
-            // Sensor calibration section
-            Text(
-              'Sensor calibration',
-              style: AtmosphereTextStyles.h2(c.ink),
-            ),
-            const SizedBox(height: AtmosphereTokens.space12),
-            AtmosphereCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  ListTile(
-                    title: Text(
-                      'CO sensor',
+              // Sensor calibration section
+              Text(
+                'Sensor calibration',
+                style: AtmosphereTextStyles.h2(c.ink),
+              ),
+              const SizedBox(height: AtmosphereTokens.space12),
+              AtmosphereCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    ListTile(
+                      title: Text(
+                        'CO sensor',
+                        style: AtmosphereTextStyles.body(c.ink),
+                      ),
+                      subtitle: Text(
+                        'Last calibrated 14d ago',
+                        style: AtmosphereTextStyles.caption(c.ink3),
+                      ),
+                      trailing: Icon(AppIcons.chev, color: c.ink3),
+                      onTap: () => context
+                          .push('/devices/${widget.deviceId}/calibrate/co'),
+                    ),
+                    Divider(height: 1, color: c.line),
+                    ListTile(
+                      title: Row(
+                        children: [
+                          Text(
+                            'NO₂ sensor',
+                            style: AtmosphereTextStyles.body(c.ink),
+                          ),
+                          const SizedBox(width: AtmosphereTokens.space8),
+                          const AtmospherePill(
+                            label: 'Never calibrated',
+                            tone: PillTone.warn,
+                          ),
+                        ],
+                      ),
+                      subtitle: Text(
+                        'Calibration recommended',
+                        style: AtmosphereTextStyles.caption(c.ink3),
+                      ),
+                      trailing: Icon(AppIcons.chev, color: c.ink3),
+                      onTap: () => context
+                          .push('/devices/${widget.deviceId}/calibrate/no2'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AtmosphereTokens.space32),
+
+              // Danger zone section
+              Text(
+                'Danger zone',
+                style: AtmosphereTextStyles.h2(c.danger),
+              ),
+              const SizedBox(height: AtmosphereTokens.space12),
+              AtmosphereCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Delete this device',
                       style: AtmosphereTextStyles.body(c.ink),
                     ),
-                    subtitle: Text(
-                      'Last calibrated 14d ago',
+                    const SizedBox(height: AtmosphereTokens.space8),
+                    Text(
+                      'This will remove the device from your home. You can re-add it later through provisioning.',
                       style: AtmosphereTextStyles.caption(c.ink3),
                     ),
-                    trailing: Icon(AppIcons.chev, color: c.ink3),
-                    onTap: () => context
-                        .push('/devices/${widget.deviceId}/calibrate/co'),
-                  ),
-                  Divider(height: 1, color: c.line),
-                  ListTile(
-                    title: Row(
-                      children: [
-                        Text(
-                          'NO₂ sensor',
-                          style: AtmosphereTextStyles.body(c.ink),
-                        ),
-                        const SizedBox(width: AtmosphereTokens.space8),
-                        const AtmospherePill(
-                          label: 'Never calibrated',
-                          tone: PillTone.warn,
-                        ),
-                      ],
+                    const SizedBox(height: AtmosphereTokens.space16),
+                    DangerButton(
+                      label: 'Delete device',
+                      onPressed: () => _confirmDelete(context, device),
                     ),
-                    subtitle: Text(
-                      'Calibration recommended',
-                      style: AtmosphereTextStyles.caption(c.ink3),
-                    ),
-                    trailing: Icon(AppIcons.chev, color: c.ink3),
-                    onTap: () => context
-                        .push('/devices/${widget.deviceId}/calibrate/no2'),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: AtmosphereTokens.space32),
-
-            // Danger zone section
-            Text(
-              'Danger zone',
-              style: AtmosphereTextStyles.h2(c.danger),
-            ),
-            const SizedBox(height: AtmosphereTokens.space12),
-            AtmosphereCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Delete this device',
-                    style: AtmosphereTextStyles.body(c.ink),
-                  ),
-                  const SizedBox(height: AtmosphereTokens.space8),
-                  Text(
-                    'This will remove the device from your home. You can re-add it later through provisioning.',
-                    style: AtmosphereTextStyles.caption(c.ink3),
-                  ),
-                  const SizedBox(height: AtmosphereTokens.space16),
-                  DangerButton(
-                    label: 'Delete device',
-                    onPressed: () => _confirmDelete(context, device),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

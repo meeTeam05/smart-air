@@ -2,11 +2,11 @@
  * @file i2cdev.h
  *
  * @brief I2C Device Abstraction API
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
 #pragma once
-
-/* Includes ------------------------------------------------------------------*/
 
 #include "config.h"
 #include "driver/gpio.h"
@@ -17,15 +17,15 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-/* Exported macros -----------------------------------------------------------*/
-
 /**
  * @brief Mutex management macros
  */
-#define I2C_DEV_TAKE_MUTEX(dev)                          \
-    do {                                                 \
-        if ((dev)->mutex)                                \
-            xSemaphoreTake((dev)->mutex, portMAX_DELAY); \
+#define I2C_DEV_TAKE_MUTEX(dev)                    \
+    do {                                           \
+        esp_err_t __err = i2c_dev_take_mutex(dev); \
+        if (__err != ESP_OK) {                     \
+            return __err;                          \
+        }                                          \
     } while (0)
 
 /**
@@ -49,8 +49,6 @@
         }                            \
     } while (0)
 
-/* Exported types ------------------------------------------------------------*/
-
 /**
  * @brief I2C device descriptor
  */
@@ -64,8 +62,6 @@ typedef struct {
     void *dev_handle;         //!< I2C device handle (i2c_master_dev_handle_t)
 } i2c_dev_t;
 
-/* Exported functions --------------------------------------------------------*/
-
 /**
  * @brief Initialize I2C bus
  *
@@ -74,7 +70,11 @@ typedef struct {
  * @param[in] scl_gpio GPIO pin for SCL
  * @param[in] clk_speed I2C clock speed in Hz
  *
- * @return ESP_OK on success, otherwise error code
+ * @return ESP_OK on success.
+ *         Repeated calls with the same configuration are idempotent.
+ *         Repeated calls with a different configuration return
+ *         ESP_ERR_INVALID_STATE because this driver currently supports one
+ *         active bus instance.
  */
 esp_err_t i2c_bus_init(int port, gpio_num_t sda_gpio, gpio_num_t scl_gpio, uint32_t clk_speed);
 
@@ -95,6 +95,15 @@ esp_err_t i2c_dev_init(i2c_dev_t *dev);
  * @return ESP_OK on success
  */
 esp_err_t i2c_dev_create_mutex(i2c_dev_t *dev);
+
+/**
+ * @brief Take mutex for I2C device
+ *
+ * @param[in] dev Device descriptor
+ *
+ * @return ESP_OK on success, otherwise error code
+ */
+esp_err_t i2c_dev_take_mutex(i2c_dev_t *dev);
 
 /**
  * @brief Delete mutex for I2C device

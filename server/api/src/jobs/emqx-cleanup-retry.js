@@ -3,6 +3,7 @@ import {
     drainLegacyCleanupRetrySet,
     listDueDeviceCleanupJobs,
 } from '../services/device-cleanup.js';
+import { registerNonOverlappingIntervalJob } from './scheduler.js';
 
 const DEFAULT_RETRY_INTERVAL_MS = 300_000;
 const DEFAULT_RETRY_LIMIT = 100;
@@ -28,12 +29,10 @@ export function registerEmqxCleanupRetryJob(fastify, options = {}) {
     const retryIntervalMs = options.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
     const retryLimit = options.retryLimit ?? DEFAULT_RETRY_LIMIT;
 
-    const intervalId = setInterval(() => {
-        runEmqxCleanupRetry(fastify, retryLimit);
-    }, retryIntervalMs);
-    runEmqxCleanupRetry(fastify, retryLimit);
-
-    fastify.addHook('onClose', async () => {
-        clearInterval(intervalId);
+    registerNonOverlappingIntervalJob(fastify, {
+        intervalMs: retryIntervalMs,
+        jobName: 'emqx cleanup retry',
+        runImmediately: true,
+        task: () => runEmqxCleanupRetry(fastify, retryLimit),
     });
 }

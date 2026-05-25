@@ -16,4 +16,14 @@ class TelemetryPoint with _$TelemetryPoint {
 
   factory TelemetryPoint.fromJson(Map<String, dynamic> json) =>
       _$TelemetryPointFromJson(json);
+
+  static TelemetryPoint? tryFromJson(Map<String, dynamic> json) {
+    final tsRaw = json['ts'];
+    final ts = tsRaw is String ? DateTime.tryParse(tsRaw) : null;
+    if (ts == null) return null;
+    return _$TelemetryPointFromJson({
+      ...json,
+      'ts': ts.toIso8601String(),
+    });
+  }
 }

@@ -2,18 +2,17 @@
  * @file sht3x.c
  *
  * @brief SHT3x Temperature and Humidity Sensor Driver Implementation
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
-
-/* ── Includes ───────────────────────────────────────────────────────────── */
 
 #include "sht3x.h"
 #include "esp_log.h"
+#include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include <string.h>
-
-/* ── Private defines macro ──────────────────────────────────────────────── */
 
 #define TIME_TO_TICKS(ms) (1 + ((ms) + (portTICK_PERIOD_MS - 1) + portTICK_PERIOD_MS / 2) / portTICK_PERIOD_MS)
 
@@ -34,29 +33,26 @@
         }                                      \
     } while (0)
 
-/* ── Private defines ────────────────────────────────────────────────────── */
-
 /* SHT3x command codes */
-#define SHT3X_STATUS_CMD 0xF32D              //!< Read status register
-#define SHT3X_CLEAR_STATUS_CMD 0x3041        //!< Clear status register
-#define SHT3X_RESET_CMD 0x30A2               //!< Soft reset
-#define SHT3X_FETCH_DATA_CMD 0xE000          //!< Fetch measurement data
+#define SHT3X_STATUS_CMD             0xF32D  //!< Read status register
+#define SHT3X_CLEAR_STATUS_CMD       0x3041  //!< Clear status register
+#define SHT3X_RESET_CMD              0x30A2  //!< Soft reset
+#define SHT3X_FETCH_DATA_CMD         0xE000  //!< Fetch measurement data
 #define SHT3X_STOP_PERIODIC_MEAS_CMD 0x3093  //!< Stop periodic measurement
-#define SHT3X_HEATER_ON_CMD 0x306D           //!< Turn heater on
-#define SHT3X_HEATER_OFF_CMD 0x3066          //!< Turn heater off
+#define SHT3X_HEATER_ON_CMD          0x306D  //!< Turn heater on
+#define SHT3X_HEATER_OFF_CMD         0x3066  //!< Turn heater off
 
 /* Measurement durations in milliseconds */
-#define SHT3X_MEAS_DURATION_REP_HIGH 15   //!< High repeatability
-#define SHT3X_MEAS_DURATION_REP_MEDIUM 6  //!< Medium repeatability
-#define SHT3X_MEAS_DURATION_REP_LOW 4     //!< Low repeatability
+#define SHT3X_MEAS_DURATION_REP_HIGH   15  //!< High repeatability
+#define SHT3X_MEAS_DURATION_REP_MEDIUM 6   //!< Medium repeatability
+#define SHT3X_MEAS_DURATION_REP_LOW    4   //!< Low repeatability
 
 /* CRC-8 polynomial */
 #define G_POLYNOM 0x31
 
 /* I2C configuration */
-#define I2C_FREQ_HZ SA_I2C_FREQ_HZ
-
-/* ── Private variables ──────────────────────────────────────────────────── */
+#define I2C_FREQ_HZ    SA_I2C_FREQ_HZ
+#define I2C_TIMEOUT_MS SA_I2C_TIMEOUT_MS
 
 static const char *TAG = "sht3x";
 
@@ -79,8 +75,6 @@ static const uint8_t SHT3X_MEAS_DURATION_TICKS[3] = {TIME_TO_TICKS(SHT3X_MEAS_DU
                                                      TIME_TO_TICKS(SHT3X_MEAS_DURATION_REP_MEDIUM),
                                                      TIME_TO_TICKS(SHT3X_MEAS_DURATION_REP_LOW)};
 
-/* ── Private function prototypes ────────────────────────────────────────── */
-
 /**
  * @brief Shuffle bytes in a 16-bit value
  *
@@ -99,6 +93,28 @@ static inline uint16_t shuffle(uint16_t val);
  * @return Computed CRC8 checksum
  */
 static uint8_t crc8(uint8_t data[], int len);
+
+/**
+ * @brief Write raw bytes to SHT3x without taking mutex
+ *
+ * @param[in] dev Pointer to device descriptor
+ * @param[in] data Data to write
+ * @param[in] len Number of bytes to write
+ *
+ * @return ESP_OK on success, error code otherwise
+ */
+static esp_err_t write_nolock(sht3x_t *dev, const void *data, size_t len);
+
+/**
+ * @brief Read raw bytes from SHT3x without taking mutex
+ *
+ * @param[in] dev Pointer to device descriptor
+ * @param[out] data Buffer to store read data
+ * @param[in] len Number of bytes to read
+ *
+ * @return ESP_OK on success, error code otherwise
+ */
+static esp_err_t read_nolock(sht3x_t *dev, void *data, size_t len);
 
 /**
  * @brief Send command to SHT3x without taking mutex
@@ -272,9 +288,21 @@ esp_err_t sht3x_measure(sht3x_t *dev, float *temperature, float *humidity)
     sht3x_raw_data_t raw_data;
 
     ESP_LOGD(TAG, "Starting single-shot measurement");
-    CHECK(start_nolock(dev, SHT3X_SINGLE_SHOT, SHT3X_HIGH));
+    I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
+    esp_err_t ret = start_nolock(dev, SHT3X_SINGLE_SHOT, SHT3X_HIGH);
+    if (ret != ESP_OK) {
+        I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
+        ESP_LOGE(TAG, "Operation failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
     vTaskDelay(SHT3X_MEAS_DURATION_TICKS[SHT3X_HIGH]);
-    CHECK(get_raw_data_nolock(dev, raw_data));
+    ret = get_raw_data_nolock(dev, raw_data);
+    I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Operation failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     esp_err_t res = sht3x_compute_values(raw_data, temperature, humidity);
     if (res == ESP_OK && temperature && humidity) {
@@ -289,7 +317,7 @@ esp_err_t sht3x_measure(sht3x_t *dev, float *temperature, float *humidity)
  */
 uint8_t sht3x_get_measurement_duration(sht3x_repeat_t repeat)
 {
-    return SHT3X_MEAS_DURATION_TICKS[repeat];  /* in RTOS ticks */
+    return SHT3X_MEAS_DURATION_TICKS[repeat]; /* in RTOS ticks */
 }
 
 /**
@@ -311,7 +339,13 @@ esp_err_t sht3x_start_measurement(sht3x_t *dev, sht3x_mode_t mode, sht3x_repeat_
         return ESP_ERR_INVALID_ARG;
     }
 
-    CHECK(start_nolock(dev, mode, repeat));
+    I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
+    esp_err_t ret = start_nolock(dev, mode, repeat);
+    I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Operation failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     const char *mode_str[] = {"single-shot", "0.5mps", "1mps", "2mps", "4mps", "10mps"};
     const char *repeat_str[] = {"high", "medium", "low"};
@@ -333,11 +367,19 @@ esp_err_t sht3x_stop_periodic_measurement(sht3x_t *dev)
     CHECK_ARG(dev);
 
     ESP_LOGD(TAG, "Stopping periodic measurement");
-    CHECK(send_cmd(dev, SHT3X_STOP_PERIODIC_MEAS_CMD));
+    I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
+    esp_err_t ret = send_cmd_nolock(dev, SHT3X_STOP_PERIODIC_MEAS_CMD);
+    if (ret != ESP_OK) {
+        I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
+        ESP_LOGE(TAG, "Operation failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
     dev->mode = SHT3X_SINGLE_SHOT;
     dev->meas_start_time = 0;
     dev->meas_started = false;
     dev->meas_first = false;
+    I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
 
     ESP_LOGI(TAG, "Periodic measurement stopped");
     return ESP_OK;
@@ -350,7 +392,10 @@ esp_err_t sht3x_get_raw_data(sht3x_t *dev, sht3x_raw_data_t raw_data)
 {
     CHECK_ARG(dev && raw_data);
 
-    return get_raw_data_nolock(dev, raw_data);
+    I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
+    esp_err_t ret = get_raw_data_nolock(dev, raw_data);
+    I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
+    return ret;
 }
 
 /**
@@ -391,16 +436,61 @@ static uint8_t crc8(uint8_t data[], int len)
     return crc;
 }
 
+static esp_err_t write_nolock(sht3x_t *dev, const void *data, size_t len)
+{
+    if (!dev || !data || len == 0) {
+        ESP_LOGE(TAG, "Invalid write arguments");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (dev->i2c_dev.dev_handle == NULL) {
+        ESP_LOGE(TAG, "Device 0x%02x not initialized", dev->i2c_dev.addr);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)dev->i2c_dev.dev_handle;
+    esp_err_t ret = i2c_master_transmit(dev_handle, (const uint8_t *)data, len, I2C_TIMEOUT_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "I2C write failed to addr 0x%02x: %s", dev->i2c_dev.addr, esp_err_to_name(ret));
+    }
+
+    return ret;
+}
+
+static esp_err_t read_nolock(sht3x_t *dev, void *data, size_t len)
+{
+    if (!dev || !data || len == 0) {
+        ESP_LOGE(TAG, "Invalid read arguments");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (dev->i2c_dev.dev_handle == NULL) {
+        ESP_LOGE(TAG, "Device 0x%02x not initialized", dev->i2c_dev.addr);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)dev->i2c_dev.dev_handle;
+    esp_err_t ret = i2c_master_receive(dev_handle, (uint8_t *)data, len, I2C_TIMEOUT_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "I2C read failed from addr 0x%02x: %s", dev->i2c_dev.addr, esp_err_to_name(ret));
+    }
+
+    return ret;
+}
+
 static esp_err_t send_cmd_nolock(sht3x_t *dev, uint16_t cmd)
 {
     cmd = shuffle(cmd);
 
-    return i2c_dev_write(&dev->i2c_dev, &cmd, 2);
+    return write_nolock(dev, &cmd, sizeof(cmd));
 }
 
 static esp_err_t send_cmd(sht3x_t *dev, uint16_t cmd)
 {
-    return send_cmd_nolock(dev, cmd);
+    I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
+    esp_err_t ret = send_cmd_nolock(dev, cmd);
+    I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
+    return ret;
 }
 
 static esp_err_t start_nolock(sht3x_t *dev, sht3x_mode_t mode, sht3x_repeat_t repeat)
@@ -439,12 +529,14 @@ static esp_err_t get_raw_data_nolock(sht3x_t *dev, sht3x_raw_data_t raw_data)
         return ESP_ERR_INVALID_STATE;
     }
 
-    /* send fetch data command first */
-    uint16_t cmd = shuffle(SHT3X_FETCH_DATA_CMD);
-    CHECK(i2c_dev_write(&dev->i2c_dev, &cmd, 2));
+    if (dev->mode != SHT3X_SINGLE_SHOT) {
+        /* Periodic mode requires FETCH_DATA before readout. */
+        uint16_t cmd = shuffle(SHT3X_FETCH_DATA_CMD);
+        CHECK(write_nolock(dev, &cmd, sizeof(cmd)));
+    }
 
-    /* then read raw data */
-    CHECK(i2c_dev_read(&dev->i2c_dev, raw_data, sizeof(sht3x_raw_data_t)));
+    /* Single-shot reads data directly after conversion delay. */
+    CHECK(read_nolock(dev, raw_data, sizeof(sht3x_raw_data_t)));
 
     /* reset first measurement flag */
     dev->meas_first = false;

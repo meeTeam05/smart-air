@@ -2,26 +2,24 @@ menu "Smart Air Configuration"
 
     config FIRMWARE_VERSION
         string "Firmware version"
-        default "1.0.0"
+        default "0.1.1"
         help
-            Version string included in MQTT status messages and OTA validation.
+            Version current firmware.
 
     config SA_PROV_NAME_PREFIX
         string "BLE provisioning name prefix"
-        default "PROV"
+        default "SMART_AIR"
         help
-            The advertised BLE name will be <prefix>_<6-hex-MAC-suffix>.
+            The advertised BLE name will be <prefix>_<last-3-byte-Wi-Fi-STA-MAC-hex>.
 
     config SA_MQTT_BROKER_URI
         string "MQTT broker URI"
         default "wss://minhnhat05.xyz/mqtt"
         help
-            Full URI of the EMQX broker reachable from the ESP32.
-            Public production default uses Cloudflare HTTPS ingress with
-            secure WebSocket transport to nginx /mqtt -> EMQX:8083, so
-            firmware works without router port forwarding or a public 8883.
-            Raw mqtts://...:8883 remains an optional direct override.
-            Runtime override source: NVS namespace "device", key "broker_uri".
+            Full EMQX broker URI for ESP32. Default uses Cloudflare HTTPS 
+            + secure WebSocket (nginx /mqtt -> EMQX:8083), avoiding port 
+            forwarding or public 8883. Direct mqtts://...:8883 remains 
+            optional. Runtime override: NVS device/broker_uri.
 
     config SA_WIFI_CONNECT_TIMEOUT_MS
         int "Wi-Fi connection timeout (ms)"
@@ -37,6 +35,24 @@ menu "Smart Air Configuration"
             IPv4 DNS resolver applied to WIFI_STA_DEF after the station gets
             an IP address. Use this when the upstream DHCP server advertises
             a resolver that cannot reliably resolve the MQTT TLS hostname.
+
+    config SA_SNTP_SERVER
+        string "SNTP server"
+        default "pool.ntp.org"
+        help
+            Static SNTP server used for best-effort boot-time clock sync
+            after Wi-Fi connects. This is not a hard boot dependency; when
+            SNTP fails or times out, firmware continues with its existing
+            build-time and MQTT set_time fallback behavior.
+
+    config SA_SNTP_SYNC_TIMEOUT_MS
+        int "SNTP sync timeout (ms)"
+        default 10000
+        range 1000 60000
+        help
+            Maximum time to wait for the one-shot SNTP sync attempt after
+            Wi-Fi connects. If the timeout elapses, firmware continues boot
+            without failing and falls back to existing timestamp sources.
 
     config SA_PROV_TIMEOUT_MS
         int "BLE provisioning timeout (ms)"
@@ -75,14 +91,10 @@ menu "Smart Air Configuration"
         bool "Demo no peripherals"
         default n
         help
-            Enable demo mode when no physical peripheral is connected.
-            In this mode, firmware feeds telemetry from an internal virtual
-            sample array while preserving the normal MQTT/TLS/auth flow,
-            topics, command handling, and telemetry/shadow JSON schema.
-            This mode is intended for ESP32-S3-DevKit-C-6R8 demos without
-            sensors, display, buzzer, SD card, or RTC hardware. Relay, LED,
-            and factory reset stay available when their own feature flags are
-            enabled.
+            Enable demo mode without physical peripherals. Uses virtual 
+            telemetry data while keeping normal MQTT/TLS/auth flow and APIs. 
+            Intended for ESP32-S3-DevKit-C-6R8; relay, LED, and factory reset 
+            remain available if enabled.
 
     config SA_SENSOR_POLLING_INTERVAL
         int "Sensor Polling Interval Seconds"
@@ -171,29 +183,26 @@ menu "Smart Air Configuration"
 
         config SA_I2C_SDA_PIN
             int "I2C SDA GPIO"
-            default 4
+            default 12
             range 1 48
             help
                 GPIO for I2C SDA. Shared bus for SHT3x (0x44) and DS3231 (0x68).
                 Requires 4.7K external pull-up resistor.
-                AVOID: 0,3 (strapping), 19-20 (USB), 26-32 (flash/PSRAM),
-                33-37 (PSRAM octal), 43-46 (UART/strapping).
 
         config SA_I2C_SCL_PIN
             int "I2C SCL GPIO"
-            default 5
+            default 13
             range 1 48
             help
                 GPIO for I2C SCL. Shared bus for SHT3x and DS3231.
                 Requires 4.7K external pull-up resistor.
-                Must be different from SDA pin.
 
         config SA_I2C_FREQ_HZ
             int "I2C FREQ HZ"
             default 400000
             range 400000 400000
             help
-                HW-01: fixed 400 kHz — do not change
+                Fixed 400 kHz — do not change
 
         config SA_I2C_TIMEOUT_MS
             int "I2C operation timeout (ms)"
@@ -249,7 +258,7 @@ menu "Smart Air Configuration"
 
         config SA_SD_MISO_PIN
             int "SD Card MISO GPIO"
-            default 38
+            default 4
             range 1 48
             help
                 SPI3_HOST data in from SD card.
@@ -257,21 +266,21 @@ menu "Smart Air Configuration"
 
         config SA_SD_SCK_PIN
             int "SD Card SCK GPIO"
-            default 39
+            default 5
             range 1 48
             help
                 SPI3_HOST clock for SD card.
 
         config SA_SD_MOSI_PIN
             int "SD Card MOSI GPIO"
-            default 40
+            default 6
             range 1 48
             help
                 SPI3_HOST data out to SD card.
 
         config SA_SD_CS_PIN
             int "SD Card CS GPIO"
-            default 41
+            default 7
             range 1 48
             help
                 SD card chip select (active low).
@@ -283,16 +292,15 @@ menu "Smart Air Configuration"
 
         config SA_CO_ANALOG_PIN
             int "CO sensor analog GPIO"
-            default 1
+            default 9
             range 1 10
             help
                 ADC1 input for CO gas sensor analog output.
                 MUST be GPIO 1-10 (ADC1). ADC2 (GPIO 11-20) is unavailable
-                when WiFi is active — do not use ADC2 pins here.
 
         config SA_NO2_ANALOG_PIN
             int "NO2 sensor analog GPIO"
-            default 2
+            default 10
             range 1 10
             help
                 ADC1 input for NO2 gas sensor analog output.
@@ -319,7 +327,7 @@ menu "Smart Air Configuration"
 
         config SA_RELAY_3_PIN
             int "Relay 3 GPIO"
-            default 21
+            default 8
             range 1 48
             help
                 GPIO output for relay channel 3. Active high.
@@ -340,7 +348,6 @@ menu "Smart Air Configuration"
         default 48
         range 1 48
         help
-            GPIO for WS2812 RGB LED. Uses RMT peripheral.
             GPIO 48 = onboard LED on ESP32-S3-DevKitC-1.
 
     config SA_FACTORY_RESET_PIN

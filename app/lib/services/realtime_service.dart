@@ -91,7 +91,11 @@ class RealtimeService {
       }
 
       if (cancelToken.isCancelled) break;
-      await Future.delayed(reconnectDelay);
+      await Future.any<void>([
+        Future.delayed(reconnectDelay),
+        cancelToken.whenCancel.then((_) {}),
+      ]);
+      if (cancelToken.isCancelled) break;
       final doubledMs = reconnectDelay.inMilliseconds * 2;
       reconnectDelay = Duration(
         milliseconds: doubledMs > maxReconnectDelay.inMilliseconds

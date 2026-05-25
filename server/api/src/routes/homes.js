@@ -1,12 +1,13 @@
 import { requireRole, checkMembership } from '../utils/check-access.js';
 import { cleanupDeletedDevice } from '../services/device-cleanup.js';
 import { MAX_HOMES_PER_USER, MAX_ROOMS_PER_HOME } from '../constants.js';
-import { cleanOptionalString, cleanRequiredString, parseUuid } from '../utils/parse.js';
+import { cleanOptionalString, cleanRequiredString, isValidEmail, normalizeEmail, parseUuid } from '../utils/parse.js';
+import { advisoryLockId } from '../utils/advisory-lock.js';
 
 const VALID_INVITE_ROLES = new Set(['admin', 'member']);
 
 async function lockQuota(client, key) {
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
+    await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [advisoryLockId(key)]);
 }
 
 function cleanNullableString(value) {
@@ -136,8 +137,8 @@ export default async function homesRoutes(fastify) {
         const userId = request.user.sub;
         await requireRole(fastify, homeId, userId, 'owner', 'admin');
         const { email, role } = request.body || {};
-        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : null;
-        if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254) {
+        const normalizedEmail = normalizeEmail(email);
+        if (!isValidEmail(normalizedEmail)) {
             return reply.code(400).send({ error: 'valid email required' });
         }
 
@@ -160,7 +161,9 @@ export default async function homesRoutes(fastify) {
                 [homeId, userRows[0].id, role || 'member']
             );
         } catch (err) {
-            if (err.code === '23505') return reply.code(409).send({ error: 'Already a member' });
+            if (err.code === '23505') {
+                return { success: true };
+            }
             throw err;
         }
         return { success: true };

@@ -7,7 +7,6 @@ import '../screens/auth/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
 import '../screens/home_screen.dart';
-import '../screens/automation_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/homes/homes_screen.dart';
@@ -19,7 +18,6 @@ import '../screens/provision/step3_wifi.dart';
 import '../screens/provision/step4_cloud.dart';
 import '../screens/provision/step5_name.dart';
 import '../screens/devices/device_dashboard_screen.dart';
-import '../screens/devices/device_chart_screen.dart';
 import '../screens/devices/command_history_screen.dart';
 import '../screens/devices/settings/general_screen.dart';
 import '../screens/devices/settings/calibration_wizard_screen.dart';
@@ -49,12 +47,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       // Splash route
       GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
-      
+
       // Auth routes (no shell)
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
 
-      // Shell routes (4 tabs with persistent bottom nav)
+      // Shell routes (3 tabs with persistent bottom nav)
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return AppShell(navigationShell: navigationShell);
@@ -66,15 +64,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/home',
                 builder: (_, __) => const HomeScreen(),
-              ),
-            ],
-          ),
-          // Automation tab
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/automation',
-                builder: (_, __) => const AutomationScreen(),
               ),
             ],
           ),
@@ -101,11 +90,14 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Drill-down routes (outside shell, no bottom nav)
       GoRoute(path: '/homes', builder: (_, __) => const HomesScreen()),
-      GoRoute(path: '/homes/create', builder: (_, __) => const CreateHomeScreen()),
+      GoRoute(
+          path: '/homes/create', builder: (_, __) => const CreateHomeScreen()),
       GoRoute(
         path: '/homes/:homeId',
-        builder: (_, state) =>
-            HomeDetailScreen(homeId: state.pathParameters['homeId']!),
+        builder: (_, state) => HomeDetailScreen(
+          homeId: state.pathParameters['homeId']!,
+          fallbackRoute: '/homes',
+        ),
       ),
       GoRoute(
         path: '/provision',
@@ -125,7 +117,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
           deviceId: state.uri.queryParameters['deviceId'] ??
-              state.uri.queryParameters['mac'] ?? '',
+              state.uri.queryParameters['mac'] ??
+              '',
           ssid: state.uri.queryParameters['ssid'],
         ),
       ),
@@ -135,7 +128,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
           deviceId: state.uri.queryParameters['deviceId'] ??
-              state.uri.queryParameters['mac'] ?? '',
+              state.uri.queryParameters['mac'] ??
+              '',
         ),
       ),
       GoRoute(
@@ -144,18 +138,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
           deviceId: state.uri.queryParameters['deviceId'] ??
-              state.uri.queryParameters['mac'] ?? '',
+              state.uri.queryParameters['mac'] ??
+              '',
         ),
       ),
       GoRoute(
         path: '/devices/:id',
         builder: (_, state) =>
             DeviceDashboardScreen(deviceId: state.pathParameters['id']!),
-      ),
-      GoRoute(
-        path: '/devices/:id/chart',
-        builder: (_, state) =>
-            DeviceChartScreen(deviceId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/devices/:id/commands',
@@ -176,14 +166,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/devices/:id/ota',
-        builder: (_, state) =>
-            OtaScreen(deviceId: state.pathParameters['id']!),
+        builder: (_, state) => OtaScreen(deviceId: state.pathParameters['id']!),
       ),
       // Profile home detail route
       GoRoute(
         path: '/profile/home/:homeId',
-        builder: (_, state) =>
-            HomeDetailScreen(homeId: state.pathParameters['homeId']!),
+        builder: (_, state) => HomeDetailScreen(
+          homeId: state.pathParameters['homeId']!,
+          fallbackRoute: '/profile',
+        ),
       ),
     ],
   );

@@ -33,7 +33,8 @@
  * @param no2       Initialised GM-102B NO2 descriptor, or NULL.
  * @param device_id Resolved device identifier (used to build MQTT topics).
  *
- * @return ESP_OK if task created, ESP_FAIL otherwise.
+ * @return ESP_OK if task created, ESP_ERR_INVALID_ARG when device_id is NULL or
+ *         empty, ESP_FAIL otherwise.
  * 
  * @note Polls all passed sensors every SA_SENSOR_POLLING_INTERVAL ms and publishes
  *       telemetry JSON to device/{id}/telemetry via mqtt_publish().

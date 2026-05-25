@@ -85,7 +85,13 @@ class AuthInterceptor extends Interceptor {
 
     final future = _performRefresh();
     _refreshFuture = future;
-    future.whenComplete(() => _refreshFuture = null);
+    future
+        .then<void>((_) {}, onError: (Object _, StackTrace __) {})
+        .whenComplete(() {
+      if (identical(_refreshFuture, future)) {
+        _refreshFuture = null;
+      }
+    });
     return future;
   }
 
@@ -103,13 +109,22 @@ class AuthInterceptor extends Interceptor {
         options: Options(extra: {'skipInterceptor': true}),
       );
 
-      final newAccess = res.data['accessToken'] as String?;
+      final data = res.data;
+      if (data is! Map) {
+        await _forceLogout();
+        throw const AuthException();
+      }
+
+      final body = Map<String, dynamic>.from(data);
+      final newAccess = body['accessToken'] as String?;
       if (newAccess == null || newAccess.isEmpty) {
         await _forceLogout();
         throw const AuthException();
       }
 
-      final newRefresh = res.data['refreshToken'] as String?;
+      final newRefresh = body['refreshToken'] is String
+          ? body['refreshToken'] as String
+          : null;
       setAccessToken(newAccess);
       if (newRefresh != null) {
         await _storage.saveRefreshToken(newRefresh);

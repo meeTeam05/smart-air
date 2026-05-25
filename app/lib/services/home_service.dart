@@ -13,10 +13,25 @@ class HomeService {
   HomeService(this._dio);
   final Dio _dio;
 
+  Map<String, dynamic> _bodyAsMap(Object? data) {
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw const ApiException(0, 'Unexpected server response');
+  }
+
+  List<Map<String, dynamic>> _bodyAsMapList(Object? data) {
+    if (data is! List) {
+      throw const ApiException(0, 'Unexpected server response');
+    }
+    return data.map((item) {
+      if (item is Map) return Map<String, dynamic>.from(item);
+      throw const ApiException(0, 'Unexpected server response');
+    }).toList();
+  }
+
   Future<List<Home>> getHomes() async {
     try {
       final res = await _dio.get('/homes');
-      return (res.data as List).map((e) => Home.fromJson(e)).toList();
+      return _bodyAsMapList(res.data).map(Home.fromJson).toList();
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -26,7 +41,7 @@ class HomeService {
     try {
       final res = await _dio.post('/homes',
           data: {'name': name, 'timezone': timezone ?? 'Asia/Ho_Chi_Minh'});
-      return Home.fromJson(res.data as Map<String, dynamic>);
+      return Home.fromJson(_bodyAsMap(res.data));
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -37,7 +52,7 @@ class HomeService {
       final res = await _dio.put('/homes/$id', data: {
         if (name != null) 'name': name,
       });
-      return Home.fromJson(res.data as Map<String, dynamic>);
+      return Home.fromJson(_bodyAsMap(res.data));
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -54,7 +69,7 @@ class HomeService {
   Future<List<Room>> getRooms(String homeId) async {
     try {
       final res = await _dio.get('/homes/$homeId/rooms');
-      return (res.data as List).map((e) => Room.fromJson(e)).toList();
+      return _bodyAsMapList(res.data).map(Room.fromJson).toList();
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -62,9 +77,8 @@ class HomeService {
 
   Future<Room> createRoom(String homeId, String name) async {
     try {
-      final res = await _dio
-          .post('/homes/$homeId/rooms', data: {'name': name});
-      return Room.fromJson(res.data as Map<String, dynamic>);
+      final res = await _dio.post('/homes/$homeId/rooms', data: {'name': name});
+      return Room.fromJson(_bodyAsMap(res.data));
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -75,7 +89,7 @@ class HomeService {
       final res = await _dio.put('/rooms/$roomId', data: {
         if (name != null) 'name': name,
       });
-      return Room.fromJson(res.data as Map<String, dynamic>);
+      return Room.fromJson(_bodyAsMap(res.data));
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -92,8 +106,8 @@ class HomeService {
   Future<void> inviteMember(String homeId, String email,
       {String role = 'member'}) async {
     try {
-      await _dio.post('/homes/$homeId/invite',
-          data: {'email': email, 'role': role});
+      await _dio
+          .post('/homes/$homeId/invite', data: {'email': email, 'role': role});
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -101,7 +115,8 @@ class HomeService {
 
   AppException _map(DioException e) {
     if (e.error is AppException) return e.error as AppException;
-    final msg = e.response?.data?['error'] as String? ?? 'Unknown error';
-    return ApiException(e.response?.statusCode ?? 0, msg);
+    final body = e.response?.data;
+    final msg = body is Map ? body['error'] as String? : null;
+    return ApiException(e.response?.statusCode ?? 0, msg ?? 'Unknown error');
   }
 }

@@ -25,6 +25,7 @@
 
 static const char *TAG = "httpd";
 #define MAX_CONFIG_BODY_LEN 512
+#define MAX_CONFIG_RECV_TIMEOUTS 3
 
 /* ── Handler context ─────────────────────────────────────────────────────── */
 
@@ -81,14 +82,30 @@ static esp_err_t config_post_handler(httpd_req_t *req)
 
     char body[MAX_CONFIG_BODY_LEN + 1] = {0};
     size_t received = 0;
+    int timeout_count = 0;
     while (received < (size_t)req->content_len) {
         int rc = httpd_req_recv(req, body + received, (size_t)req->content_len - received);
         if (rc == HTTPD_SOCK_ERR_TIMEOUT) {
+            timeout_count++;
+            if (timeout_count >= MAX_CONFIG_RECV_TIMEOUTS) {
+                ESP_LOGW(TAG,
+                         "POST /api/config recv timed out after %d attempts (received=%u/%lu)",
+                         timeout_count,
+                         (unsigned)received,
+                         (unsigned long)req->content_len);
+                return send_json_error(req, "408 Request Timeout", "request body receive timeout");
+            }
             continue;
         }
         if (rc <= 0) {
-            return ESP_FAIL;
+            ESP_LOGW(TAG,
+                     "POST /api/config recv failed (rc=%d received=%u/%lu)",
+                     rc,
+                     (unsigned)received,
+                     (unsigned long)req->content_len);
+            return send_json_error(req, "400 Bad Request", "request body receive failed");
         }
+        timeout_count = 0;
         received += (size_t)rc;
     }
     body[received] = '\0';
@@ -136,10 +153,14 @@ static esp_err_t config_post_handler(httpd_req_t *req)
         return send_json_error(req, "500 Internal Server Error", "config write failed");
     }
 
+    BaseType_t restart_rc = xTaskCreate(restart_task, "config_reboot", 2048, NULL, 5, NULL);
+    if (restart_rc != pdPASS) {
+        ESP_LOGE(TAG, "failed to create config_reboot task");
+        return send_json_error(req, "500 Internal Server Error", "config saved but reboot failed");
+    }
+
     httpd_resp_set_type(req, "application/json");
-    esp_err_t send_err = httpd_resp_sendstr(req, "{\"ok\":true,\"rebooting\":true}");
-    xTaskCreate(restart_task, "config_reboot", 2048, NULL, 5, NULL);
-    return send_err;
+    return httpd_resp_sendstr(req, "{\"ok\":true,\"rebooting\":true}");
 }
 
 static const httpd_uri_t uri_info = {
@@ -167,7 +188,7 @@ esp_err_t httpd_server_start(const char *device_id, const char *ip)
     /* HTTP server */
     httpd_handle_t server = NULL;
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-    cfg.server_port = CONFIG_SA_HTTPD_PORT;
+    cfg.server_port = SA_HTTPD_PORT;
 
     esp_err_t err = httpd_start(&server, &cfg);
     if (err != ESP_OK) {
@@ -175,9 +196,20 @@ esp_err_t httpd_server_start(const char *device_id, const char *ip)
         return err;
     }
 
-    httpd_register_uri_handler(server, &uri_info);
-    httpd_register_uri_handler(server, &uri_config);
+    err = httpd_register_uri_handler(server, &uri_info);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_register_uri_handler(/api/info) failed (%s)", esp_err_to_name(err));
+        httpd_stop(server);
+        return err;
+    }
 
-    ESP_LOGI(TAG, "HTTP server started on port %d (device: %s)", CONFIG_SA_HTTPD_PORT, device_id);
+    err = httpd_register_uri_handler(server, &uri_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_register_uri_handler(/api/config) failed (%s)", esp_err_to_name(err));
+        httpd_stop(server);
+        return err;
+    }
+
+    ESP_LOGI(TAG, "HTTP server started on port %d (device: %s)", SA_HTTPD_PORT, device_id);
     return ESP_OK;
 }

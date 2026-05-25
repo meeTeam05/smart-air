@@ -1,7 +1,7 @@
 # Demo-only Kconfig override preset.
-# Keep `sdkconfig` as the normal/production baseline.
+# Keep `sdkconfig.defaults` as the normal/production baseline.
 # Example build:
-#   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig;sdkconfig.demo" -D SDKCONFIG=sdkconfig.demo.active build
+#   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.demo" -D SDKCONFIG=sdkconfig.demo.active build
 
 CONFIG_SA_DEMO_NO_PERIPHERALS=y
 CONFIG_SA_ENABLE_RELAYS=y

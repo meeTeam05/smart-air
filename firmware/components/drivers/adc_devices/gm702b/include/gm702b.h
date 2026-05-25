@@ -1,6 +1,9 @@
 /**
  * @file gm702b.h
+ * 
  * @brief Winsen GM-702B MEMS CO Gas Sensor driver (analog ADC).
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  *
  * DFRobot SEN0564 breakout board. Heater circuit managed by board.
  * ESP32 reads analog output via ADC1 → converts voltage to CO ppm.
@@ -50,6 +53,8 @@ esp_err_t gm702b_calibrate(gm702b_t *dev);
  *
  * @param dev    Device descriptor (must be calibrated)
  * @param co_ppm Output: CO concentration in ppm
+ *
+ * @return ESP_OK on success, or ESP_ERR_INVALID_STATE when the sensor is not calibrated.
  */
 esp_err_t gm702b_read(gm702b_t *dev, float *co_ppm);
 

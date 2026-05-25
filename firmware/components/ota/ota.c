@@ -43,6 +43,7 @@ typedef struct {
 
 static QueueHandle_t s_ota_queue = NULL;
 static char s_progress_topic[96]; /* device/{id}/ota/progress */
+static bool s_ota_started = false;
 
 /* ── Internal helpers ────────────────────────────────────────────────────── */
 
@@ -54,7 +55,32 @@ static void publish_progress(int pct, const char *status)
     } else {
         snprintf(msg, sizeof(msg), "{\"progress\":%d}", pct);
     }
-    mqtt_publish(s_progress_topic, msg, 1, false);
+    int msg_id = mqtt_publish(s_progress_topic, msg, 1, false);
+    if (msg_id < 0) {
+        ESP_LOGW(TAG,
+                 "OTA progress publish failed (progress=%d status=%s)",
+                 pct,
+                 status != NULL ? status : "none");
+    }
+}
+
+static esp_err_t format_hex_string(const uint8_t *bytes, size_t byte_count, char *out, size_t out_size)
+{
+    if (bytes == NULL || out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (out_size < (byte_count * 2U) + 1U) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    for (size_t i = 0; i < byte_count; i++) {
+        int written = snprintf(&out[i * 2U], out_size - (i * 2U), "%02x", bytes[i]);
+        if (written != 2) {
+            return ESP_FAIL;
+        }
+    }
+
+    return ESP_OK;
 }
 
 /* ── FreeRTOS task ───────────────────────────────────────────────────────── */
@@ -128,8 +154,12 @@ static void ota_task_fn(void *arg)
                 continue;
             }
             char actual_hex[65];
-            for (int i = 0; i < 32; i++) {
-                sprintf(&actual_hex[i * 2], "%02x", digest[i]);
+            err = format_hex_string(digest, sizeof(digest), actual_hex, sizeof(actual_hex));
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "SHA256 hex formatting failed (%s)", esp_err_to_name(err));
+                esp_https_ota_abort(ota_handle);
+                publish_progress(0, "failed");
+                continue;
             }
             if (strcasecmp(actual_hex, msg.sha256) != 0) {
                 ESP_LOGE(TAG, "SHA256 mismatch — expected %s, got %s", msg.sha256, actual_hex);
@@ -160,6 +190,11 @@ static void ota_task_fn(void *arg)
 
 esp_err_t ota_task_start(const char *device_id)
 {
+    if (s_ota_started) {
+        ESP_LOGW(TAG, "ota_task already started");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     snprintf(s_progress_topic, sizeof(s_progress_topic), "device/%s/ota/progress", device_id != NULL ? device_id : "");
 
     s_ota_queue = xQueueCreate(1, sizeof(ota_msg_t));
@@ -172,19 +207,29 @@ esp_err_t ota_task_start(const char *device_id)
     BaseType_t rc = xTaskCreatePinnedToCore(ota_task_fn, "ota_task", 8192, NULL, 3, NULL, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed");
+        vQueueDelete(s_ota_queue);
+        s_ota_queue = NULL;
         return ESP_FAIL;
     }
 
+    s_ota_started = true;
     ESP_LOGI(TAG, "ota_task started (topic: %s)", s_progress_topic);
     return ESP_OK;
 }
 
 esp_err_t ota_trigger(const char *url, const char *sha256)
 {
+    ota_msg_t msg = {0};
+
     /* SEC-02: HTTPS only */
     if (url == NULL || strncmp(url, "https://", 8) != 0) {
         ESP_LOGW(TAG, "OTA trigger rejected — URL must start with https://");
         return ESP_ERR_INVALID_ARG;
+    }
+
+    if (strnlen(url, sizeof(msg.url)) >= sizeof(msg.url)) {
+        ESP_LOGW(TAG, "OTA trigger rejected — URL exceeds %u bytes", (unsigned)(sizeof(msg.url) - 1U));
+        return ESP_ERR_INVALID_SIZE;
     }
 
     if (s_ota_queue == NULL) {
@@ -192,7 +237,6 @@ esp_err_t ota_trigger(const char *url, const char *sha256)
         return ESP_FAIL;
     }
 
-    ota_msg_t msg = {0};
     strlcpy(msg.url, url, sizeof(msg.url));
     if (sha256 != NULL) {
         strlcpy(msg.sha256, sha256, sizeof(msg.sha256));

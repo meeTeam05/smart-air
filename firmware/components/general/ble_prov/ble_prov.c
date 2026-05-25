@@ -55,10 +55,54 @@ static bool s_got_pass;
 
 static EventGroupHandle_t s_prov_eg;
 static TaskHandle_t s_prov_task_handle;
+static bool s_nimble_initialized;
+static portMUX_TYPE s_prov_eg_lock = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_prov_eg_users;
 
 static void start_advertise(void);
 static int gap_event(struct ble_gap_event *ev, void *arg);
 static int prov_chr_access(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
+static void cleanup_start_failure(void);
+
+static EventGroupHandle_t prov_event_group_acquire(void)
+{
+    EventGroupHandle_t prov_eg;
+
+    portENTER_CRITICAL(&s_prov_eg_lock);
+    prov_eg = s_prov_eg;
+    if (prov_eg != NULL) {
+        s_prov_eg_users++;
+    }
+    portEXIT_CRITICAL(&s_prov_eg_lock);
+
+    return prov_eg;
+}
+
+static void prov_event_group_release(void)
+{
+    portENTER_CRITICAL(&s_prov_eg_lock);
+    if (s_prov_eg_users > 0) {
+        s_prov_eg_users--;
+    }
+    portEXIT_CRITICAL(&s_prov_eg_lock);
+}
+
+static void prov_event_group_wait_for_users(void)
+{
+    while (true) {
+        uint32_t active_users = 0;
+
+        portENTER_CRITICAL(&s_prov_eg_lock);
+        active_users = s_prov_eg_users;
+        portEXIT_CRITICAL(&s_prov_eg_lock);
+
+        if (active_users == 0) {
+            return;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}
 
 static const struct ble_gatt_svc_def s_gatt_svcs[] = {
     {
@@ -170,9 +214,14 @@ static void prov_task(void *arg)
     uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CONFIG_SA_PROV_TIMEOUT_MS));
     if (notified == 0) {
         ESP_LOGW(TAG, "Provisioning timed out — no credentials received");
-        xEventGroupSetBits(s_prov_eg, PROV_FAIL_BIT);
+        EventGroupHandle_t prov_eg = prov_event_group_acquire();
+        if (prov_eg != NULL) {
+            xEventGroupSetBits(prov_eg, PROV_FAIL_BIT);
+            prov_event_group_release();
+        }
         mbedtls_platform_zeroize(s_ssid, sizeof(s_ssid));
         mbedtls_platform_zeroize(s_password, sizeof(s_password));
+        s_prov_task_handle = NULL;
         vTaskDelete(NULL);
         return;
     }
@@ -219,9 +268,14 @@ static void prov_task(void *arg)
     }
 
     /* Signal ble_prov_start() to unblock */
-    xEventGroupSetBits(s_prov_eg, err == ESP_OK ? PROV_DONE_BIT : PROV_FAIL_BIT);
+    EventGroupHandle_t prov_eg = prov_event_group_acquire();
+    if (prov_eg != NULL) {
+        xEventGroupSetBits(prov_eg, err == ESP_OK ? PROV_DONE_BIT : PROV_FAIL_BIT);
+        prov_event_group_release();
+    }
     mbedtls_platform_zeroize(s_ssid, sizeof(s_ssid));
     mbedtls_platform_zeroize(s_password, sizeof(s_password));
+    s_prov_task_handle = NULL;
     vTaskDelete(NULL);
 }
 
@@ -272,7 +326,12 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
         ESP_LOGI(TAG, "Client disconnected (reason=%d)", ev->disconnect.reason);
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         /* Re-advertise only if provisioning not yet complete */
-        if (!(xEventGroupGetBits(s_prov_eg) & (PROV_DONE_BIT | PROV_FAIL_BIT))) {
+        EventGroupHandle_t prov_eg = prov_event_group_acquire();
+        EventBits_t bits = prov_eg != NULL ? xEventGroupGetBits(prov_eg) : (PROV_DONE_BIT | PROV_FAIL_BIT);
+        if (prov_eg != NULL) {
+            prov_event_group_release();
+        }
+        if (!(bits & (PROV_DONE_BIT | PROV_FAIL_BIT))) {
             start_advertise();
         }
         break;
@@ -289,10 +348,10 @@ static void on_sync(void)
 {
     ble_hs_id_infer_auto(0, &s_own_addr_type);
 
-    /* Build name: DEVICE_NAME + last 3 MAC bytes */
+    /* Build name: SA_PROV_NAME_PREFIX + last 3 MAC bytes */
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    snprintf(s_device_name, sizeof(s_device_name), DEVICE_NAME "_%02X%02X%02X", mac[3], mac[4], mac[5]);
+    snprintf(s_device_name, sizeof(s_device_name), SA_PROV_NAME_PREFIX "_%02X%02X%02X", mac[3], mac[4], mac[5]);
     ble_svc_gap_device_name_set(s_device_name);
 
     start_advertise();
@@ -325,9 +384,15 @@ bool ble_prov_is_provisioned(void)
 esp_err_t ble_prov_start(void)
 {
     s_prov_eg = xEventGroupCreate();
+    if (s_prov_eg == NULL) {
+        ESP_LOGE(TAG, "Failed to create provisioning event group");
+        return ESP_ERR_NO_MEM;
+    }
+
     s_got_ssid = false;
     s_got_pass = false;
     s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+    s_prov_task_handle = NULL;
 
     memset(s_ssid, 0, sizeof(s_ssid));
     memset(s_password, 0, sizeof(s_password));
@@ -336,16 +401,35 @@ esp_err_t ble_prov_start(void)
     BaseType_t rc = xTaskCreatePinnedToCore(prov_task, "ble_prov_t", 4096, NULL, 5, &s_prov_task_handle, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "prov_task create failed — insufficient heap");
+        cleanup_start_failure();
         return ESP_ERR_NO_MEM;
     }
 
     /* Init NimBLE host + GATT */
-    nimble_port_init();
+    esp_err_t err = nimble_port_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "nimble_port_init failed: %s", esp_err_to_name(err));
+        cleanup_start_failure();
+        return err;
+    }
+    s_nimble_initialized = true;
+
     ble_svc_gap_init();
     ble_svc_gatt_init();
 
-    ble_gatts_count_cfg(s_gatt_svcs);
-    ble_gatts_add_svcs(s_gatt_svcs);
+    int ble_rc = ble_gatts_count_cfg(s_gatt_svcs);
+    if (ble_rc != 0) {
+        ESP_LOGE(TAG, "ble_gatts_count_cfg failed: %d", ble_rc);
+        cleanup_start_failure();
+        return ESP_FAIL;
+    }
+
+    ble_rc = ble_gatts_add_svcs(s_gatt_svcs);
+    if (ble_rc != 0) {
+        ESP_LOGE(TAG, "ble_gatts_add_svcs failed: %d", ble_rc);
+        cleanup_start_failure();
+        return ESP_FAIL;
+    }
 
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.reset_cb = NULL;
@@ -360,12 +444,22 @@ esp_err_t ble_prov_start(void)
 
 void ble_prov_stop(void)
 {
-    nimble_port_stop();
-    nimble_port_deinit();
+    if (s_nimble_initialized) {
+        nimble_port_stop();
+        nimble_port_deinit();
+        s_nimble_initialized = false;
+    }
 
-    if (s_prov_eg != NULL) {
-        vEventGroupDelete(s_prov_eg);
-        s_prov_eg = NULL;
+    EventGroupHandle_t prov_eg = NULL;
+
+    portENTER_CRITICAL(&s_prov_eg_lock);
+    prov_eg = s_prov_eg;
+    s_prov_eg = NULL;
+    portEXIT_CRITICAL(&s_prov_eg_lock);
+
+    if (prov_eg != NULL) {
+        prov_event_group_wait_for_users();
+        vEventGroupDelete(prov_eg);
     }
 }
 
@@ -409,4 +503,27 @@ esp_err_t ble_prov_reset(void)
         ESP_LOGI(TAG, "Provisioning credentials cleared");
     }
     return err;
+}
+
+static void cleanup_start_failure(void)
+{
+    if (s_prov_task_handle != NULL) {
+        vTaskDelete(s_prov_task_handle);
+        s_prov_task_handle = NULL;
+    }
+    if (s_nimble_initialized) {
+        nimble_port_deinit();
+        s_nimble_initialized = false;
+    }
+    EventGroupHandle_t prov_eg = NULL;
+
+    portENTER_CRITICAL(&s_prov_eg_lock);
+    prov_eg = s_prov_eg;
+    s_prov_eg = NULL;
+    portEXIT_CRITICAL(&s_prov_eg_lock);
+
+    if (prov_eg != NULL) {
+        prov_event_group_wait_for_users();
+        vEventGroupDelete(prov_eg);
+    }
 }

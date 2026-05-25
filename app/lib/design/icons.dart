@@ -15,7 +15,6 @@ class AppIcons {
 
   // Nav
   static const IconData home          = LucideIcons.home;
-  static const IconData automation    = LucideIcons.zap;
   static const IconData notifications = LucideIcons.bell;
   static const IconData profile       = LucideIcons.user;
 
@@ -31,7 +30,6 @@ class AppIcons {
 
   // Action
   static const IconData plus       = LucideIcons.plus;
-  static const IconData more       = LucideIcons.moreHorizontal;
   static const IconData back       = LucideIcons.arrowLeft;
   static const IconData refresh    = LucideIcons.refreshCw;
   static const IconData edit       = LucideIcons.pencil;

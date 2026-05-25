@@ -3,6 +3,49 @@ import { normalizeDeviceId } from '../utils/device-id.js';
 import { checkDeviceAccess } from '../utils/check-access.js';
 
 const MAX_DESIRED_SHADOW_BYTES = 4_096;
+const DESIRED_SHADOW_ALLOWED_KEYS = ['mode', 'relay_1', 'relay_2', 'relay_3'];
+const RELAY_KEYS = ['relay_1', 'relay_2', 'relay_3'];
+
+function validateDesiredShadowPayload(desired) {
+    const unsupportedKeys = Object.keys(desired).filter(
+        (key) => !DESIRED_SHADOW_ALLOWED_KEYS.includes(key)
+    );
+    if (unsupportedKeys.length > 0) {
+        return {
+            ok: false,
+            error: `Unsupported desired keys: ${unsupportedKeys.join(', ')}. Supported keys: ${DESIRED_SHADOW_ALLOWED_KEYS.join(', ')}.`,
+        };
+    }
+
+    if (Object.hasOwn(desired, 'mode') && desired.mode !== 'on' && desired.mode !== 'off') {
+        return { ok: false, error: 'mode must be on or off' };
+    }
+
+    for (const relayKey of RELAY_KEYS) {
+        if (Object.hasOwn(desired, relayKey) && typeof desired[relayKey] !== 'boolean') {
+            return { ok: false, error: `${relayKey} must be boolean` };
+        }
+    }
+
+    return { ok: true };
+}
+
+function effectiveDesiredMode(desired, shadow) {
+    if (Object.hasOwn(desired, 'mode')) return desired.mode;
+    if (Object.hasOwn(shadow?.desired ?? {}, 'mode')) return shadow.desired.mode;
+    if (Object.hasOwn(shadow?.reported ?? {}, 'mode')) return shadow.reported.mode;
+    return null;
+}
+
+function validateDesiredShadowInvariant(desired, shadow) {
+    const enabledRelayKeys = RELAY_KEYS.filter((relayKey) => desired[relayKey] === true);
+    if (enabledRelayKeys.length === 0) return { ok: true };
+    if (effectiveDesiredMode(desired, shadow) !== 'off') return { ok: true };
+    return {
+        ok: false,
+        error: `${enabledRelayKeys.join(', ')} cannot be true when effective desired mode is off`,
+    };
+}
 
 export default async function shadowRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
@@ -24,19 +67,16 @@ export default async function shadowRoutes(fastify) {
         const desired = request.body;
         const isPlainObject = (obj) => obj && typeof obj === 'object' && !Array.isArray(obj);
         if (!isPlainObject(desired)) return reply.code(400).send({ error: 'body must be a plain JSON object' });
+
+        const validation = validateDesiredShadowPayload(desired);
+        if (!validation.ok) return reply.code(400).send({ error: validation.error });
         if (Buffer.byteLength(JSON.stringify(desired), 'utf8') > MAX_DESIRED_SHADOW_BYTES) {
             return reply.code(400).send({ error: 'desired shadow payload exceeds size limit' });
         }
 
-        const reservedKeys = ['mode', 'relay_1', 'relay_2', 'relay_3'];
-        const foundReserved = reservedKeys.filter((key) => Object.hasOwn(desired, key));
-        if (foundReserved.length > 0) {
-            return reply.code(400).send({
-                error: `Reserved keys detected: ${foundReserved.join(', ')}. Use typed endpoints for device mode and relay control.`,
-            });
-        }
-
         const shadow = await getShadow(fastify, deviceId);
+        const invariant = validateDesiredShadowInvariant(desired, shadow);
+        if (!invariant.ok) return reply.code(400).send({ error: invariant.error });
 
         let updatedShadow;
         try {

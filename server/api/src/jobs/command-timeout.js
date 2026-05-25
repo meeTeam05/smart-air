@@ -1,13 +1,10 @@
 import { createRealtimeEvent } from '../services/realtime-events.js';
+import { parsePositiveIntEnv } from '../utils/parse.js';
+import { registerNonOverlappingIntervalJob } from './scheduler.js';
 
 const DEFAULT_TIMEOUT_SECONDS = 60;
 const DEFAULT_PENDING_TIMEOUT_SECONDS = 1800; // 30 min
 const DEFAULT_SWEEP_INTERVAL_MS = 30_000;
-
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
 
 export function registerCommandTimeoutJob(fastify, options = {}) {
     const timeoutSeconds = options.timeoutSeconds ?? parsePositiveIntEnv('COMMAND_SENT_TIMEOUT_SECONDS', DEFAULT_TIMEOUT_SECONDS);
@@ -23,7 +20,7 @@ export function registerCommandTimeoutJob(fastify, options = {}) {
             const result = await client.query(
                 `UPDATE commands
                  SET status = 'timeout', executed_at = NOW()
-                 WHERE (status = 'sent'    AND created_at < NOW() - ($1 * INTERVAL '1 second'))
+                 WHERE (status = 'sent'    AND sent_at IS NOT NULL AND sent_at < NOW() - ($1 * INTERVAL '1 second'))
                     OR (status = 'pending' AND created_at < NOW() - ($2 * INTERVAL '1 second'))
                  RETURNING id, device_id, payload`,
                 [timeoutSeconds, pendingTimeoutSeconds]
@@ -38,6 +35,7 @@ export function registerCommandTimeoutJob(fastify, options = {}) {
                         status: 'timeout',
                         payload: command.payload,
                     },
+                    idempotencyKey: `command.updated:${command.id}:timeout`,
                 });
             }
 
@@ -63,9 +61,10 @@ export function registerCommandTimeoutJob(fastify, options = {}) {
         }
     };
 
-    const intervalId = setInterval(runSweep, sweepIntervalMs);
-
-    fastify.addHook('onClose', async () => {
-        clearInterval(intervalId);
+    registerNonOverlappingIntervalJob(fastify, {
+        intervalMs: sweepIntervalMs,
+        jobName: 'command timeout',
+        runImmediately: true,
+        task: runSweep,
     });
 }

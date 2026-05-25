@@ -36,9 +36,16 @@ class _Step5NameScreenState extends ConsumerState<Step5NameScreen> {
   String? _selectedRoomId;
   bool _saving = false;
 
+  bool get _hasRequiredRouteState =>
+      widget.homeId.isNotEmpty && widget.deviceId.isNotEmpty;
+
   @override
   void initState() {
     super.initState();
+    if (widget.deviceId.isEmpty) {
+      _nameCtrl = TextEditingController(text: 'Smart Air');
+      return;
+    }
     final suffix =
         widget.deviceId.replaceAll(RegExp(r'[^A-Fa-f0-9]'), '').toUpperCase();
     final displaySuffix = suffix.isEmpty
@@ -85,6 +92,46 @@ class _Step5NameScreenState extends ConsumerState<Step5NameScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+
+    if (!_hasRequiredRouteState) {
+      return BleStepShell(
+        currentStep: 4,
+        title: 'Name your device',
+        subtitle:
+            'Provisioning link is incomplete. Start again before naming device.',
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AtmosphereCard(
+              padding: const EdgeInsets.all(AtmosphereTokens.space16),
+              child: Column(
+                children: [
+                  Icon(AppIcons.warn, color: c.danger, size: 30),
+                  const SizedBox(height: AtmosphereTokens.space16),
+                  Text(
+                    'Missing provisioning details',
+                    style: AtmosphereTextStyles.h2(c.ink),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AtmosphereTokens.space8),
+                  Text(
+                    'This step needs both a home and device ID. Start provisioning again.',
+                    style: AtmosphereTextStyles.body(c.ink2),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        primaryLabel: 'Start over',
+        onPrimary: () => context.go('/home'),
+        secondaryLabel: 'Cancel',
+        onSecondary: () => context.go('/home'),
+        onCancel: () => context.go('/home'),
+      );
+    }
+
     final homesAsync = ref.watch(homesProvider);
     final roomsAsync = widget.homeId.isNotEmpty
         ? ref.watch(roomsProvider(widget.homeId))

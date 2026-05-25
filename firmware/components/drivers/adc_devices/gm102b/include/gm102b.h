@@ -58,7 +58,7 @@ esp_err_t gm102b_calibrate(gm102b_t *dev);
  * @param dev     Device descriptor (must be calibrated)
  * @param no2_ppm Output: NO2 concentration in ppm
  * 
- * @return ESP_OK on success, or an error code on failure.
+ * @return ESP_OK on success, or ESP_ERR_INVALID_STATE when the sensor is not calibrated.
  */
 esp_err_t gm102b_read(gm102b_t *dev, float *no2_ppm);
 

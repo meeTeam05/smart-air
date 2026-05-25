@@ -51,5 +51,16 @@ __pycache__/
 .gitnexus
 tmp/
 server/api/node_modules/
-.planning/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+
+# Others
 scripts/ddns-cloudflare.sh
+.sisyphus/
+.beads/
+.mnhat/
+.claude/
+CLAUDE.md

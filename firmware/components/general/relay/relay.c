@@ -94,6 +94,26 @@ static esp_err_t relay_apply_gpio_state(int index, bool on)
     return err;
 }
 
+static esp_err_t relay_rollback_state(int index, bool prev_state)
+{
+    esp_err_t err = relay_apply_gpio_state(index, prev_state);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to roll back relay_%d GPIO state", index + 1);
+        return err;
+    }
+
+    portENTER_CRITICAL(&s_state_lock);
+    s_state[index] = prev_state;
+    portEXIT_CRITICAL(&s_state_lock);
+
+    err = relay_persist_state_value(index, prev_state);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to roll back relay_%d persisted state", index + 1);
+    }
+
+    return err;
+}
+
 static esp_err_t relay_publish_delta(int channel, bool on)
 {
     cJSON *root = cJSON_CreateObject();
@@ -230,16 +250,19 @@ esp_err_t relay_set(int channel, bool on)
 
     err = relay_persist_state_value(index, on);
     if (err != ESP_OK) {
-        return err;
+        esp_err_t rollback_err = relay_rollback_state(index, prev_state);
+        return rollback_err != ESP_OK ? rollback_err : err;
     }
-
-    buzzer_beep_ms(RELAY_BEEP_MS_SINGLE);
 
     err = relay_publish_delta(channel, on);
     if (err != ESP_OK) {
-        return err;
+        ESP_LOGW(TAG,
+                 "relay_%d state changed locally but shadow publish failed: %s",
+                 channel,
+                 esp_err_to_name(err));
     }
 
+    buzzer_beep_ms(RELAY_BEEP_MS_SINGLE);
     return ESP_OK;
 }
 

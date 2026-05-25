@@ -76,19 +76,29 @@ class SensorTile extends StatelessWidget {
                 ],
               )
             : Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    displayValue,
-                    style: AtmosphereTextStyles.sensorValue(
-                      dimmed ? c.ink3 : c.ink,
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        displayValue,
+                        style: AtmosphereTextStyles.sensorValue(
+                          dimmed ? c.ink3 : c.ink,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: AtmosphereTokens.space4),
-                  Text(
-                    unit,
-                    style: AtmosphereTextStyles.body(c.ink2),
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: AtmosphereTokens.space4,
+                    ),
+                    child: Text(
+                      unit,
+                      style: AtmosphereTextStyles.body(c.ink2),
+                    ),
                   ),
                 ],
               ),

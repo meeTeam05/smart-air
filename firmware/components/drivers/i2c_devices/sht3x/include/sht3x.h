@@ -3,65 +3,56 @@
  * @file sht3x.h
  *
  * @brief SHT3x Temperature and Humidity Sensor Driver API
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
 
 #pragma once
-
-/* Includes ------------------------------------------------------------------*/
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <i2cdev.h>
 #include <esp_err.h>
 
-/* Exported defines ----------------------------------------------------------*/
-
 #define SHT3X_I2C_ADDR_GND 0x44
 #define SHT3X_I2C_ADDR_VDD 0x45
 
 #define SHT3X_RAW_DATA_SIZE 6
-
-/* Exported types ------------------------------------------------------------*/
 
 typedef uint8_t sht3x_raw_data_t[SHT3X_RAW_DATA_SIZE];
 
 /**
  * @brief Measurement modes
  */
-typedef enum
-{
-    SHT3X_SINGLE_SHOT = 0, //!< Single measurement (sensor powers down after)
-    SHT3X_PERIODIC_05MPS,  //!< Periodic mode: 0.5 measurements/sec
-    SHT3X_PERIODIC_1MPS,   //!< Periodic mode: 1 measurement/sec
-    SHT3X_PERIODIC_2MPS,   //!< Periodic mode: 2 measurements/sec
-    SHT3X_PERIODIC_4MPS,   //!< Periodic mode: 4 measurements/sec
-    SHT3X_PERIODIC_10MPS   //!< Periodic mode: 10 measurements/sec (highest update rate)
+typedef enum {
+    SHT3X_SINGLE_SHOT = 0,  //!< Single measurement (sensor powers down after)
+    SHT3X_PERIODIC_05MPS,   //!< Periodic mode: 0.5 measurements/sec
+    SHT3X_PERIODIC_1MPS,    //!< Periodic mode: 1 measurement/sec
+    SHT3X_PERIODIC_2MPS,    //!< Periodic mode: 2 measurements/sec
+    SHT3X_PERIODIC_4MPS,    //!< Periodic mode: 4 measurements/sec
+    SHT3X_PERIODIC_10MPS    //!< Periodic mode: 10 measurements/sec (highest update rate)
 } sht3x_mode_t;
 
 /**
  * @brief Measurement repeatability
  */
-typedef enum
-{
-    SHT3X_HIGH = 0, //!< High repeatability (best accuracy, ~15ms measurement time)
-    SHT3X_MEDIUM,   //!< Medium repeatability (balanced, ~6ms)
-    SHT3X_LOW       //!< Low repeatability (fastest, ~4ms)
+typedef enum {
+    SHT3X_HIGH = 0,  //!< High repeatability (best accuracy, ~15ms measurement time)
+    SHT3X_MEDIUM,    //!< Medium repeatability (balanced, ~6ms)
+    SHT3X_LOW        //!< Low repeatability (fastest, ~4ms)
 } sht3x_repeat_t;
 
 /**
  * Device descriptor
  */
-typedef struct
-{
-    i2c_dev_t i2c_dev;            //!< I2C device descriptor
-    sht3x_mode_t mode;            //!< used measurement mode
-    sht3x_repeat_t repeatability; //!< used repeatability
-    bool meas_started;            //!< indicates whether measurement started
-    uint64_t meas_start_time;     //!< measurement start time in us
-    bool meas_first;              //!< first measurement in periodic mode
+typedef struct {
+    i2c_dev_t i2c_dev;             //!< I2C device descriptor
+    sht3x_mode_t mode;             //!< used measurement mode
+    sht3x_repeat_t repeatability;  //!< used repeatability
+    bool meas_started;             //!< indicates whether measurement started
+    uint64_t meas_start_time;      //!< measurement start time in us
+    bool meas_first;               //!< first measurement in periodic mode
 } sht3x_t;
-
-/* Exported functions --------------------------------------------------------*/
 
 /**
  * @brief Initialize device descriptor

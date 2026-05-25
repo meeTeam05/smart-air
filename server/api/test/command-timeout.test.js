@@ -38,6 +38,7 @@ test('command timeout sweep emits command.updated events for timed-out commands'
             async query(sql, params = []) {
                 queryLog.push({ sql, params });
                 if (sql.includes('UPDATE commands')) {
+                    assert.match(sql, /sent_at IS NOT NULL AND sent_at < NOW\(\) - \(\$1 \* INTERVAL '1 second'\)/);
                     return {
                         rowCount: 2,
                         rows: [
@@ -90,7 +91,7 @@ test('command timeout sweep emits command.updated events for timed-out commands'
             sweepIntervalMs: 10,
         });
 
-        await intervalCallback();
+        await new Promise((resolve) => setImmediate(resolve));
 
         const eventInserts = queryLog.filter((call) => call.sql.includes('INSERT INTO realtime_events'));
         assert.equal(eventInserts.length, 2);
@@ -99,14 +100,19 @@ test('command timeout sweep emits command.updated events for timed-out commands'
             status: 'timeout',
             payload: { type: 'relay_set', relay: 1, state: true },
         });
+        assert.equal(eventInserts[0].params[4], 'command.updated:cmd-1:timeout');
         assert.deepEqual(JSON.parse(eventInserts[1].params[3]), {
             command_id: 'cmd-2',
             status: 'timeout',
             payload: { type: 'device_mode', mode: 'off' },
         });
+        assert.equal(eventInserts[1].params[4], 'command.updated:cmd-2:timeout');
         assert.ok(queryLog.some((call) => call.sql === 'COMMIT'));
         assert.equal(client.released, true);
-        assert.equal(fastify.log.infoCalls.length, 1);
+        assert.equal(fastify.log.infoCalls.length, 3);
+        assert.equal(fastify.log.infoCalls[0][1], 'job sweep started');
+        assert.equal(fastify.log.infoCalls[1][1], 'command timeout sweep updated stale commands');
+        assert.equal(fastify.log.infoCalls[2][1], 'job sweep completed');
 
         await hooks.onClose();
         assert.equal(clearedIntervalId, 'interval-1');

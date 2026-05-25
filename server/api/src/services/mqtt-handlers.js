@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { getShadow, computeDelta, updateReported } from './shadow.js';
 import { flushPending } from './commands.js';
 import { createRealtimeEvent } from './realtime-events.js';
@@ -24,13 +25,16 @@ function validSensorValue(value) {
     return value === null || (typeof value === 'number' && Number.isFinite(value));
 }
 
-export function payloadByteLength(payload) {
+export function payloadByteLength(payload, rawByteLength = null) {
+    if (Number.isInteger(rawByteLength) && rawByteLength >= 0) {
+        return rawByteLength;
+    }
     return Buffer.byteLength(JSON.stringify(payload), 'utf8');
 }
 
-function validateTelemetryPayload(deviceId, payload) {
+function validateTelemetryPayload(deviceId, payload, rawByteLength = null) {
     if (!isPlainObject(payload)) return 'payload must be a plain JSON object';
-    if (payloadByteLength(payload) > MAX_TELEMETRY_PAYLOAD_BYTES) {
+    if (payloadByteLength(payload, rawByteLength) > MAX_TELEMETRY_PAYLOAD_BYTES) {
         return 'payload exceeds telemetry size limit';
     }
     if (typeof payload.device_id === 'string' && payload.device_id !== deviceId) {
@@ -52,9 +56,9 @@ function validateTelemetryPayload(deviceId, payload) {
     return null;
 }
 
-function validateShadowReportPayload(payload) {
+function validateShadowReportPayload(payload, rawByteLength = null) {
     if (!isPlainObject(payload)) return 'payload must be a plain JSON object';
-    if (payloadByteLength(payload) > MAX_SHADOW_REPORT_BYTES) {
+    if (payloadByteLength(payload, rawByteLength) > MAX_SHADOW_REPORT_BYTES) {
         return 'payload exceeds shadow report size limit';
     }
     if (Object.hasOwn(payload, 'mode') && payload.mode !== 'on' && payload.mode !== 'off') {
@@ -89,29 +93,7 @@ async function ensureDeviceExists(fastify, deviceId, handler) {
     return true;
 }
 
-function normalizeTelemetryTimestamp(fastify, deviceId, payload) {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const minSec = 946684800;
-    const maxSec = nowSec + 300;
-    const candidateTs = payload?.ts;
-
-    if (typeof candidateTs !== 'number' || !Number.isFinite(candidateTs)) {
-        fastify.log.warn({ deviceId, ts: candidateTs }, 'invalid telemetry ts normalized');
-        return new Date(nowSec * 1000).toISOString();
-    }
-
-    if (candidateTs < minSec) {
-        fastify.log.warn({ deviceId, ts: candidateTs, normalizedTs: minSec }, 'old telemetry ts clamped');
-        return new Date(minSec * 1000).toISOString();
-    }
-
-    if (candidateTs > maxSec) {
-        fastify.log.warn({ deviceId, ts: candidateTs, normalizedTs: nowSec }, 'future telemetry ts clamped');
-        return new Date(nowSec * 1000).toISOString();
-    }
-
-    return new Date(candidateTs * 1000).toISOString();
-}
+const MIN_TELEMETRY_TS_SEC = 946684800;
 
 function telemetryEventPayload(payload, ts) {
     return {
@@ -122,6 +104,16 @@ function telemetryEventPayload(payload, ts) {
         no2_ppm: Object.hasOwn(payload, 'no2_ppm') ? payload.no2_ppm : null,
         mode: payload.mode,
     };
+}
+
+function telemetryMessageId(packet) {
+    if (packet?.qos !== 1) return null;
+    const messageId = Number(packet.messageId);
+    return Number.isInteger(messageId) && messageId > 0 ? messageId : null;
+}
+
+function payloadHash(payload) {
+    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
 export async function publishShadowGetResponse(fastify, deviceId, shadow, logMessage = 'shadow get_response publish failed') {
@@ -151,16 +143,17 @@ export async function handleStatus(fastify, deviceId, payload) {
         return;
     }
 
+    const firmwareVersion = typeof payload.firmware === 'string' ? payload.firmware : null;
     await fastify.db.query(
-        'UPDATE devices SET online = $1, last_seen = NOW() WHERE id = $2',
-        [payload.online, deviceId]
+        'UPDATE devices SET online = $1, firmware_ver = COALESCE($2, firmware_ver), last_seen = NOW() WHERE id = $3',
+        [payload.online, firmwareVersion, deviceId]
     );
     await createRealtimeEvent(fastify, {
         type: 'device.status',
         deviceId,
         payload: {
             online: payload.online,
-            firmware: typeof payload.firmware === 'string' ? payload.firmware : null,
+            firmware: firmwareVersion,
         },
     });
     if (payload.online) {
@@ -170,37 +163,51 @@ export async function handleStatus(fastify, deviceId, payload) {
         } catch (e) {
             fastify.log.error({ err: e, deviceId }, 'flushPending failed on device online');
         }
-        const shadow = await getShadow(fastify, deviceId);
-        if (Object.keys(shadow.desired).length > 0) {
-            try {
-                await publishShadowGetResponse(fastify, deviceId, shadow, 'shadow sync publish failed after status online');
-            } catch {
-                // Status handling should still ACK; the device can request shadow/get again.
-            }
-        }
     }
 }
 
-export async function handleTelemetry(fastify, deviceId, payload) {
+export async function handleTelemetry(fastify, deviceId, payload, packet = null, rawByteLength = null) {
     if (!await ensureDeviceExists(fastify, deviceId, 'telemetry')) {
         return;
     }
 
-    const invalidReason = validateTelemetryPayload(deviceId, payload);
+    const payloadBytes = isPlainObject(payload) ? payloadByteLength(payload, rawByteLength) : null;
+    const invalidReason = validateTelemetryPayload(deviceId, payload, rawByteLength);
     if (invalidReason) {
         fastify.log.warn(
-            { deviceId, invalidReason, payloadBytes: isPlainObject(payload) ? payloadByteLength(payload) : null },
+            { deviceId, invalidReason, payloadBytes },
             'invalid telemetry payload ignored'
         );
         return;
     }
 
-    const ts = normalizeTelemetryTimestamp(fastify, deviceId, payload);
+    const messageId = telemetryMessageId(packet);
     try {
-        await fastify.db.query(
-            'INSERT INTO telemetry (device_id, ts, payload) VALUES ($1, $2, $3)',
-            [deviceId, ts, JSON.stringify(payload)]
+        const insertResult = await fastify.db.query(
+            `WITH normalized AS (
+                 SELECT CASE
+                     WHEN $2::double precision < $3::double precision THEN to_timestamp($3::double precision)
+                     WHEN $2::double precision > EXTRACT(EPOCH FROM NOW()) + 300 THEN NOW()
+                     ELSE to_timestamp($2::double precision)
+                 END AS ts
+             )
+             INSERT INTO telemetry (device_id, ts, payload, mqtt_message_id)
+             SELECT $1, normalized.ts, $4, $5
+             FROM normalized
+             ON CONFLICT DO NOTHING
+             RETURNING ts`,
+            [deviceId, payload.ts, MIN_TELEMETRY_TS_SEC, JSON.stringify(payload), messageId]
         );
+        if (insertResult.rowCount === 0) return;
+        const ts = new Date(insertResult.rows[0].ts).toISOString();
+        if (payload.ts < MIN_TELEMETRY_TS_SEC) {
+            fastify.log.warn({ deviceId, ts: payload.ts, normalizedTs: MIN_TELEMETRY_TS_SEC }, 'old telemetry ts clamped');
+        } else {
+            const normalizedSec = Math.floor(new Date(insertResult.rows[0].ts).getTime() / 1000);
+            if (normalizedSec !== payload.ts) {
+                fastify.log.warn({ deviceId, ts: payload.ts, normalizedTs: normalizedSec }, 'future telemetry ts clamped');
+            }
+        }
         await createRealtimeEvent(fastify, {
             type: 'telemetry.point',
             deviceId,
@@ -209,25 +216,29 @@ export async function handleTelemetry(fastify, deviceId, payload) {
         });
     } catch (err) {
         if (err.code === '23514' && err.constraint === 'telemetry_payload_size_check') {
-            fastify.log.warn({ deviceId, err, payloadBytes: payloadByteLength(payload) }, 'telemetry payload rejected by size constraint');
+            fastify.log.warn({ deviceId, err, payloadBytes }, 'telemetry payload rejected by size constraint');
             return;
         }
         throw err;
     }
 }
 
-export async function handleShadowReport(fastify, deviceId, payload) {
+export async function handleShadowReport(fastify, deviceId, payload, rawByteLength = null) {
     if (!await ensureDeviceExists(fastify, deviceId, 'shadow/report')) {
         return;
     }
 
-    const invalidReason = validateShadowReportPayload(payload);
+    const invalidReason = validateShadowReportPayload(payload, rawByteLength);
     if (invalidReason) {
         fastify.log.warn({ deviceId, invalidReason, payload }, 'invalid shadow report ignored');
         return;
     }
 
-    const shadow = await updateReported(fastify, deviceId, payload);
+    const { shadow, applied } = await updateReported(fastify, deviceId, payload);
+    if (!applied) {
+        fastify.log.info({ deviceId, ts: payload.ts }, 'stale shadow report ignored');
+        return;
+    }
     await createRealtimeEvent(fastify, {
         type: 'shadow.reported',
         deviceId,
@@ -235,6 +246,7 @@ export async function handleShadowReport(fastify, deviceId, payload) {
             reported: shadow.reported ?? {},
             patch: payload,
         },
+        idempotencyKey: `shadow.reported:${deviceId}:${payload.ts}:${payloadHash(payload)}`,
     });
 }
 
@@ -249,7 +261,11 @@ export async function handleShadowGet(fastify, deviceId, payload) {
     }
 
     const shadow = await getShadow(fastify, deviceId);
-    await publishShadowGetResponse(fastify, deviceId, shadow, 'shadow get_response publish failed after shadow/get');
+    try {
+        await publishShadowGetResponse(fastify, deviceId, shadow, 'shadow get_response publish failed after shadow/get');
+    } catch {
+        // shadow/get_response is best-effort; do not poison the inbound ack loop.
+    }
 }
 
 const VALID_COMMAND_STATUS = new Set(['done', 'error']);
@@ -281,7 +297,10 @@ export async function handleResponse(fastify, deviceId, payload) {
     }
 
     await fastify.db.query(
-        "UPDATE commands SET status = 'sent' WHERE id = $1 AND device_id = $2 AND status = 'pending'",
+        `UPDATE commands
+         SET status = 'sent',
+             sent_at = COALESCE(sent_at, NOW())
+         WHERE id = $1 AND device_id = $2 AND status = 'pending'`,
         [commandId, deviceId]
     );
 
@@ -289,7 +308,7 @@ export async function handleResponse(fastify, deviceId, payload) {
         `UPDATE commands
          SET status = $1, executed_at = NOW(), error_message = $4
          WHERE id = $2 AND device_id = $3 AND status = 'sent'
-         RETURNING id, device_id, status, executed_at, error_message`,
+         RETURNING id, device_id, status, executed_at, error_message, payload`,
         [status, commandId, deviceId, status === 'error' ? cleanCommandErrorMessage(payload) : null]
     );
 
@@ -302,8 +321,10 @@ export async function handleResponse(fastify, deviceId, payload) {
             payload: {
                 command_id: command.id,
                 status: command.status,
+                payload: command.payload,
                 error_message: command.error_message ?? null,
             },
+            idempotencyKey: `command.updated:${command.id}:${command.status}`,
         });
         return;
     }
@@ -348,5 +369,8 @@ export async function handleOtaProgress(fastify, deviceId, payload) {
         type: 'ota.progress',
         deviceId,
         payload,
+        idempotencyKey: Object.hasOwn(payload, 'ts')
+            ? `ota.progress:${deviceId}:${payload.ts}:${payloadHash(payload)}`
+            : null,
     });
 }

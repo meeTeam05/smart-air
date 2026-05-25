@@ -26,6 +26,11 @@ Map<String, dynamic> _asMap(Object? value) {
   return const {};
 }
 
+bool? _asBool(Object? value) {
+  if (value is bool) return value;
+  return null;
+}
+
 TelemetryPoint? _latestTelemetryPoint(List<TelemetryPoint> points) {
   if (points.isEmpty) return null;
   return points.reduce((a, b) => a.ts.isAfter(b.ts) ? a : b);
@@ -36,15 +41,31 @@ List<TelemetryPoint> _normalizeTelemetryPoints(
   DateTime? now,
 }) {
   final cutoff = (now ?? DateTime.now()).subtract(_telemetryLiveWindow);
-  final byTs = <int, TelemetryPoint>{};
+  final byIdentity = <String, ({TelemetryPoint point, int seq})>{};
+  var seq = 0;
   for (final point in points) {
     if (point.ts.isBefore(cutoff)) continue;
-    byTs[point.ts.millisecondsSinceEpoch] = point;
+    byIdentity[_telemetryIdentityKey(point)] = (point: point, seq: seq++);
   }
-  final normalized = byTs.values.toList()..sort((a, b) => a.ts.compareTo(b.ts));
-  if (normalized.length <= _telemetryLiveMaxPoints) return normalized;
-  return normalized.sublist(normalized.length - _telemetryLiveMaxPoints);
+  final normalized = byIdentity.values.toList()
+    ..sort((a, b) {
+      final byTs = a.point.ts.compareTo(b.point.ts);
+      if (byTs != 0) return byTs;
+      return a.seq.compareTo(b.seq);
+    });
+  final values = normalized.map((entry) => entry.point).toList();
+  if (values.length <= _telemetryLiveMaxPoints) return values;
+  return values.sublist(values.length - _telemetryLiveMaxPoints);
 }
+
+String _telemetryIdentityKey(TelemetryPoint point) => [
+      point.ts.millisecondsSinceEpoch,
+      point.mode ?? '',
+      point.temperature,
+      point.humidity,
+      point.coPpm,
+      point.no2Ppm,
+    ].join('|');
 
 TelemetryPoint? _telemetryPointFromEvent(RealtimeEvent event) {
   final payload = event.payload;
@@ -76,18 +97,35 @@ class DevicesNotifier extends AsyncNotifier<List<Device>> {
   }
 
   void _handleRealtimeEvent(RealtimeEvent event) {
-    if (event.type != 'device.status') return;
     final current = state.valueOrNull;
     if (current == null) return;
 
-    final firmware = event.payload['firmware'] as String?;
+    if (event.type == 'device.status') {
+      final firmware = event.payload['firmware'] as String?;
+      state = AsyncData([
+        for (final device in current)
+          if (device.id == event.deviceId)
+            device.copyWith(
+              online: event.payload['online'] == true,
+              lastSeen: event.occurredAt,
+              firmwareVer: firmware ?? device.firmwareVer,
+            )
+          else
+            device,
+      ]);
+      return;
+    }
+
+    if (event.type != 'shadow.reported') return;
+    final reported = _asMap(event.payload['reported']);
     state = AsyncData([
       for (final device in current)
         if (device.id == event.deviceId)
           device.copyWith(
-            online: event.payload['online'] == true,
-            lastSeen: event.occurredAt,
-            firmwareVer: firmware ?? device.firmwareVer,
+            mode: reported['mode'] as String? ?? device.mode,
+            relay1: _asBool(reported['relay_1']) ?? device.relay1,
+            relay2: _asBool(reported['relay_2']) ?? device.relay2,
+            relay3: _asBool(reported['relay_3']) ?? device.relay3,
           )
         else
           device,

@@ -2,22 +2,20 @@
  * @file ds3231.c
  *
  * @brief DS3231 Real-Time Clock (RTC) Driver Implementation
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
-
-/* ── Includes ───────────────────────────────────────────────────────────── */
 
 #include "ds3231.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <string.h>
 
-/* ── Private defines macro ──────────────────────────────────────────────── */
-
 #define CHECK(x)                                                           \
     do {                                                                   \
         esp_err_t __err = (x);                                             \
         if (__err != ESP_OK) {                                             \
-            ESP_LOGE(TAG, "Operation failed: %s", esp_err_to_name(__err)); \
+            ESP_LOGE(TAG, "Operation failed: %s", ds3231_err_to_name(__err)); \
             return __err;                                                  \
         }                                                                  \
     } while (0)
@@ -29,8 +27,6 @@
             return ESP_ERR_INVALID_ARG;        \
         }                                      \
     } while (0)
-
-/* ── Private defines ────────────────────────────────────────────────────── */
 
 /* Status register bits */
 #define DS3231_STAT_OSCILLATOR 0x80 /**< Oscillator stop flag */
@@ -67,18 +63,22 @@
 /* I2C configuration */
 #define I2C_FREQ_HZ SA_I2C_FREQ_HZ
 
-/* ── Private types ──────────────────────────────────────────────────────── */
-
 enum { DS3231_SET = 0, DS3231_CLEAR, DS3231_REPLACE };
-
-/* ── Private variables ──────────────────────────────────────────────────── */
 
 static const char *TAG = "ds3231";
 
 static const int days_per_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 static const int days_per_month_leap_year[] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
-/* ── Private function prototypes ────────────────────────────────────────── */
+const char *ds3231_err_to_name(esp_err_t err)
+{
+    switch (err) {
+    case ESP_ERR_DS3231_OSCILLATOR_STOP:
+        return "ESP_ERR_DS3231_OSCILLATOR_STOP";
+    default:
+        return esp_err_to_name(err);
+    }
+}
 
 /**
  * @brief Convert BCD to decimal
@@ -101,11 +101,41 @@ static uint8_t dec2bcd(uint8_t val);
 /**
  * @brief Check if a year is a leap year
  *
- * @param[in] year Year (full year, e.g., 2024)
- * @param[in] month Month (1-12)
- * @param[in] day Day of the month (1-31)
+ * @param[in] year Full year (e.g., 2024)
  *
  * @return true if leap year, false otherwise
+ */
+static inline bool is_leap_year(int year);
+
+/**
+ * @brief Check whether year/month/day form a valid calendar date
+ *
+ * @param[in] year Full year (e.g., 2026)
+ * @param[in] month Month (0-11)
+ * @param[in] day Day of month (1-31)
+ *
+ * @return true if the date exists in the Gregorian calendar
+ */
+static bool is_valid_calendar_date(int year, int month, int day);
+
+/**
+ * @brief Convert UTC time structure to Unix timestamp
+ *
+ * @param[in] time UTC time structure
+ * @param[out] timestamp Unix timestamp in seconds
+ *
+ * @return ESP_OK on success, error code otherwise
+ */
+static esp_err_t utc_tm_to_timestamp(const struct tm *time, uint32_t *timestamp);
+
+/**
+ * @brief Calculate days since January 1st of given year
+ *
+ * @param[in] year Full year (e.g., 2024)
+ * @param[in] month Month (0-11)
+ * @param[in] day Day of the month (1-31)
+ *
+ * @return Number of elapsed days since January 1st
  */
 static inline int days_since_january_1st(int year, int month, int day);
 
@@ -122,6 +152,16 @@ static inline int days_since_january_1st(int year, int month, int day);
 static esp_err_t ds3231_get_flag(ds3231_t *dev, uint8_t addr, uint8_t mask, uint8_t *flag);
 
 /**
+ * @brief Check whether the RTC oscillator-stop flag is set
+ *
+ * @param[in] dev Device descriptor
+ *
+ * @return ESP_OK when RTC time is valid, ESP_ERR_DS3231_OSCILLATOR_STOP when
+ *         the RTC lost time validity, or another error code otherwise
+ */
+static esp_err_t ds3231_check_oscillator_stop(ds3231_t *dev);
+
+/**
  * @brief Set or clear specific bits in a register
  *
  * @param[in] dev Device descriptor
@@ -132,8 +172,6 @@ static esp_err_t ds3231_get_flag(ds3231_t *dev, uint8_t addr, uint8_t mask, uint
  * @return ESP_OK on success, error code otherwise
  */
 static esp_err_t ds3231_set_flag(ds3231_t *dev, uint8_t addr, uint8_t bits, uint8_t mode);
-
-/* ── Exported functions ─────────────────────────────────────────────────── */
 
 /**
  * @brief Initialize device descriptor
@@ -154,7 +192,7 @@ esp_err_t ds3231_init_desc(ds3231_t *dev, i2c_port_t port, gpio_num_t sda_gpio, 
     if (res == ESP_OK) {
         ESP_LOGI(TAG, "DS3231 initialized on port %d (SDA: GPIO%d, SCL: GPIO%d)", port, sda_gpio, scl_gpio);
     } else {
-        ESP_LOGE(TAG, "Failed to initialize DS3231: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to initialize DS3231: %s", ds3231_err_to_name(res));
     }
 
     return res;
@@ -202,6 +240,10 @@ esp_err_t ds3231_set_time(ds3231_t *dev, struct tm *time)
         ESP_LOGE(TAG, "Invalid year: %d (must be >= 100 for year 2000+)", time->tm_year);
         return ESP_ERR_INVALID_ARG;
     }
+    if (!is_valid_calendar_date(time->tm_year + 1900, time->tm_mon, time->tm_mday)) {
+        ESP_LOGE(TAG, "Invalid calendar date: %04d-%02d-%02d", time->tm_year + 1900, time->tm_mon + 1, time->tm_mday);
+        return ESP_ERR_INVALID_ARG;
+    }
 
     uint8_t data[7];
 
@@ -226,6 +268,7 @@ esp_err_t ds3231_set_time(ds3231_t *dev, struct tm *time)
              time->tm_sec);
 
     CHECK(i2c_dev_write_reg(&dev->i2c_dev, DS3231_ADDR_TIME, data, 7));
+    CHECK(ds3231_set_flag(dev, DS3231_ADDR_STATUS, DS3231_STAT_OSCILLATOR, DS3231_CLEAR));
 
     ESP_LOGD(TAG, "Time set successfully");
     return ESP_OK;
@@ -318,7 +361,7 @@ esp_err_t ds3231_set_alarm(ds3231_t *dev,
     esp_err_t res = i2c_dev_write_reg(&dev->i2c_dev, start_addr, data, i);
 
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set alarm: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to set alarm: %s", ds3231_err_to_name(res));
         return res;
     }
 
@@ -381,6 +424,7 @@ esp_err_t ds3231_disable_alarm_ints(ds3231_t *dev, ds3231_alarm_t alarms)
 esp_err_t ds3231_get_time(ds3231_t *dev, struct tm *time)
 {
     CHECK_ARG(dev && time);
+    CHECK(ds3231_check_oscillator_stop(dev));
 
     uint8_t data[7];
 
@@ -388,7 +432,7 @@ esp_err_t ds3231_get_time(ds3231_t *dev, struct tm *time)
     esp_err_t res = i2c_dev_read_reg(&dev->i2c_dev, DS3231_ADDR_TIME, data, 7);
 
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read time: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to read time: %s", ds3231_err_to_name(res));
         return res;
     }
 
@@ -419,7 +463,7 @@ esp_err_t ds3231_get_time(ds3231_t *dev, struct tm *time)
     time->tm_mon = bcd2dec(data[5] & DS3231_MONTH_MASK) - 1;
     time->tm_year = bcd2dec(data[6]) + 100;
     time->tm_isdst = 0;
-    time->tm_yday = days_since_january_1st(time->tm_year, time->tm_mon, time->tm_mday);
+    time->tm_yday = days_since_january_1st(time->tm_year + 1900, time->tm_mon, time->tm_mday);
 
     ESP_LOGD(TAG,
              "Read time: %04d-%02d-%02d %02d:%02d:%02d",
@@ -461,7 +505,7 @@ esp_err_t ds3231_set_timestamp(ds3231_t *dev, uint32_t timestamp)
 
     esp_err_t res = ds3231_set_time(dev, &timeinfo);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set time: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to set time: %s", ds3231_err_to_name(res));
         return res;
     }
 
@@ -478,18 +522,16 @@ esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp)
     struct tm time;
     esp_err_t res = ds3231_get_time(dev, &time);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get time for timestamp: %s", esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to get time for timestamp: %s", ds3231_err_to_name(res));
         return res;
     }
 
-    /* Convert tm struct to Unix timestamp */
-    time_t ts = mktime(&time);
-    if (ts == -1) {
-        ESP_LOGE(TAG, "Failed to convert time to timestamp");
-        return ESP_FAIL;
+    res = utc_tm_to_timestamp(&time, timestamp);
+    if (res != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert UTC time to timestamp: %s", ds3231_err_to_name(res));
+        return res;
     }
 
-    *timestamp = (uint32_t)ts;
     ESP_LOGD(TAG,
              "Timestamp: %lu (%04d-%02d-%02d %02d:%02d:%02d)",
              *timestamp,
@@ -502,8 +544,6 @@ esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp)
 
     return ESP_OK;
 }
-
-/* ── Private functions ──────────────────────────────────────────────────── */
 
 /**
  * @brief Convert BCD to decimal
@@ -518,6 +558,58 @@ static uint8_t dec2bcd(uint8_t val)
     return ((val / 10) << 4) + (val % 10);
 }
 
+static inline bool is_leap_year(int year)
+{
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static bool is_valid_calendar_date(int year, int month, int day)
+{
+    if (month < 0 || month > 11 || day < 1) {
+        return false;
+    }
+
+    const int *days_in_month = is_leap_year(year) ? days_per_month_leap_year : days_per_month;
+    return day <= days_in_month[month];
+}
+
+static esp_err_t utc_tm_to_timestamp(const struct tm *time, uint32_t *timestamp)
+{
+    if (!time || !timestamp) {
+        ESP_LOGE(TAG, "Invalid UTC conversion arguments");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    int year = time->tm_year + 1900;
+    if (year < 1970 || time->tm_mon < 0 || time->tm_mon > 11 || time->tm_mday < 1 || time->tm_hour < 0 ||
+        time->tm_hour > 23 || time->tm_min < 0 || time->tm_min > 59 || time->tm_sec < 0 || time->tm_sec > 59) {
+        ESP_LOGE(TAG, "Invalid UTC time fields");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const int *days_in_month = is_leap_year(year) ? days_per_month_leap_year : days_per_month;
+    if (time->tm_mday > days_in_month[time->tm_mon]) {
+        ESP_LOGE(TAG, "Invalid UTC day %d for month %d in year %d", time->tm_mday, time->tm_mon + 1, year);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint64_t days = 0;
+    for (int current_year = 1970; current_year < year; current_year++) {
+        days += is_leap_year(current_year) ? 366 : 365;
+    }
+    days += days_since_january_1st(year, time->tm_mon, time->tm_mday);
+
+    uint64_t seconds =
+        days * 86400ULL + (uint64_t)time->tm_hour * 3600ULL + (uint64_t)time->tm_min * 60ULL + (uint64_t)time->tm_sec;
+    if (seconds > UINT32_MAX) {
+        ESP_LOGE(TAG, "UTC timestamp overflow for year %d", year);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *timestamp = (uint32_t)seconds;
+    return ESP_OK;
+}
+
 /**
  * @brief Calculate days since January 1st of the given year
  */
@@ -527,7 +619,7 @@ static inline int days_since_january_1st(int year, int month, int day)
     const int *ptr = days_per_month;
 
     /* Handle leap year */
-    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))
+    if (is_leap_year(year))
         ptr = days_per_month_leap_year;
 
     /* Add days from previous months */
@@ -548,13 +640,28 @@ static esp_err_t ds3231_get_flag(ds3231_t *dev, uint8_t addr, uint8_t mask, uint
     /* get register */
     esp_err_t res = i2c_dev_read_reg(&dev->i2c_dev, addr, &data, 1);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read register 0x%02x: %s", addr, esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to read register 0x%02x: %s", addr, ds3231_err_to_name(res));
         return res;
     }
 
     /* return only requested flag */
     *flag = (data & mask);
     ESP_LOGD(TAG, "Read flag from addr 0x%02x: 0x%02x (mask 0x%02x)", addr, *flag, mask);
+    return ESP_OK;
+}
+
+static esp_err_t ds3231_check_oscillator_stop(ds3231_t *dev)
+{
+    uint8_t flag = 0;
+    esp_err_t res = ds3231_get_flag(dev, DS3231_ADDR_STATUS, DS3231_STAT_OSCILLATOR, &flag);
+    if (res != ESP_OK) {
+        return res;
+    }
+    if (flag != 0) {
+        ESP_LOGW(TAG, "RTC oscillator-stop flag is set; time data is invalid until rewritten");
+        return ESP_ERR_DS3231_OSCILLATOR_STOP;
+    }
+
     return ESP_OK;
 }
 
@@ -568,7 +675,7 @@ static esp_err_t ds3231_set_flag(ds3231_t *dev, uint8_t addr, uint8_t bits, uint
     /* get status register */
     esp_err_t res = i2c_dev_read_reg(&dev->i2c_dev, addr, &data, 1);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read register 0x%02x: %s", addr, esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to read register 0x%02x: %s", addr, ds3231_err_to_name(res));
         return res;
     }
 
@@ -587,7 +694,7 @@ static esp_err_t ds3231_set_flag(ds3231_t *dev, uint8_t addr, uint8_t bits, uint
 
     res = i2c_dev_write_reg(&dev->i2c_dev, addr, &data, 1);
     if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to write register 0x%02x: %s", addr, esp_err_to_name(res));
+        ESP_LOGE(TAG, "Failed to write register 0x%02x: %s", addr, ds3231_err_to_name(res));
     }
 
     return res;

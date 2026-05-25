@@ -1,3 +1,5 @@
+import { projectNotificationEvent } from './notification-events.js';
+
 export const REALTIME_NOTIFY_CHANNEL = 'realtime_events';
 export const DEFAULT_REALTIME_REPLAY_LIMIT = 1000;
 
@@ -51,7 +53,7 @@ export function parseLastEventId(value) {
     return /^[0-9]+$/.test(id) ? id : null;
 }
 
-export async function createRealtimeEvent(target, { type, deviceId, occurredAt = new Date(), payload = {} }) {
+export async function createRealtimeEvent(target, { type, deviceId, occurredAt = new Date(), payload = {}, idempotencyKey = null }) {
     if (typeof type !== 'string' || type.trim() === '') {
         throw new TypeError('realtime event type is required');
     }
@@ -61,12 +63,38 @@ export async function createRealtimeEvent(target, { type, deviceId, occurredAt =
 
     const db = queryTarget(target);
     const { rows } = await db.query(
-        `INSERT INTO realtime_events (type, device_id, occurred_at, payload)
-         VALUES ($1, $2, $3, $4::jsonb)
+        `INSERT INTO realtime_events (type, device_id, occurred_at, payload, idempotency_key)
+         VALUES ($1, $2, $3, $4::jsonb, $5)
+         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
          RETURNING id::text, type, device_id, occurred_at, payload`,
-        [type, deviceId, occurredAt, JSON.stringify(payload)]
+        [type, deviceId, occurredAt, JSON.stringify(payload), idempotencyKey]
     );
-    const event = normalizeEvent(rows[0]);
+    let inserted = rows.length > 0;
+    let event = inserted ? normalizeEvent(rows[0]) : null;
+    if (!event && idempotencyKey) {
+        const existing = await db.query(
+            `SELECT id::text, type, device_id, occurred_at, payload
+             FROM realtime_events
+             WHERE idempotency_key = $1`,
+            [idempotencyKey]
+        );
+        if (existing.rows.length === 0) {
+            throw new Error('realtime event duplicate key lookup failed');
+        }
+        event = normalizeEvent(existing.rows[0]);
+        inserted = false;
+    }
+
+    if (!event) {
+        throw new Error('realtime event insert returned no row');
+    }
+
+    await projectNotificationEvent(db, event);
+
+    if (!inserted) {
+        return event;
+    }
+
     await db.query('SELECT pg_notify($1, $2)', [REALTIME_NOTIFY_CHANNEL, event.id]);
     return event;
 }

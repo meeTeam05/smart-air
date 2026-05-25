@@ -19,7 +19,6 @@ import 'package:smart_air/screens/auth/login_screen.dart';
 import 'package:smart_air/screens/auth/register_screen.dart';
 import 'package:smart_air/screens/home_screen.dart';
 import 'package:smart_air/screens/devices/device_dashboard_screen.dart';
-import 'package:smart_air/screens/devices/device_chart_screen.dart';
 import 'package:smart_air/screens/devices/command_history_screen.dart';
 import 'package:smart_air/screens/devices/settings/general_screen.dart';
 import 'package:smart_air/screens/devices/settings/calibration_wizard_screen.dart';
@@ -29,7 +28,6 @@ import 'package:smart_air/screens/provision/step2_ble_scan.dart';
 import 'package:smart_air/screens/provision/step3_wifi.dart';
 import 'package:smart_air/screens/provision/step4_cloud.dart';
 import 'package:smart_air/screens/provision/step5_name.dart';
-import 'package:smart_air/screens/automation_screen.dart';
 import 'package:smart_air/screens/notifications_screen.dart';
 import 'package:smart_air/screens/profile/profile_screen.dart';
 
@@ -164,18 +162,7 @@ void main() {
     });
   });
 
-  group('390dp Counterpart Verification — Charts & History', () {
-    testWidgets('ChartScreen → DeviceChartScreen renders at 390dp',
-        (tester) async {
-      await tester.pumpWidget(
-          _test390dpScreen(const DeviceChartScreen(deviceId: 'device-1')));
-      await tester.pump();
-
-      // Verify chart screen elements
-      expect(find.text('Charts'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
+  group('390dp Counterpart Verification — History', () {
     testWidgets('CommandHistoryScreen → CommandHistoryScreen renders at 390dp',
         (tester) async {
       await tester.pumpWidget(
@@ -270,16 +257,6 @@ void main() {
   });
 
   group('390dp Counterpart Verification — Tabs', () {
-    testWidgets('AutomationTab → AutomationScreen renders at 390dp',
-        (tester) async {
-      await tester.pumpWidget(_test390dpScreen(const AutomationScreen()));
-      await tester.pump();
-
-      // Verify automation screen elements
-      expect(find.text('Automations'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
     testWidgets('NotificationsTab → NotificationsScreen renders at 390dp',
         (tester) async {
       await tester.pumpWidget(_test390dpScreen(const NotificationsScreen()));

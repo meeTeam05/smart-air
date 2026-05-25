@@ -10,17 +10,139 @@
 
 #include "cJSON.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mqtt.h"
 
+#include <math.h>
 #include <string.h>
 #include <time.h>
 
 static const char *TAG = "sensor_task";
 
+#define PENDING_PAYLOAD_MAX 256
+#define SENSOR_TASK_NAME     "sensor_task"
+#define SENSOR_TASK_STACK_SIZE 4096
+#define SENSOR_TASK_PRIORITY 5
+
 static portMUX_TYPE s_enabled_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_enabled = true;
+static uint32_t s_telemetry_json_failures = 0;
+static uint32_t s_shadow_json_failures = 0;
+static uint32_t s_telemetry_publish_failures = 0;
+static uint32_t s_shadow_publish_failures = 0;
+static UBaseType_t s_sensor_task_min_stack_words = 0;
+
+typedef struct {
+    bool has_payload;
+    char payload[PENDING_PAYLOAD_MAX];
+} pending_payload_t;
+
+static pending_payload_t s_pending_telemetry = {0};
+static pending_payload_t s_pending_shadow = {0};
+
+static void log_json_failure(const char *stream, const char *stage, uint32_t *counter)
+{
+    (*counter)++;
+    ESP_LOGE(TAG,
+             "%s JSON %s failed (count=%lu free_heap=%lu min_free_heap=%lu)",
+             stream,
+             stage,
+             (unsigned long)*counter,
+             (unsigned long)esp_get_free_heap_size(),
+             (unsigned long)esp_get_minimum_free_heap_size());
+}
+
+static void store_pending_payload(const char *stream, pending_payload_t *pending, const char *payload)
+{
+    if (payload == NULL) {
+        return;
+    }
+
+    size_t copied = strlcpy(pending->payload, payload, sizeof(pending->payload));
+    if (copied >= sizeof(pending->payload)) {
+        pending->has_payload = false;
+        ESP_LOGE(TAG, "%s retry payload too large (%u bytes)", stream, (unsigned)(copied + 1U));
+        return;
+    }
+
+    pending->has_payload = true;
+    ESP_LOGW(TAG, "%s payload queued for retry", stream);
+}
+
+static bool publish_payload_now(const char *stream, const char *topic, const char *payload, uint32_t *counter)
+{
+    if (config_factory_reset_in_progress()) {
+        ESP_LOGW(TAG, "%s publish skipped during factory reset", stream);
+        return false;
+    }
+
+    int msg_id = mqtt_publish(topic, payload, 1, false);
+    if (msg_id < 0) {
+        (*counter)++;
+        ESP_LOGW(TAG,
+                 "%s mqtt_publish failed (count=%lu) — MQTT not ready yet",
+                 stream,
+                 (unsigned long)*counter);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "%s published (msg_id=%d): %s", stream, msg_id, payload);
+    return true;
+}
+
+static void flush_pending_payload(const char *stream, const char *topic, pending_payload_t *pending, uint32_t *counter)
+{
+    if (!pending->has_payload) {
+        return;
+    }
+
+    if (publish_payload_now(stream, topic, pending->payload, counter)) {
+        pending->has_payload = false;
+        pending->payload[0] = '\0';
+        ESP_LOGI(TAG, "%s retry flush succeeded", stream);
+    }
+}
+
+static void log_stack_watermark_if_lower(void)
+{
+    UBaseType_t stack_words = uxTaskGetStackHighWaterMark(NULL);
+    if (s_sensor_task_min_stack_words != 0 && stack_words >= s_sensor_task_min_stack_words) {
+        return;
+    }
+
+    s_sensor_task_min_stack_words = stack_words;
+    ESP_LOGI(TAG,
+             "sensor_task stack watermark: %u words (%u bytes) free",
+             (unsigned)stack_words,
+             (unsigned)(stack_words * sizeof(StackType_t)));
+}
+
+static bool validate_sht_reading(float temperature, float humidity)
+{
+    if (!isfinite(temperature) || temperature < -40.0f || temperature > 125.0f) {
+        ESP_LOGW(TAG, "Discarding invalid SHT3x temperature reading: %.2f", temperature);
+        return false;
+    }
+
+    if (!isfinite(humidity) || humidity < 0.0f || humidity > 100.0f) {
+        ESP_LOGW(TAG, "Discarding invalid SHT3x humidity reading: %.2f", humidity);
+        return false;
+    }
+
+    return true;
+}
+
+static bool validate_gas_reading(const char *label, float ppm, float max_ppm)
+{
+    if (!isfinite(ppm) || ppm < 0.0f || ppm > max_ppm) {
+        ESP_LOGW(TAG, "Discarding invalid %s reading: %.2f ppm", label, ppm);
+        return false;
+    }
+
+    return true;
+}
 
 #if SA_DEMO_NO_PERIPHERALS
 typedef struct {
@@ -88,6 +210,9 @@ static void sensor_task_fn(void *arg)
             continue;
         }
 
+        flush_pending_payload("telemetry", telemetry_topic, &s_pending_telemetry, &s_telemetry_publish_failures);
+        flush_pending_payload("shadow", shadow_topic, &s_pending_shadow, &s_shadow_publish_failures);
+
         float temperature = 0.0f;
         float humidity = 0.0f;
         float co_ppm = 0.0f;
@@ -111,7 +236,9 @@ static void sensor_task_fn(void *arg)
         /* Read SHT3x if available */
         if (ctx->sht3x != NULL) {
             if (sht3x_measure(ctx->sht3x, &temperature, &humidity) == ESP_OK) {
-                have_sht = true;
+                if (validate_sht_reading(temperature, humidity)) {
+                    have_sht = true;
+                }
             } else {
                 ESP_LOGW(TAG, "SHT3x read failed");
             }
@@ -128,18 +255,24 @@ static void sensor_task_fn(void *arg)
 
         /* Read CO sensor if available */
         if (ctx->co != NULL) {
-            if (gm702b_read(ctx->co, &co_ppm) == ESP_OK) {
-                have_co = true;
-            } else {
+            esp_err_t err = gm702b_read(ctx->co, &co_ppm);
+            if (err == ESP_OK) {
+                if (validate_gas_reading("CO", co_ppm, GM702B_CO_PPM_MAX)) {
+                    have_co = true;
+                }
+            } else if (err != ESP_ERR_INVALID_STATE) {
                 ESP_LOGW(TAG, "GM702B CO read failed");
             }
         }
 
         /* Read NO2 sensor if available */
         if (ctx->no2 != NULL) {
-            if (gm102b_read(ctx->no2, &no2_ppm) == ESP_OK) {
-                have_no2 = true;
-            } else {
+            esp_err_t err = gm102b_read(ctx->no2, &no2_ppm);
+            if (err == ESP_OK) {
+                if (validate_gas_reading("NO2", no2_ppm, GM102B_NO2_PPM_MAX)) {
+                    have_no2 = true;
+                }
+            } else if (err != ESP_ERR_INVALID_STATE) {
                 ESP_LOGW(TAG, "GM102B NO2 read failed");
             }
         }
@@ -175,15 +308,16 @@ static void sensor_task_fn(void *arg)
             }
             char *payload = cJSON_PrintUnformatted(root);
             if (payload != NULL) {
-                int msg_id = mqtt_publish(telemetry_topic, payload, 1, false);
-                if (msg_id >= 0) {
-                    ESP_LOGI(TAG, "Telemetry published (msg_id=%d): %s", msg_id, payload);
-                } else {
-                    ESP_LOGW(TAG, "mqtt_publish failed — MQTT not ready yet");
+                if (!publish_payload_now("telemetry", telemetry_topic, payload, &s_telemetry_publish_failures)) {
+                    store_pending_payload("telemetry", &s_pending_telemetry, payload);
                 }
                 cJSON_free(payload);
+            } else {
+                log_json_failure("telemetry", "serialization", &s_telemetry_json_failures);
             }
             cJSON_Delete(root);
+        } else {
+            log_json_failure("telemetry", "allocation", &s_telemetry_json_failures);
         }
 
         /* Shadow report — same shape as telemetry minus device_id */
@@ -210,14 +344,19 @@ static void sensor_task_fn(void *arg)
             cJSON_AddNumberToObject(shadow, "ts", (double)timestamp);
             char *shadow_str = cJSON_PrintUnformatted(shadow);
             if (shadow_str != NULL) {
-                int shadow_id = mqtt_publish(shadow_topic, shadow_str, 1, false);
-                if (shadow_id < 0) {
-                    ESP_LOGW(TAG, "shadow mqtt_publish failed — MQTT not ready yet");
+                if (!publish_payload_now("shadow", shadow_topic, shadow_str, &s_shadow_publish_failures)) {
+                    store_pending_payload("shadow", &s_pending_shadow, shadow_str);
                 }
                 cJSON_free(shadow_str);
+            } else {
+                log_json_failure("shadow", "serialization", &s_shadow_json_failures);
             }
             cJSON_Delete(shadow);
+        } else {
+            log_json_failure("shadow", "allocation", &s_shadow_json_failures);
         }
+
+        log_stack_watermark_if_lower();
     }
 }
 
@@ -227,12 +366,12 @@ void sensor_task_set_enabled(bool enabled)
 {
     bool changed = false;
 
-    taskENTER_CRITICAL(&s_enabled_lock);
+    portENTER_CRITICAL(&s_enabled_lock);
     if (s_enabled != enabled) {
         s_enabled = enabled;
         changed = true;
     }
-    taskEXIT_CRITICAL(&s_enabled_lock);
+    portEXIT_CRITICAL(&s_enabled_lock);
 
     if (changed) {
         ESP_LOGI(TAG, "sensor task mode set to %s", enabled ? "on" : "off");
@@ -243,15 +382,20 @@ bool sensor_task_get_enabled(void)
 {
     bool enabled;
 
-    taskENTER_CRITICAL(&s_enabled_lock);
+    portENTER_CRITICAL(&s_enabled_lock);
     enabled = s_enabled;
-    taskEXIT_CRITICAL(&s_enabled_lock);
+    portEXIT_CRITICAL(&s_enabled_lock);
 
     return enabled;
 }
 
 esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231, gm702b_t *co, gm102b_t *no2, const char *device_id)
 {
+    if (device_id == NULL || device_id[0] == '\0') {
+        ESP_LOGE(TAG, "sensor_task_start requires non-empty device_id");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     static sensor_task_arg_t ctx;
     ctx.sht3x = sht3x;
     ctx.ds3231 = ds3231;
@@ -259,8 +403,9 @@ esp_err_t sensor_task_start(sht3x_t *sht3x, ds3231_t *ds3231, gm702b_t *co, gm10
     ctx.no2 = no2;
     strlcpy(ctx.device_id, device_id, sizeof(ctx.device_id));
 
-    /* Per firmware task map: Core 1, Priority 5, 4096 B */
-    BaseType_t rc = xTaskCreatePinnedToCore(sensor_task_fn, "sensor_task", 4096, &ctx, 5, NULL, APP_CPU_NUM);
+    /* Per firmware task map: Core 1, named constants keep the intent explicit. */
+    BaseType_t rc = xTaskCreatePinnedToCore(
+        sensor_task_fn, SENSOR_TASK_NAME, SENSOR_TASK_STACK_SIZE, &ctx, SENSOR_TASK_PRIORITY, NULL, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed");
         return ESP_FAIL;

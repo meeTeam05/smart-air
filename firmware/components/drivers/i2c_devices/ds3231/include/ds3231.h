@@ -2,10 +2,10 @@
  * @file ds3231.h
  *
  * @brief DS3231 Real-Time Clock (RTC) Driver API
+ * 
+ * Copyright (C) 2026 MinhNhat & BaoViet
  */
 #pragma once
-
-/* Includes ------------------------------------------------------------------*/
 
 #include "i2cdev.h"
 #include <time.h>
@@ -13,11 +13,10 @@
 #include <stdint.h>
 #include <esp_err.h>
 
-/* Exported defines --------------------------------------------------------- */
-
 #define DS3231_ADDR 0x68  //!< I2C address
 
-/* Exported types ----------------------------------------------------------- */
+#define ESP_ERR_DS3231_BASE            0xA000
+#define ESP_ERR_DS3231_OSCILLATOR_STOP (ESP_ERR_DS3231_BASE + 0x01)
 
 /**
  * @brief Alarm selection
@@ -69,8 +68,6 @@ typedef struct {
     i2c_dev_t i2c_dev;  //!< I2C device descriptor
 } ds3231_t;
 
-/* Exported functions ------------------------------------------------------- */
-
 /**
  * @brief Initialize device descriptor
  *
@@ -108,7 +105,8 @@ esp_err_t ds3231_set_time(ds3231_t *dev, struct tm *time);
  * @param[in] dev Device descriptor
  * @param[out] time Pointer to tm struct to populate with RTC time
  *
- * @return ESP_OK on success, error code otherwise
+ * @return ESP_OK on success, ESP_ERR_DS3231_OSCILLATOR_STOP if the RTC lost
+ *         time validity, or another error code otherwise
  */
 esp_err_t ds3231_get_time(ds3231_t *dev, struct tm *time);
 
@@ -192,3 +190,14 @@ esp_err_t ds3231_set_timestamp(ds3231_t *dev, uint32_t timestamp);
  * @return ESP_OK on success, error code otherwise
  */
 esp_err_t ds3231_get_timestamp(ds3231_t *dev, uint32_t *timestamp);
+
+/**
+ * @brief Convert DS3231-specific errors to log-friendly names
+ *
+ * Falls back to esp_err_to_name() for non-DS3231 errors.
+ *
+ * @param[in] err Error code
+ *
+ * @return Constant string describing the error
+ */
+const char *ds3231_err_to_name(esp_err_t err);

@@ -1,8 +1,16 @@
 import fp from 'fastify-plugin';
 import mqtt from 'mqtt';
-import { handleStatus, handleTelemetry, handleResponse, handleShadowReport, handleShadowGet, handleOtaProgress } from '../services/mqtt-handlers.js';
+import {
+    handleStatus,
+    handleTelemetry,
+    handleResponse,
+    handleShadowReport,
+    handleShadowGet,
+    handleOtaProgress,
+} from '../services/mqtt-handlers.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
 import { ensureBridgeUser } from '../services/emqx.js';
+import { parsePositiveIntEnv } from '../utils/parse.js';
 
 const DEFAULT_PUBLISH_TIMEOUT_MS = 5_000;
 const DEFAULT_PROVISION_RETRY_MS = 5_000;
@@ -15,9 +23,14 @@ const SUBSCRIPTIONS = Object.freeze([
     'device/+/ota/progress',
 ]);
 
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
+export function waitForMqttClientEnd(client) {
+    return new Promise((resolve, reject) => {
+        try {
+            client.end(false, {}, resolve);
+        } catch (err) {
+            reject(err);
+        }
+    });
 }
 
 async function mqttPlugin(fastify) {
@@ -124,7 +137,7 @@ async function mqttPlugin(fastify) {
     client.on('disconnect', setNotReady);
     client.on('error', (err) => fastify.log.error({ err }, 'MQTT bridge error'));
 
-    async function handleInboundMessage(topic, buf) {
+    async function handleInboundMessage(topic, buf, packet = null) {
         const parts = topic.split('/');
         const deviceId = normalizeDeviceId(parts[1]);
         if (!deviceId) {
@@ -140,14 +153,15 @@ async function mqttPlugin(fastify) {
         }
 
         let handled = true;
+        const payloadByteLength = buf.length;
         if (parts[2] === 'status') {
             await handleStatus(fastify, deviceId, payload);
         } else if (parts[2] === 'telemetry') {
-            await handleTelemetry(fastify, deviceId, payload);
+            await handleTelemetry(fastify, deviceId, payload, packet, payloadByteLength);
         } else if (parts[2] === 'response') {
             await handleResponse(fastify, deviceId, payload);
         } else if (parts[2] === 'shadow' && parts[3] === 'report') {
-            await handleShadowReport(fastify, deviceId, payload);
+            await handleShadowReport(fastify, deviceId, payload, payloadByteLength);
         } else if (parts[2] === 'shadow' && parts[3] === 'get') {
             await handleShadowGet(fastify, deviceId, payload);
         } else if (parts[2] === 'ota' && parts[3] === 'progress') {
@@ -164,7 +178,7 @@ async function mqttPlugin(fastify) {
     client.handleMessage = async (packet, callback) => {
         const topic = packet.topic;
         try {
-            await handleInboundMessage(topic, packet.payload);
+            await handleInboundMessage(topic, packet.payload, packet);
             callback();
         } catch (err) {
             fastify.log.error({ err, topic }, 'MQTT message handler error; message left unacked for redelivery');
@@ -175,7 +189,7 @@ async function mqttPlugin(fastify) {
     fastify.addHook('onClose', async () => {
         closed = true;
         setNotReady();
-        client.end();
+        await waitForMqttClientEnd(client);
     });
 
     provisionAndConnect();

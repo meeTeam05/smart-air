@@ -30,6 +30,7 @@ static volatile bool s_factory_reset_in_progress = false;
 
 /* Device / MQTT namespace */
 #define NS_DEVICE      "device"     /* 6 chars — within 15-char NVS limit */
+#define KEY_DEVICE_ID  "device_id"  /* 9 chars */
 #define KEY_SECRET_KEY "secret_key" /* 10 chars */
 #define KEY_BROKER_URI "broker_uri" /* 10 chars */
 
@@ -42,6 +43,8 @@ static bool copy_lowercase_mac(const char *input, char *out, size_t out_len);
 static esp_err_t copy_device_mac(char *out, size_t out_len);
 static bool is_supported_broker_uri(const char *broker_uri);
 static SemaphoreHandle_t ensure_nvs_write_lock(void);
+static esp_err_t config_nvs_read_begin(void);
+static void config_nvs_read_end(void);
 
 /* MQTT / device credential API */
 
@@ -57,6 +60,36 @@ static SemaphoreHandle_t ensure_nvs_write_lock(void)
     }
     portEXIT_CRITICAL(&s_guard_mux);
     return s_nvs_write_lock;
+}
+
+static esp_err_t config_nvs_read_begin(void)
+{
+    SemaphoreHandle_t lock = ensure_nvs_write_lock();
+    if (lock == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (s_factory_reset_in_progress) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE) {
+        return ESP_FAIL;
+    }
+
+    if (s_factory_reset_in_progress) {
+        xSemaphoreGive(lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return ESP_OK;
+}
+
+static void config_nvs_read_end(void)
+{
+    if (s_nvs_write_lock != NULL) {
+        xSemaphoreGive(s_nvs_write_lock);
+    }
 }
 
 esp_err_t config_nvs_write_begin(void)
@@ -131,10 +164,16 @@ esp_err_t config_get_mqtt_creds(char *broker_uri_buf,
                                 char *secret_key_buf,
                                 size_t secret_key_len)
 {
+    esp_err_t guard_err = config_nvs_read_begin();
+    if (guard_err != ESP_OK) {
+        return guard_err;
+    }
+
     nvs_handle_t h;
     esp_err_t err = nvs_open(NS_DEVICE, NVS_READONLY, &h);
     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGE(TAG, "nvs_open(%s) failed: %s", NS_DEVICE, esp_err_to_name(err));
+        config_nvs_read_end();
         return err;
     }
 
@@ -147,6 +186,7 @@ esp_err_t config_get_mqtt_creds(char *broker_uri_buf,
         } else if (r != ESP_OK) {
             ESP_LOGE(TAG, "read broker_uri failed: %s", esp_err_to_name(r));
             nvs_close(h);
+            config_nvs_read_end();
             return r;
         } else {
             ESP_LOGI(TAG, "broker_uri loaded from NVS: %s", broker_uri_buf);
@@ -164,6 +204,7 @@ esp_err_t config_get_mqtt_creds(char *broker_uri_buf,
         } else if (r != ESP_OK) {
             ESP_LOGE(TAG, "read secret_key failed: %s", esp_err_to_name(r));
             nvs_close(h);
+            config_nvs_read_end();
             return r;
         }
     } else {
@@ -173,6 +214,7 @@ esp_err_t config_get_mqtt_creds(char *broker_uri_buf,
     if (err == ESP_OK) {
         nvs_close(h);
     }
+    config_nvs_read_end();
     return ESP_OK;
 }
 
@@ -228,7 +270,7 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
         }
     }
 
-    err = nvs_erase_key(h, "device_id");
+    err = nvs_erase_key(h, KEY_DEVICE_ID);
     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGE(TAG, "erase legacy device_id failed: %s", esp_err_to_name(err));
         nvs_close(h);
@@ -326,19 +368,27 @@ esp_err_t config_load_gas_r0(const char *sensor_name, float *r0, bool *calibrate
 
     const char *key = (sensor_name[0] == 'c') ? KEY_R0_CO : KEY_R0_NO2;
 
+    esp_err_t guard_err = config_nvs_read_begin();
+    if (guard_err != ESP_OK) {
+        return guard_err;
+    }
+
     nvs_handle_t h;
     esp_err_t err = nvs_open(NS_DEVICE, NVS_READONLY, &h);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
+        config_nvs_read_end();
         return ESP_OK; /* namespace not yet created — not calibrated */
     }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "load_gas_r0(%s): nvs_open failed: %s", sensor_name, esp_err_to_name(err));
+        config_nvs_read_end();
         return err;
     }
 
     size_t len = sizeof(float);
     err = nvs_get_blob(h, key, r0, &len);
     nvs_close(h);
+    config_nvs_read_end();
 
     if (err == ESP_OK && len == sizeof(float) && *r0 > 0.0f) {
         *calibrated = true;

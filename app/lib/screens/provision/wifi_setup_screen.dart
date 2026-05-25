@@ -11,8 +11,7 @@ import '../../services/ble_service.dart';
 import '../../services/device_service.dart';
 
 class WifiSetupScreen extends ConsumerStatefulWidget {
-  const WifiSetupScreen(
-      {super.key, required this.homeId, required this.mac});
+  const WifiSetupScreen({super.key, required this.homeId, required this.mac});
   final String homeId;
   final String mac;
 
@@ -48,6 +47,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       // sendCredentials() keeps BLE alive and returns the device's WiFi STA MAC
       // (device_id) and local IP once the notify arrives.
       await _bleService.connect(widget.mac);
+      if (!mounted) return;
       setState(() => _status = 'Sending WiFi credentials…');
       final provision =
           await _bleService.sendCredentials(_ssidCtrl.text, _passCtrl.text);
@@ -55,14 +55,17 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
 
       final deviceId = provision.deviceId;
 
+      if (!mounted) return;
       setState(() => _status = 'Registering device…');
       final registration =
           await ref.read(deviceServiceProvider).provisionDevice(
                 deviceId: deviceId,
-                name: 'Smart Air ${deviceId.substring(deviceId.length - 5).toUpperCase()}',
+                name:
+                    'Smart Air ${deviceId.substring(deviceId.length - 5).toUpperCase()}',
                 homeId: widget.homeId,
               );
 
+      if (!mounted) return;
       setState(() => _status = 'Sending MQTT credentials to device…');
       await ref.read(deviceServiceProvider).configureProvisionedDevice(
             host: provision.ip,
@@ -73,6 +76,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       // Step 2 — Device connected WiFi; poll backend until MQTT status arrives.
       // The firmware connects MQTT → publishes online status.
       // Server MQTT bridge stores announcement in Redis (TTL 5 min).
+      if (!mounted) return;
       setState(() => _status = 'Waiting for device to come online…');
       final deviceService = ref.read(deviceServiceProvider);
       bool announced = false;
@@ -87,7 +91,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
       }
 
       if (!announced) {
-        throw Exception(
+        throw const NetworkException(
             'Device did not come online — check WiFi password and try again');
       }
 
@@ -113,8 +117,7 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
   void _showError(String msg) {
     if (!mounted) return;
     setState(() => _status = '');
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -137,7 +140,8 @@ class _WifiSetupScreenState extends ConsumerState<WifiSetupScreen> {
             const SizedBox(height: 24),
             TextFormField(
               controller: _ssidCtrl,
-              decoration: const InputDecoration(labelText: 'WiFi Network (SSID)'),
+              decoration:
+                  const InputDecoration(labelText: 'WiFi Network (SSID)'),
               enabled: !_provisioning,
             ),
             const SizedBox(height: 16),

@@ -4,11 +4,13 @@ import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
 
 import { ALLOWED_ORIGINS } from './constants.js';
+import { parsePositiveIntEnv } from './utils/parse.js';
 import dbPlugin from './plugins/db.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
 import mqttPlugin from './plugins/mqtt.js';
 import realtimePlugin from './plugins/realtime.js';
+import { sanitizeLoggedError } from './utils/log-sanitize.js';
 
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
@@ -17,8 +19,10 @@ import devicesRoutes from './routes/devices.js';
 import shadowRoutes from './routes/shadow.js';
 import commandsRoutes from './routes/commands.js';
 import telemetryRoutes from './routes/telemetry.js';
+import notificationsRoutes from './routes/notifications.js';
 import realtimeRoutes from './routes/realtime.js';
 import { registerCommandTimeoutJob } from './jobs/command-timeout.js';
+import { registerDataRetentionJob } from './jobs/data-retention.js';
 import { registerEmqxCleanupRetryJob } from './jobs/emqx-cleanup-retry.js';
 import { registerRefreshTokenMarkerCleanupJob } from './jobs/refresh-token-marker-cleanup.js';
 import { registerRealtimeEventRetentionJob } from './jobs/realtime-event-retention.js';
@@ -34,11 +38,6 @@ const REQUIRED_RUNTIME_ENV_VARS = [
 ];
 
 const DEFAULT_BODY_LIMIT_BYTES = 65_536;
-
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
 
 function getMissingRequiredEnvVars(requiredVars) {
     return requiredVars.filter((name) => {
@@ -74,11 +73,17 @@ const fastify = Fastify({
         level: process.env.LOG_LEVEL || 'info',
         redact: [
             'req.headers.authorization',
+            'req.headers.cookie',
             'req.body.password',
             'req.body.refreshToken',
             'req.body.secret_key',
             'res.body.refreshToken',
+            'res.body.secret_key',
+            'res.headers["set-cookie"]',
         ],
+        serializers: {
+            err: sanitizeLoggedError,
+        },
     },
 });
 
@@ -92,6 +97,7 @@ await fastify.register(mqttPlugin);
 await fastify.register(realtimePlugin);
 
 registerCommandTimeoutJob(fastify);
+registerDataRetentionJob(fastify);
 registerEmqxCleanupRetryJob(fastify);
 registerRefreshTokenMarkerCleanupJob(fastify);
 registerRealtimeEventRetentionJob(fastify);
@@ -109,6 +115,7 @@ await fastify.register(devicesRoutes, { prefix: '/api' });
 await fastify.register(shadowRoutes, { prefix: '/api' });
 await fastify.register(commandsRoutes, { prefix: '/api' });
 await fastify.register(telemetryRoutes, { prefix: '/api' });
+await fastify.register(notificationsRoutes, { prefix: '/api' });
 await fastify.register(realtimeRoutes, { prefix: '/api' });
 
 // ── Global Error Handler ─────────────────────────────────────────

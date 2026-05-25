@@ -17,11 +17,22 @@ function createLogger() {
 function createClient({ commandRows, queryLog }) {
     return {
         released: false,
-        async query(sql) {
+        async query(sql, params) {
             queryLog.push(sql);
             if (sql.includes('pg_try_advisory_lock')) return { rows: [{ locked: true }] };
             if (sql.includes('SELECT id, payload')) {
                 return { rows: commandRows.length > 0 ? [commandRows.shift()] : [] };
+            }
+            if (sql.includes('INSERT INTO realtime_events')) {
+                return {
+                    rows: [{
+                        id: '42',
+                        type: 'command.updated',
+                        device_id: params[1],
+                        occurred_at: new Date('2026-05-15T10:00:00Z'),
+                        payload: JSON.parse(params[3]),
+                    }],
+                };
             }
             return { rows: [], rowCount: 1 };
         },
@@ -36,6 +47,46 @@ test('commandMessage serializes command_id with payload fields', () => {
         commandMessage('cmd-1', { type: 'set_time', ts: 1777631761 }),
         '{"command_id":"cmd-1","type":"set_time","ts":1777631761}'
     );
+});
+
+test('flushPending derives advisory lock keys from device IDs without hashtext', async () => {
+    const lockCalls = [];
+    const client = {
+        released: false,
+        async query(sql, params) {
+            if (sql.includes('pg_try_advisory_lock') || sql.includes('pg_advisory_unlock')) {
+                lockCalls.push({ sql, params });
+            }
+            if (sql.includes('pg_try_advisory_lock')) return { rows: [{ locked: true }] };
+            if (sql.includes('SELECT id, payload')) return { rows: [] };
+            return { rows: [], rowCount: 1 };
+        },
+        release() {
+            this.released = true;
+        },
+    };
+    const fastify = {
+        db: {
+            async connect() {
+                return client;
+            },
+        },
+        log: createLogger(),
+    };
+
+    await flushPending(fastify, 'aa:bb:cc:dd:ee:ff');
+
+    assert.deepEqual(lockCalls, [
+        {
+            sql: 'SELECT pg_try_advisory_lock($1::bigint) AS locked',
+            params: [BigInt('0xaabbccddeeff').toString()],
+        },
+        {
+            sql: 'SELECT pg_advisory_unlock($1::bigint)',
+            params: [BigInt('0xaabbccddeeff').toString()],
+        },
+    ]);
+    assert.ok(client.released);
 });
 
 test('flushPending publishes pending DB commands once and marks sent', async () => {
@@ -71,7 +122,58 @@ test('flushPending publishes pending DB commands once and marks sent', async () 
         ts: 1777631761,
     });
     assert.ok(queryLog.some((sql) => sql.includes("SET status = 'sent'")));
+    assert.ok(queryLog.some((sql) => sql.includes('sent_at = NOW()')));
     assert.ok(client.released);
+});
+
+test('flushPending commits sent status before MQTT publish', async () => {
+    const steps = [];
+    const commandRows = [{
+        id: 'cmd-1',
+        payload: { type: 'set_time', ts: 1777631761 },
+        pending_expired: false,
+    }];
+    const client = {
+        released: false,
+        async query(sql, params) {
+            steps.push(sql);
+            if (sql.includes('pg_try_advisory_lock')) return { rows: [{ locked: true }] };
+            if (sql.includes('SELECT id, payload')) {
+                return { rows: commandRows.length > 0 ? [commandRows.shift()] : [] };
+            }
+            if (sql.includes('INSERT INTO realtime_events')) {
+                return {
+                    rows: [{
+                        id: '42',
+                        type: 'command.updated',
+                        device_id: params[1],
+                        occurred_at: new Date('2026-05-15T10:00:00Z'),
+                        payload: JSON.parse(params[3]),
+                    }],
+                };
+            }
+            return { rows: [], rowCount: 1 };
+        },
+        release() {
+            this.released = true;
+        },
+    };
+    const fastify = {
+        log: createLogger(),
+        db: {
+            async connect() {
+                return client;
+            },
+        },
+        async mqttPublish() {
+            steps.push('MQTT_PUBLISH');
+        },
+    };
+
+    await flushPending(fastify, 'aa:bb:cc:dd:ee:ff');
+
+    assert.ok(steps.indexOf('COMMIT') < steps.indexOf('MQTT_PUBLISH'));
+    assert.ok(steps.some((step) => step.includes('sent_at = NOW()')));
 });
 
 test('sendCommand emits command.updated for pending command state', async () => {
@@ -194,6 +296,21 @@ test('flushPending leaves command pending when publish fails', async () => {
             async connect() {
                 return client;
             },
+            async query(sql, params) {
+                queryLog.push(sql);
+                if (sql.includes('INSERT INTO realtime_events')) {
+                    return {
+                        rows: [{
+                            id: '43',
+                            type: 'command.updated',
+                            device_id: params[1],
+                            occurred_at: new Date('2026-05-15T10:00:01Z'),
+                            payload: JSON.parse(params[3]),
+                        }],
+                    };
+                }
+                return { rows: [], rowCount: 1 };
+            },
         },
         async mqttPublish() {
             throw new Error('publish failed');
@@ -202,6 +319,9 @@ test('flushPending leaves command pending when publish fails', async () => {
 
     await flushPending(fastify, 'aa:bb:cc:dd:ee:ff');
 
-    assert.ok(queryLog.includes('ROLLBACK'));
-    assert.equal(queryLog.some((sql) => sql.includes("SET status = 'sent'")), false);
+    assert.ok(queryLog.some((sql) => sql.includes("SET status = 'sent'")));
+    assert.ok(
+        queryLog.some((sql) => sql.includes("SET status = 'pending'") && sql.includes('sent_at = NULL')),
+        'publish failure should revert command to pending'
+    );
 });

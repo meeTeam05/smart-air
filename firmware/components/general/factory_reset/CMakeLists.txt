@@ -12,4 +12,6 @@ idf_component_register(
         sa_mqtt
         ble_prov
         config
+    PRIV_REQUIRES
+        sensor_task
 )

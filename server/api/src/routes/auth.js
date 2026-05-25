@@ -2,9 +2,12 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { BCRYPT_ROUNDS, REFRESH_COOKIE_PATH, SECONDS_PER_DAY } from '../constants.js';
+import { isValidEmail, normalizeEmail, parsePositiveIntEnv } from '../utils/parse.js';
 
-const REFRESH_EXPIRES_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '30');
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const REFRESH_EXPIRES_DAYS = parsePositiveIntEnv('REFRESH_TOKEN_EXPIRES_DAYS', 30);
+const REFRESH_RACE_GRACE_MS = 5_000;
+const DUMMY_PASSWORD_HASH = '$2a$12$3e3kkNZej.GAbhctAc65eefDYsUFcpdDifsvE5Uegz5qkrFU54iJu';
+const MAX_FULL_NAME_LENGTH = 255;
 
 function hashRefreshToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
@@ -28,20 +31,19 @@ async function markRefreshTokenConsumed(client, tokenHash, userId, expiresAt) {
 
 async function findConsumedRefreshToken(client, tokenHash) {
     const { rows } = await client.query(
-        `SELECT user_id
+        `SELECT user_id, consumed_at
          FROM refresh_token_reuse_markers
          WHERE token_hash = $1 AND expires_at > NOW()`,
         [tokenHash]
     );
-    return rows[0]?.user_id ?? null;
+    return rows[0]
+        ? { userId: rows[0].user_id, consumedAt: rows[0].consumed_at }
+        : null;
 }
 
-function normalizeEmail(email) {
-    return typeof email === 'string' ? email.trim().toLowerCase() : null;
-}
-
-function isValidEmail(email) {
-    return typeof email === 'string' && email.length <= 254 && EMAIL_RE.test(email);
+function isRecentRefreshRace(consumedAt) {
+    const consumedMs = consumedAt instanceof Date ? consumedAt.getTime() : Date.parse(consumedAt);
+    return Number.isFinite(consumedMs) && (Date.now() - consumedMs) <= REFRESH_RACE_GRACE_MS;
 }
 
 function isValidPassword(password) {
@@ -78,15 +80,19 @@ async function issueRefreshToken(fastify, reply, userId) {
 }
 
 export default async function authRoutes(fastify) {
-    const rl = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+    const authRateLimitConfig = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
     // POST /api/auth/register
-    fastify.post('/auth/register', rl, async (request, reply) => {
+    fastify.post('/auth/register', authRateLimitConfig, async (request, reply) => {
         const { email, password, full_name } = request.body || {};
         const normalizedEmail = normalizeEmail(email);
+        const fullName = typeof full_name === 'string' ? full_name.trim() : null;
         if (!isValidEmail(normalizedEmail)) return reply.code(400).send({ error: 'valid email required' });
         if (!isValidPassword(password)) {
             return reply.code(400).send({ error: 'password must be 8-72 bytes' });
+        }
+        if (fullName && fullName.length > MAX_FULL_NAME_LENGTH) {
+            return reply.code(400).send({ error: 'full_name must be 255 characters or less' });
         }
 
         const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -94,7 +100,7 @@ export default async function authRoutes(fastify) {
             const { rows } = await fastify.db.query(
                 `INSERT INTO users (email, password_hash, full_name)
                  VALUES ($1, $2, $3) RETURNING id, email, full_name, created_at`,
-                [normalizedEmail, hash, typeof full_name === 'string' && full_name.trim() ? full_name.trim() : null]
+                [normalizedEmail, hash, fullName || null]
             );
             return reply.code(201).send(rows[0]);
         } catch (err) {
@@ -104,7 +110,7 @@ export default async function authRoutes(fastify) {
     });
 
     // POST /api/auth/login
-    fastify.post('/auth/login', rl, async (request, reply) => {
+    fastify.post('/auth/login', authRateLimitConfig, async (request, reply) => {
         const { email, password } = request.body || {};
         const normalizedEmail = normalizeEmail(email);
         if (!isValidEmail(normalizedEmail) || typeof password !== 'string') {
@@ -116,10 +122,9 @@ export default async function authRoutes(fastify) {
             [normalizedEmail]
         );
         const user = rows[0];
-        if (!user || !user.is_active) return reply.code(401).send({ error: 'Invalid credentials' });
-
-        const valid = await bcrypt.compare(password, user.password_hash);
-        if (!valid) return reply.code(401).send({ error: 'Invalid credentials' });
+        const passwordHash = user?.password_hash || DUMMY_PASSWORD_HASH;
+        const valid = await bcrypt.compare(password, passwordHash);
+        if (!user || !user.is_active || !valid) return reply.code(401).send({ error: 'Invalid credentials' });
 
         const accessToken = fastify.jwt.sign({ sub: user.id, email: user.email });
         const refreshToken = await issueRefreshToken(fastify, reply, user.id);
@@ -128,7 +133,7 @@ export default async function authRoutes(fastify) {
     });
 
     // POST /api/auth/refresh
-    fastify.post('/auth/refresh', rl, async (request, reply) => {
+    fastify.post('/auth/refresh', authRateLimitConfig, async (request, reply) => {
         // body.refreshToken takes priority (mobile); fallback to HttpOnly cookie (browser)
         const token = request.body?.refreshToken !== undefined
             ? request.body.refreshToken
@@ -149,10 +154,13 @@ export default async function authRoutes(fastify) {
             );
 
             if (rows.length === 0) {
-                const reuseUserId = await findConsumedRefreshToken(client, tokenHash);
-                if (reuseUserId) {
-                    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [reuseUserId]);
-                    return { invalid: true, reuseUserId, replay: true };
+                const consumedToken = await findConsumedRefreshToken(client, tokenHash);
+                if (consumedToken) {
+                    if (isRecentRefreshRace(consumedToken.consumedAt)) {
+                        return { invalid: true, reuseUserId: consumedToken.userId, race: true };
+                    }
+                    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [consumedToken.userId]);
+                    return { invalid: true, reuseUserId: consumedToken.userId, replay: true };
                 }
                 return { invalid: true };
             }
@@ -177,6 +185,16 @@ export default async function authRoutes(fastify) {
 
         if (refreshResult.invalid) {
             if (refreshResult.reuseUserId) {
+                if (refreshResult.race) {
+                    fastify.log.info(
+                        {
+                            event: 'refresh_race_retry_ignored',
+                            userId: refreshResult.reuseUserId,
+                            tokenHashPrefix: tokenHash.slice(0, 12),
+                        },
+                        'Concurrent refresh retry rejected without revoking active sessions'
+                    );
+                } else {
                 fastify.log.warn(
                     {
                         event: refreshResult.replay ? 'refresh_reuse_detected' : 'refresh_race_or_reuse',
@@ -186,6 +204,7 @@ export default async function authRoutes(fastify) {
                     },
                     'Refresh token replay detected; revoked active refresh sessions'
                 );
+                }
             } else {
                 fastify.log.info(
                     {

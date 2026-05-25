@@ -1,10 +1,7 @@
+import { parsePositiveIntEnv } from '../utils/parse.js';
+
 const EMQX_API_URL = process.env.EMQX_API_URL || 'http://emqx:18083';
 const DEFAULT_EMQX_API_TIMEOUT_MS = 5_000;
-
-function parsePositiveIntEnv(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
 
 const EMQX_API_TIMEOUT_MS = parsePositiveIntEnv('EMQX_API_TIMEOUT_MS', DEFAULT_EMQX_API_TIMEOUT_MS);
 
@@ -14,13 +11,24 @@ function authHeader() {
     return 'Basic ' + Buffer.from(`${key}:${secret}`).toString('base64');
 }
 
+function buildHeaders(requestId) {
+    const headers = {
+        'Content-Type': 'application/json',
+        Authorization: authHeader(),
+    };
+    if (typeof requestId === 'string' && requestId.trim() !== '') {
+        headers['X-Request-Id'] = requestId;
+    }
+    return headers;
+}
+
 async function emqxFetch(path, method, body, options = {}) {
     const timeout = AbortSignal.timeout(EMQX_API_TIMEOUT_MS);
     let res;
     try {
         res = await fetch(`${EMQX_API_URL}${path}`, {
             method,
-            headers: { 'Content-Type': 'application/json', Authorization: authHeader() },
+            headers: buildHeaders(options.requestId),
             body: body ? JSON.stringify(body) : undefined,
             signal: timeout,
         });
@@ -32,46 +40,48 @@ async function emqxFetch(path, method, body, options = {}) {
     }
     const okStatuses = new Set(options.okStatuses || []);
     if (!res.ok && !okStatuses.has(res.status)) {
-        const text = await res.text();
-        throw new Error(`EMQX API ${method} ${path} → ${res.status}: ${text}`);
+        await res.text();
+        throw new Error(`EMQX API ${method} ${path} failed with status ${res.status}`);
     }
     return res;
 }
 
-async function createAuthUser(userId, password) {
+async function createAuthUser(userId, password, requestId = null) {
     return emqxFetch(
         '/api/v5/authentication/password_based:built_in_database/users',
         'POST',
         { user_id: userId, password, is_superuser: false },
-        { okStatuses: [409] }
+        { okStatuses: [409], requestId }
     );
 }
 
-async function updateAuthUser(userId, password) {
+async function updateAuthUser(userId, password, requestId = null) {
     return emqxFetch(
         `/api/v5/authentication/password_based:built_in_database/users/${encodeURIComponent(userId)}`,
         'PUT',
-        { password, is_superuser: false }
+        { password, is_superuser: false },
+        { requestId }
     );
 }
 
-async function clearAuthorizationCache() {
-    await emqxFetch('/api/v5/authorization/cache', 'DELETE', undefined, { okStatuses: [404] });
+async function clearAuthorizationCache(requestId = null) {
+    await emqxFetch('/api/v5/authorization/cache', 'DELETE', undefined, { okStatuses: [404], requestId });
 }
 
-async function upsertUserRules(username, rules) {
+async function upsertUserRules(username, rules, requestId = null) {
     const body = { username, rules };
     const createRes = await emqxFetch(
         '/api/v5/authorization/sources/built_in_database/rules/users',
         'POST',
         [body],
-        { okStatuses: [409] }
+        { okStatuses: [409], requestId }
     );
     if (createRes.status === 409) {
         await emqxFetch(
             `/api/v5/authorization/sources/built_in_database/rules/users/${encodeURIComponent(username)}`,
             'PUT',
-            body
+            body,
+            { requestId }
         );
     }
 }
@@ -115,14 +125,18 @@ export async function ensureBridgeUser() {
     await clearAuthorizationCache();
 }
 
-export async function createDeviceUser(deviceId, secretKey) {
-    const userRes = await createAuthUser(deviceId, secretKey);
+export async function checkEmqxApiHealth(requestId = null) {
+    await emqxFetch('/status', 'GET', undefined, { requestId });
+}
+
+export async function createDeviceUser(deviceId, secretKey, logger = null, requestId = null) {
+    const userRes = await createAuthUser(deviceId, secretKey, requestId);
 
     const userCreated = userRes.status !== 409;
     if (!userCreated) return { userCreated: false };
 
     try {
-        await upsertUserRules(deviceId, deviceRules(deviceId));
+        await upsertUserRules(deviceId, deviceRules(deviceId), requestId);
     } catch (err) {
         // Compensation: delete user if ACL creation failed and user was just created
         if (userCreated) {
@@ -131,11 +145,13 @@ export async function createDeviceUser(deviceId, secretKey) {
                     `/api/v5/authentication/password_based:built_in_database/users/${encodeURIComponent(deviceId)}`,
                     'DELETE',
                     undefined,
-                    { okStatuses: [404] }
+                    { okStatuses: [404], requestId }
                 );
             } catch (delErr) {
-                // Log compensation failure but throw original ACL error
-                console.error(`EMQX compensation failed for ${deviceId}: ${delErr.message}`);
+                logger?.error(
+                    { err: delErr, deviceId },
+                    'EMQX compensation delete failed after ACL setup error'
+                );
             }
         }
         throw err;
