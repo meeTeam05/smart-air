@@ -49,6 +49,18 @@ function buildApp(overrides = {}) {
     return app;
 }
 
+function buildEspImageWithAppendedHash(body) {
+    const header = Buffer.alloc(24);
+    header[0] = 0xE9;
+    header[23] = 1;
+    const imageWithoutDigest = Buffer.concat([header, body]);
+    const appendedDigest = createHash('sha256').update(imageWithoutDigest).digest();
+    return {
+        artifact: Buffer.concat([imageWithoutDigest, appendedDigest]),
+        digestHex: appendedDigest.toString('hex'),
+    };
+}
+
 test('GET /devices/:id/ota/versions lists versions from ota-files and includes current device state', async () => {
     await withTempOtaDir(
         {
@@ -220,6 +232,65 @@ test('POST /devices/:id/ota publishes the resolved OTA artifact url and sha256',
                     payload: JSON.stringify({
                         url: 'https://updates.example.com/ota/0.1.2.bin',
                         sha256: expectedSha256,
+                    }),
+                    options: { qos: 1, retain: false },
+                }]);
+            } finally {
+                await app.close();
+            }
+        }
+    );
+});
+
+test('POST /devices/:id/ota publishes the appended ESP image digest when OTA artifact includes hash', async () => {
+    const { artifact, digestHex } = buildEspImageWithAppendedHash(Buffer.from('esp-image-body'));
+
+    await withTempOtaDir(
+        {
+            '0.1.2.bin': artifact,
+        },
+        async () => {
+            const published = [];
+            const app = buildApp({
+                db: {
+                    async query(sql, params) {
+                        if (sql.includes('SELECT 1 FROM devices d')) {
+                            assert.deepEqual(params, [DEVICE_ID, USER_ID]);
+                            return { rows: [{ ok: 1 }], rowCount: 1 };
+                        }
+                        if (sql.includes('SELECT id, firmware_ver, online FROM devices')) {
+                            assert.deepEqual(params, [DEVICE_ID]);
+                            return {
+                                rows: [{
+                                    id: DEVICE_ID,
+                                    firmware_ver: '0.1.1',
+                                    online: true,
+                                }],
+                                rowCount: 1,
+                            };
+                        }
+                        throw new Error(`Unexpected SQL: ${sql}`);
+                    },
+                },
+                mqttPublish: async (topic, payload, options) => {
+                    published.push({ topic, payload, options });
+                },
+            });
+
+            try {
+                await app.register(devicesRoutes);
+                const res = await app.inject({
+                    method: 'POST',
+                    url: `/devices/${DEVICE_ID}/ota`,
+                    payload: { version: '0.1.2' },
+                });
+
+                assert.equal(res.statusCode, 202);
+                assert.deepEqual(published, [{
+                    topic: `device/${DEVICE_ID}/ota/update`,
+                    payload: JSON.stringify({
+                        url: 'https://updates.example.com/ota/0.1.2.bin',
+                        sha256: digestHex,
                     }),
                     options: { qos: 1, retain: false },
                 }]);

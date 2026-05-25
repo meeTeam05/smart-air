@@ -7,6 +7,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_OTA_FILES_DIR = path.resolve(__dirname, '../../../ota-files');
 const DEFAULT_OTA_PUBLIC_BASE_URL = 'https://minhnhat05.xyz';
+const ESP_IMAGE_HEADER_MAGIC = 0xE9;
+const ESP_IMAGE_HEADER_SIZE = 24;
+const ESP_IMAGE_HASH_APPENDED_OFFSET = 23;
+const ESP_IMAGE_DIGEST_SIZE = 32;
 
 function otaFilesDir() {
     return process.env.OTA_FILES_DIR || DEFAULT_OTA_FILES_DIR;
@@ -80,5 +84,19 @@ export async function resolveOtaArtifact(version) {
 
 export async function computeOtaArtifactSha256(filePath) {
     const content = await readFile(filePath);
+    if (
+        content.length >= ESP_IMAGE_HEADER_SIZE + ESP_IMAGE_DIGEST_SIZE &&
+        content[0] === ESP_IMAGE_HEADER_MAGIC &&
+        content[ESP_IMAGE_HASH_APPENDED_OFFSET] === 1
+    ) {
+        const imageContent = content.subarray(0, content.length - ESP_IMAGE_DIGEST_SIZE);
+        const appendedDigest = content.subarray(content.length - ESP_IMAGE_DIGEST_SIZE);
+        const computedDigest = createHash('sha256').update(imageContent).digest();
+        if (!computedDigest.equals(appendedDigest)) {
+            throw new Error('OTA artifact appended hash is invalid');
+        }
+        return appendedDigest.toString('hex');
+    }
+
     return createHash('sha256').update(content).digest('hex');
 }

@@ -451,6 +451,9 @@ Minimum payload firmware chấp nhận:
 Constraints:
 
 - `url` và `sha256` phải là string.
+- `sha256` phải cùng loại digest mà firmware verify:
+  - với ESP-IDF app image có `hash_appended=1`, giá trị này là `app image digest` được append trong image, không phải `sha256sum` của cả file `.bin`
+  - nếu artifact không có appended hash thì mới fallback sang SHA-256 của toàn bộ file
 - `url` phải bắt đầu bằng `https://`.
 - Firmware drop inbound OTA payload nếu > `512` bytes.
 - `url` phải fit buffer OTA nội bộ `256` bytes cả null terminator.

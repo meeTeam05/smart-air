@@ -890,7 +890,9 @@ Trigger OTA cho một version cụ thể từ catalog server-side. Endpoint này
 2. Lookup device mà user hiện tại có quyền truy cập
 3. Reject ngay nếu `devices.online = false`
 4. Resolve `version -> filename` bằng cách scan `server/ota-files`
-5. Tính SHA-256 của artifact trên disk
+5. Tính OTA `sha256` theo contract firmware:
+   - nếu artifact là ESP-IDF app image có appended hash thì dùng `app image digest` được nhúng ở cuối image
+   - nếu không thì fallback sang SHA-256 của toàn bộ file
 6. MQTT publish `device/{id}/ota/update` với payload `{ url, sha256 }`
 
 > Endpoint này cho phép chọn bất kỳ version nào đang có trong catalog, kể cả downgrade. API layer hiện chưa áp policy tương thích hoặc release channel.
