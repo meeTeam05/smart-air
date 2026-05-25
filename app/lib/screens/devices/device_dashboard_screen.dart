@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app_theme.dart';
+import '../../core/back_navigation.dart';
 import '../../models/command.dart';
 import '../../models/device.dart';
 import '../../models/telemetry.dart';
@@ -204,261 +205,266 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
         ? '● ONLINE · ${_relativeTime(device!.lastSeen ?? DateTime.now())}'
         : '● STANDBY · ${_relativeTime(device?.lastSeen ?? DateTime.now())}';
 
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AtmosphereAppBar.back(
-        title: device?.name ?? widget.deviceId,
-        actions: [
-          IconButton(
-            icon: Icon(AppIcons.cog, color: c.ink),
-            tooltip: 'Device settings',
-            onPressed: () =>
-                context.push('/devices/${widget.deviceId}/settings'),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => _refreshLiveData(refreshDevices: true),
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(AtmosphereTokens.space20),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compactSensors =
-                  constraints.maxWidth < 360 || textScale > 1.4;
-              final sensorColumns = compactSensors ? 1 : 2;
-              final relayColumns = textScale > 1.7
-                  ? 1
-                  : constraints.maxWidth >= 360
-                      ? 2
-                      : 1;
-              final relayWidth = (constraints.maxWidth -
-                      ((relayColumns - 1) * AtmosphereTokens.space12)) /
-                  relayColumns;
+    return BackNavigationScope(
+      fallbackRoute: '/home',
+      child: Scaffold(
+        backgroundColor: c.bg,
+        appBar: AtmosphereAppBar.back(
+          title: device?.name ?? widget.deviceId,
+          onBack: () => handleBackOrFallback(context, '/home'),
+          actions: [
+            IconButton(
+              icon: Icon(AppIcons.cog, color: c.ink),
+              tooltip: 'Device settings',
+              onPressed: () =>
+                  context.push('/devices/${widget.deviceId}/settings'),
+            ),
+          ],
+        ),
+        body: RefreshIndicator(
+          onRefresh: () => _refreshLiveData(refreshDevices: true),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(AtmosphereTokens.space20),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compactSensors =
+                    constraints.maxWidth < 360 || textScale > 1.4;
+                final sensorColumns = compactSensors ? 1 : 2;
+                final relayColumns = textScale > 1.7
+                    ? 1
+                    : constraints.maxWidth >= 360
+                        ? 2
+                        : 1;
+                final relayWidth = (constraints.maxWidth -
+                        ((relayColumns - 1) * AtmosphereTokens.space12)) /
+                    relayColumns;
 
-              final sensorTiles = [
-                SensorTile(
-                  value: temp?.toStringAsFixed(2),
-                  unit: '°C',
-                  label: 'Temperature',
-                  icon: AppIcons.temp,
-                  tone: SensorTone.warm,
-                  sparkColor: c.danger,
-                  sparklineData:
-                      tempSparkline.isNotEmpty ? tempSparkline : null,
-                  dimmed: !isOn,
-                ),
-                SensorTile(
-                  value: humidity?.toStringAsFixed(2),
-                  unit: '%',
-                  label: 'Humidity',
-                  icon: AppIcons.humidity,
-                  tone: SensorTone.air,
-                  sparkColor: c.accent,
-                  sparklineData:
-                      humiditySparkline.isNotEmpty ? humiditySparkline : null,
-                  dimmed: !isOn,
-                ),
-                SensorTile(
-                  value: coPpm?.toStringAsFixed(2),
-                  unit: 'ppm',
-                  label: 'CO',
-                  icon: AppIcons.cloud,
-                  tone: SensorTone.cool,
-                  sparkColor: c.brand,
-                  sparklineData: coSparkline.isNotEmpty ? coSparkline : null,
-                  dimmed: !isOn,
-                ),
-                SensorTile(
-                  value: no2Ppm?.toStringAsFixed(2),
-                  unit: 'ppm',
-                  label: 'NO₂',
-                  icon: AppIcons.smog,
-                  tone: SensorTone.no2,
-                  sparkColor: const Color(0xFF7A4FD0),
-                  sparklineData: no2Sparkline.isNotEmpty ? no2Sparkline : null,
-                  dimmed: !isOn,
-                ),
-              ];
+                final sensorTiles = [
+                  SensorTile(
+                    value: temp?.toStringAsFixed(2),
+                    unit: '°C',
+                    label: 'Temperature',
+                    icon: AppIcons.temp,
+                    tone: SensorTone.warm,
+                    sparkColor: c.danger,
+                    sparklineData:
+                        tempSparkline.isNotEmpty ? tempSparkline : null,
+                    dimmed: !isOn,
+                  ),
+                  SensorTile(
+                    value: humidity?.toStringAsFixed(2),
+                    unit: '%',
+                    label: 'Humidity',
+                    icon: AppIcons.humidity,
+                    tone: SensorTone.air,
+                    sparkColor: c.accent,
+                    sparklineData:
+                        humiditySparkline.isNotEmpty ? humiditySparkline : null,
+                    dimmed: !isOn,
+                  ),
+                  SensorTile(
+                    value: coPpm?.toStringAsFixed(2),
+                    unit: 'ppm',
+                    label: 'CO',
+                    icon: AppIcons.cloud,
+                    tone: SensorTone.cool,
+                    sparkColor: c.brand,
+                    sparklineData: coSparkline.isNotEmpty ? coSparkline : null,
+                    dimmed: !isOn,
+                  ),
+                  SensorTile(
+                    value: no2Ppm?.toStringAsFixed(2),
+                    unit: 'ppm',
+                    label: 'NO₂',
+                    icon: AppIcons.smog,
+                    tone: SensorTone.no2,
+                    sparkColor: const Color(0xFF7A4FD0),
+                    sparklineData:
+                        no2Sparkline.isNotEmpty ? no2Sparkline : null,
+                    dimmed: !isOn,
+                  ),
+                ];
 
-              final relayCards = [
-                RelayCard(
-                  channel: 1,
-                  name: 'Fan',
-                  on: relay1,
-                  disabled: !isOn || _relayLoading[1] == true,
-                  onTap: () => _handleRelayToggle(1, relay1, isOn),
-                ),
-                RelayCard(
-                  channel: 2,
-                  name: 'Lamp',
-                  on: relay2,
-                  disabled: !isOn || _relayLoading[2] == true,
-                  onTap: () => _handleRelayToggle(2, relay2, isOn),
-                ),
-                RelayCard(
-                  channel: 3,
-                  name: 'Filter',
-                  on: relay3,
-                  disabled: !isOn || _relayLoading[3] == true,
-                  onTap: () => _handleRelayToggle(3, relay3, isOn),
-                ),
-              ];
+                final relayCards = [
+                  RelayCard(
+                    channel: 1,
+                    name: 'Fan',
+                    on: relay1,
+                    disabled: !isOn || _relayLoading[1] == true,
+                    onTap: () => _handleRelayToggle(1, relay1, isOn),
+                  ),
+                  RelayCard(
+                    channel: 2,
+                    name: 'Lamp',
+                    on: relay2,
+                    disabled: !isOn || _relayLoading[2] == true,
+                    onTap: () => _handleRelayToggle(2, relay2, isOn),
+                  ),
+                  RelayCard(
+                    channel: 3,
+                    name: 'Filter',
+                    on: relay3,
+                    disabled: !isOn || _relayLoading[3] == true,
+                    onTap: () => _handleRelayToggle(3, relay3, isOn),
+                  ),
+                ];
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Semantics(
-                    container: true,
-                    sortKey: const OrdinalSortKey(0),
-                    header: true,
-                    label: '${device?.name ?? widget.deviceId}, $statusText',
-                    child: ExcludeSemantics(
-                      child: Text(
-                        statusText,
-                        style: AtmosphereTextStyles.caption(c.ink3),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Semantics(
+                      container: true,
+                      sortKey: const OrdinalSortKey(0),
+                      header: true,
+                      label: '${device?.name ?? widget.deviceId}, $statusText',
+                      child: ExcludeSemantics(
+                        child: Text(
+                          statusText,
+                          style: AtmosphereTextStyles.caption(c.ink3),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: AtmosphereTokens.space16),
-                  Semantics(
-                    container: true,
-                    sortKey: const OrdinalSortKey(1),
-                    child: DeviceModeCard(
-                      mode: mode,
-                      online: device?.online ?? false,
-                      onChanged: _modeLoading
-                          ? null
-                          : (value) => _handleModeToggle(value),
-                    ),
-                  ),
-                  const SizedBox(height: AtmosphereTokens.space20),
-                  Semantics(
-                    container: true,
-                    sortKey: const OrdinalSortKey(2),
-                    child: GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: sensorColumns,
-                        mainAxisSpacing: AtmosphereTokens.space12,
-                        crossAxisSpacing: AtmosphereTokens.space12,
-                        mainAxisExtent: compactSensors ? 176 : 168,
+                    const SizedBox(height: AtmosphereTokens.space16),
+                    Semantics(
+                      container: true,
+                      sortKey: const OrdinalSortKey(1),
+                      child: DeviceModeCard(
+                        mode: mode,
+                        online: device?.online ?? false,
+                        onChanged: _modeLoading
+                            ? null
+                            : (value) => _handleModeToggle(value),
                       ),
-                      itemCount: sensorTiles.length,
-                      itemBuilder: (context, index) => sensorTiles[index],
                     ),
-                  ),
-                  const SizedBox(height: AtmosphereTokens.space24),
-                  Semantics(
-                    container: true,
-                    sortKey: const OrdinalSortKey(3),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: AtmosphereTokens.space8,
-                          runSpacing: AtmosphereTokens.space4,
-                          children: [
-                            Text(
-                              'Relays',
-                              style: AtmosphereTextStyles.h2(c.ink),
-                            ),
-                            Text(
-                              '· 3 channels',
-                              style: AtmosphereTextStyles.caption(c.ink3),
-                            ),
-                          ],
+                    const SizedBox(height: AtmosphereTokens.space20),
+                    Semantics(
+                      container: true,
+                      sortKey: const OrdinalSortKey(2),
+                      child: GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: sensorColumns,
+                          mainAxisSpacing: AtmosphereTokens.space12,
+                          crossAxisSpacing: AtmosphereTokens.space12,
+                          mainAxisExtent: compactSensors ? 176 : 168,
                         ),
-                        const SizedBox(height: AtmosphereTokens.space12),
-                        Wrap(
-                          spacing: AtmosphereTokens.space12,
-                          runSpacing: AtmosphereTokens.space12,
-                          children: relayCards
-                              .map(
-                                (card) => SizedBox(
-                                  width: relayWidth,
-                                  child: card,
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ],
+                        itemCount: sensorTiles.length,
+                        itemBuilder: (context, index) => sensorTiles[index],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: AtmosphereTokens.space24),
-                  Semantics(
-                    container: true,
-                    sortKey: const OrdinalSortKey(4),
-                    child: AtmosphereCard(
-                      padding: const EdgeInsets.all(AtmosphereTokens.space16),
+                    const SizedBox(height: AtmosphereTokens.space24),
+                    Semantics(
+                      container: true,
+                      sortKey: const OrdinalSortKey(3),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: AtmosphereTokens.space8,
+                            runSpacing: AtmosphereTokens.space4,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  'Recent activity',
-                                  style: AtmosphereTextStyles.h2(c.ink),
-                                ),
+                              Text(
+                                'Relays',
+                                style: AtmosphereTextStyles.h2(c.ink),
                               ),
-                              TextButton(
-                                onPressed: () => context.push(
-                                    '/devices/${widget.deviceId}/commands'),
-                                style: TextButton.styleFrom(
-                                  minimumSize: const Size(48, 48),
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: AtmosphereTokens.space12,
-                                    vertical: AtmosphereTokens.space8,
-                                  ),
-                                ),
-                                child: Text(
-                                  'View all →',
-                                  style: AtmosphereTextStyles.body(c.brand),
-                                ),
+                              Text(
+                                '· 3 channels',
+                                style: AtmosphereTextStyles.caption(c.ink3),
                               ),
                             ],
                           ),
-                          const SizedBox(height: AtmosphereTokens.space8),
-                          if (recentCommands.isEmpty)
-                            Text(
-                              commandsAsync.hasError
-                                  ? 'Unable to load command activity.'
-                                  : commandsAsync.isLoading
-                                      ? 'Loading command activity...'
-                                      : 'No command activity yet.',
-                              style: AtmosphereTextStyles.body(
-                                commandsAsync.hasError ? c.danger : c.ink2,
-                              ),
-                            )
-                          else
-                            ...recentCommands.take(3).map(
-                              (command) {
-                                final (icon, label) =
-                                    _formatRecentActivity(command);
-                                final (tone, badgeLabel) =
-                                    _statusBadge(command.status);
-                                return HistoryRow(
-                                  icon: icon,
-                                  label: label,
-                                  sub: _relativeTime(command.createdAt),
-                                  badgeTone: tone,
-                                  badgeLabel: badgeLabel,
-                                );
-                              },
-                            ),
+                          const SizedBox(height: AtmosphereTokens.space12),
+                          Wrap(
+                            spacing: AtmosphereTokens.space12,
+                            runSpacing: AtmosphereTokens.space12,
+                            children: relayCards
+                                .map(
+                                  (card) => SizedBox(
+                                    width: relayWidth,
+                                    child: card,
+                                  ),
+                                )
+                                .toList(),
+                          ),
                         ],
                       ),
                     ),
-                  ),
-                ],
-              );
-            },
+                    const SizedBox(height: AtmosphereTokens.space24),
+                    Semantics(
+                      container: true,
+                      sortKey: const OrdinalSortKey(4),
+                      child: AtmosphereCard(
+                        padding: const EdgeInsets.all(AtmosphereTokens.space16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Recent activity',
+                                    style: AtmosphereTextStyles.h2(c.ink),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => context.push(
+                                      '/devices/${widget.deviceId}/commands'),
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size(48, 48),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AtmosphereTokens.space12,
+                                      vertical: AtmosphereTokens.space8,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'View all →',
+                                    style: AtmosphereTextStyles.body(c.brand),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: AtmosphereTokens.space8),
+                            if (recentCommands.isEmpty)
+                              Text(
+                                commandsAsync.hasError
+                                    ? 'Unable to load command activity.'
+                                    : commandsAsync.isLoading
+                                        ? 'Loading command activity...'
+                                        : 'No command activity yet.',
+                                style: AtmosphereTextStyles.body(
+                                  commandsAsync.hasError ? c.danger : c.ink2,
+                                ),
+                              )
+                            else
+                              ...recentCommands.take(3).map(
+                                (command) {
+                                  final (icon, label) =
+                                      _formatRecentActivity(command);
+                                  final (tone, badgeLabel) =
+                                      _statusBadge(command.status);
+                                  return HistoryRow(
+                                    icon: icon,
+                                    label: label,
+                                    sub: _relativeTime(command.createdAt),
+                                    badgeTone: tone,
+                                    badgeLabel: badgeLabel,
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -820,18 +826,22 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     required Widget child,
   }) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AtmosphereAppBar.back(
-        title: title,
-        actions: const [],
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AtmosphereTokens.space24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: child,
+    return BackNavigationScope(
+      fallbackRoute: '/home',
+      child: Scaffold(
+        backgroundColor: c.bg,
+        appBar: AtmosphereAppBar.back(
+          title: title,
+          onBack: () => handleBackOrFallback(context, '/home'),
+          actions: const [],
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AtmosphereTokens.space24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: child,
+            ),
           ),
         ),
       ),

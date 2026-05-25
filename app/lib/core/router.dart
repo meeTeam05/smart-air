@@ -47,7 +47,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       // Splash route
       GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
-      
+
       // Auth routes (no shell)
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
@@ -90,11 +90,14 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Drill-down routes (outside shell, no bottom nav)
       GoRoute(path: '/homes', builder: (_, __) => const HomesScreen()),
-      GoRoute(path: '/homes/create', builder: (_, __) => const CreateHomeScreen()),
+      GoRoute(
+          path: '/homes/create', builder: (_, __) => const CreateHomeScreen()),
       GoRoute(
         path: '/homes/:homeId',
-        builder: (_, state) =>
-            HomeDetailScreen(homeId: state.pathParameters['homeId']!),
+        builder: (_, state) => HomeDetailScreen(
+          homeId: state.pathParameters['homeId']!,
+          fallbackRoute: '/homes',
+        ),
       ),
       GoRoute(
         path: '/provision',
@@ -114,7 +117,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
           deviceId: state.uri.queryParameters['deviceId'] ??
-              state.uri.queryParameters['mac'] ?? '',
+              state.uri.queryParameters['mac'] ??
+              '',
           ssid: state.uri.queryParameters['ssid'],
         ),
       ),
@@ -124,7 +128,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
           deviceId: state.uri.queryParameters['deviceId'] ??
-              state.uri.queryParameters['mac'] ?? '',
+              state.uri.queryParameters['mac'] ??
+              '',
         ),
       ),
       GoRoute(
@@ -133,7 +138,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
           deviceId: state.uri.queryParameters['deviceId'] ??
-              state.uri.queryParameters['mac'] ?? '',
+              state.uri.queryParameters['mac'] ??
+              '',
         ),
       ),
       GoRoute(
@@ -160,14 +166,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/devices/:id/ota',
-        builder: (_, state) =>
-            OtaScreen(deviceId: state.pathParameters['id']!),
+        builder: (_, state) => OtaScreen(deviceId: state.pathParameters['id']!),
       ),
       // Profile home detail route
       GoRoute(
         path: '/profile/home/:homeId',
-        builder: (_, state) =>
-            HomeDetailScreen(homeId: state.pathParameters['homeId']!),
+        builder: (_, state) => HomeDetailScreen(
+          homeId: state.pathParameters['homeId']!,
+          fallbackRoute: '/profile',
+        ),
       ),
     ],
   );

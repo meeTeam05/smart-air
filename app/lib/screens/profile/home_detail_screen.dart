@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/back_navigation.dart';
 import '../../design/icons.dart';
 import '../../design/palette.dart';
 import '../../design/text_styles.dart';
@@ -14,8 +15,13 @@ import '../../widgets/atoms/empty_state.dart';
 import '../../widgets/shell/atmosphere_app_bar.dart';
 
 class HomeDetailScreen extends ConsumerStatefulWidget {
-  const HomeDetailScreen({super.key, required this.homeId});
+  const HomeDetailScreen({
+    super.key,
+    required this.homeId,
+    this.fallbackRoute = '/homes',
+  });
   final String homeId;
+  final String fallbackRoute;
 
   @override
   ConsumerState<HomeDetailScreen> createState() => _HomeDetailScreenState();
@@ -51,231 +57,60 @@ class _HomeDetailScreenState extends ConsumerState<HomeDetailScreen> {
     final home = _findHome(homes);
 
     if (homesState.isLoading && home == null) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        appBar: const AtmosphereAppBar.back(title: 'Home'),
-        body: Center(child: CircularProgressIndicator(color: c.brand)),
+      return BackNavigationScope(
+        fallbackRoute: widget.fallbackRoute,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          appBar: AtmosphereAppBar.back(
+            title: 'Home',
+            onBack: () => handleBackOrFallback(context, widget.fallbackRoute),
+          ),
+          body: Center(child: CircularProgressIndicator(color: c.brand)),
+        ),
       );
     }
 
     if (home == null) {
-      return Scaffold(
-        backgroundColor: c.bg,
-        appBar: const AtmosphereAppBar.back(title: 'Home'),
-        body: EmptyState(
-          icon: AppIcons.home,
-          title: 'Home not found',
-          body: homesState.hasError
-              ? homesState.error.toString()
-              : 'This home is no longer available in your current session.',
-          secondaryAction: 'Back',
-          onSecondaryAction: () => context.pop(),
+      return BackNavigationScope(
+        fallbackRoute: widget.fallbackRoute,
+        child: Scaffold(
+          backgroundColor: c.bg,
+          appBar: AtmosphereAppBar.back(
+            title: 'Home',
+            onBack: () => handleBackOrFallback(context, widget.fallbackRoute),
+          ),
+          body: EmptyState(
+            icon: AppIcons.home,
+            title: 'Home not found',
+            body: homesState.hasError
+                ? homesState.error.toString()
+                : 'This home is no longer available in your current session.',
+            secondaryAction: 'Back',
+            onSecondaryAction: () =>
+                handleBackOrFallback(context, widget.fallbackRoute),
+          ),
         ),
       );
     }
 
     final isOwner = home.ownerId == currentUserId;
 
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AtmosphereAppBar.back(title: home.name),
-      body: ListView(
-        padding: const EdgeInsets.all(AtmosphereTokens.space16),
-        children: [
-          Text(
-            'HOME NAME',
-            style: AtmosphereTextStyles.label(c.ink3),
-          ),
-          const SizedBox(height: AtmosphereTokens.space12),
-          Container(
-            padding: const EdgeInsets.all(AtmosphereTokens.space16),
-            decoration: BoxDecoration(
-              color: c.paper,
-              borderRadius: BorderRadius.circular(AtmosphereTokens.radiusCard),
-              border: Border.all(color: c.line),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _editingName
-                      ? TextField(
-                          controller: _nameController,
-                          autofocus: true,
-                          style: AtmosphereTextStyles.body(c.ink),
-                          decoration: InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'Home name',
-                            hintStyle: AtmosphereTextStyles.body(c.ink3),
-                          ),
-                        )
-                      : Text(
-                          home.name,
-                          style: AtmosphereTextStyles.body(c.ink),
-                        ),
-                ),
-                if (isOwner)
-                  IconButton(
-                    icon: Icon(
-                      _editingName ? AppIcons.check : AppIcons.edit,
-                      size: 20,
-                      color: c.brand,
-                    ),
-                    onPressed: _savingName
-                        ? null
-                        : () {
-                            if (_editingName) {
-                              _saveName();
-                            } else {
-                              setState(() {
-                                _editingName = true;
-                                _nameController.text = home.name;
-                              });
-                            }
-                          },
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AtmosphereTokens.space24),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'MEMBERS',
-                  style: AtmosphereTextStyles.label(c.ink3),
-                ),
-              ),
-              if (isOwner)
-                TextButton.icon(
-                  onPressed: _showInviteMember,
-                  icon: Icon(AppIcons.plus, size: 16, color: c.brand),
-                  label: Text(
-                    'Invite',
-                    style: AtmosphereTextStyles.caption(c.brand),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AtmosphereTokens.space12),
-          Container(
-            padding: const EdgeInsets.all(AtmosphereTokens.space16),
-            decoration: BoxDecoration(
-              color: c.paper,
-              borderRadius: BorderRadius.circular(AtmosphereTokens.radiusCard),
-              border: Border.all(color: c.line),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _MemberRow(
-                  name: authState.valueOrNull?.email ?? 'Current user',
-                  role: isOwner ? 'Owner' : 'Member',
-                  isYou: true,
-                ),
-                const SizedBox(height: AtmosphereTokens.space8),
-                Text(
-                  'The current API exposes invite actions, but it does not return a full member list yet.',
-                  style: AtmosphereTextStyles.caption(c.ink3),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AtmosphereTokens.space24),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'ROOMS',
-                  style: AtmosphereTextStyles.label(c.ink3),
-                ),
-              ),
-              if (isOwner)
-                TextButton.icon(
-                  onPressed: _showAddRoom,
-                  icon: Icon(AppIcons.plus, size: 16, color: c.brand),
-                  label: Text(
-                    'Add',
-                    style: AtmosphereTextStyles.caption(c.brand),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AtmosphereTokens.space12),
-          roomsState.when(
-            data: (rooms) => Container(
-              decoration: BoxDecoration(
-                color: c.paper,
-                borderRadius:
-                    BorderRadius.circular(AtmosphereTokens.radiusCard),
-                border: Border.all(color: c.line),
-              ),
-              child: rooms.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(AtmosphereTokens.space16),
-                      child: Text(
-                        'No rooms yet',
-                        style: AtmosphereTextStyles.caption(c.ink3),
-                      ),
-                    )
-                  : Column(
-                      children: [
-                        for (var i = 0; i < rooms.length; i++) ...[
-                          if (i > 0) Divider(height: 1, color: c.line),
-                          _RoomRow(
-                            name: rooms[i].name,
-                            canManage: isOwner,
-                            onEdit: () =>
-                                _showEditRoom(rooms[i].id, rooms[i].name),
-                            onDelete: () => _confirmDeleteRoom(rooms[i].id),
-                          ),
-                        ],
-                      ],
-                    ),
-            ),
-            loading: () => Container(
-              padding: const EdgeInsets.all(AtmosphereTokens.space16),
-              decoration: BoxDecoration(
-                color: c.paper,
-                borderRadius:
-                    BorderRadius.circular(AtmosphereTokens.radiusCard),
-                border: Border.all(color: c.line),
-              ),
-              child: Center(
-                child: CircularProgressIndicator(color: c.brand),
-              ),
-            ),
-            error: (error, _) => Container(
-              padding: const EdgeInsets.all(AtmosphereTokens.space16),
-              decoration: BoxDecoration(
-                color: c.paper,
-                borderRadius:
-                    BorderRadius.circular(AtmosphereTokens.radiusCard),
-                border: Border.all(color: c.line),
-              ),
-              child: Text(
-                error.toString(),
-                style: AtmosphereTextStyles.caption(c.danger),
-              ),
-            ),
-          ),
-          const SizedBox(height: AtmosphereTokens.space32),
-          Text(
-            'DANGER ZONE',
-            style: AtmosphereTextStyles.label(c.danger),
-          ),
-          const SizedBox(height: AtmosphereTokens.space12),
-          if (isOwner) ...[
-            DangerButton(
-              label: 'Delete home',
-              onPressed: _confirmDeleteHome,
-            ),
-            const SizedBox(height: AtmosphereTokens.space8),
+    return BackNavigationScope(
+      fallbackRoute: widget.fallbackRoute,
+      child: Scaffold(
+        backgroundColor: c.bg,
+        appBar: AtmosphereAppBar.back(
+          title: home.name,
+          onBack: () => handleBackOrFallback(context, widget.fallbackRoute),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(AtmosphereTokens.space16),
+          children: [
             Text(
-              'This deletes the home, every device in it, and their associated data.',
-              style: AtmosphereTextStyles.caption(c.danger),
-              textAlign: TextAlign.center,
+              'HOME NAME',
+              style: AtmosphereTextStyles.label(c.ink3),
             ),
-          ] else
+            const SizedBox(height: AtmosphereTokens.space12),
             Container(
               padding: const EdgeInsets.all(AtmosphereTokens.space16),
               decoration: BoxDecoration(
@@ -284,14 +119,206 @@ class _HomeDetailScreenState extends ConsumerState<HomeDetailScreen> {
                     BorderRadius.circular(AtmosphereTokens.radiusCard),
                 border: Border.all(color: c.line),
               ),
-              child: Text(
-                'Leaving a home is not exposed by the current API yet.',
-                style: AtmosphereTextStyles.caption(c.ink3),
-                textAlign: TextAlign.center,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _editingName
+                        ? TextField(
+                            controller: _nameController,
+                            autofocus: true,
+                            style: AtmosphereTextStyles.body(c.ink),
+                            decoration: InputDecoration(
+                              border: InputBorder.none,
+                              hintText: 'Home name',
+                              hintStyle: AtmosphereTextStyles.body(c.ink3),
+                            ),
+                          )
+                        : Text(
+                            home.name,
+                            style: AtmosphereTextStyles.body(c.ink),
+                          ),
+                  ),
+                  if (isOwner)
+                    IconButton(
+                      icon: Icon(
+                        _editingName ? AppIcons.check : AppIcons.edit,
+                        size: 20,
+                        color: c.brand,
+                      ),
+                      onPressed: _savingName
+                          ? null
+                          : () {
+                              if (_editingName) {
+                                _saveName();
+                              } else {
+                                setState(() {
+                                  _editingName = true;
+                                  _nameController.text = home.name;
+                                });
+                              }
+                            },
+                    ),
+                ],
               ),
             ),
-          const SizedBox(height: AtmosphereTokens.space32),
-        ],
+            const SizedBox(height: AtmosphereTokens.space24),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'MEMBERS',
+                    style: AtmosphereTextStyles.label(c.ink3),
+                  ),
+                ),
+                if (isOwner)
+                  TextButton.icon(
+                    onPressed: _showInviteMember,
+                    icon: Icon(AppIcons.plus, size: 16, color: c.brand),
+                    label: Text(
+                      'Invite',
+                      style: AtmosphereTextStyles.caption(c.brand),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AtmosphereTokens.space12),
+            Container(
+              padding: const EdgeInsets.all(AtmosphereTokens.space16),
+              decoration: BoxDecoration(
+                color: c.paper,
+                borderRadius:
+                    BorderRadius.circular(AtmosphereTokens.radiusCard),
+                border: Border.all(color: c.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _MemberRow(
+                    name: authState.valueOrNull?.email ?? 'Current user',
+                    role: isOwner ? 'Owner' : 'Member',
+                    isYou: true,
+                  ),
+                  const SizedBox(height: AtmosphereTokens.space8),
+                  Text(
+                    'The current API exposes invite actions, but it does not return a full member list yet.',
+                    style: AtmosphereTextStyles.caption(c.ink3),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AtmosphereTokens.space24),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'ROOMS',
+                    style: AtmosphereTextStyles.label(c.ink3),
+                  ),
+                ),
+                if (isOwner)
+                  TextButton.icon(
+                    onPressed: _showAddRoom,
+                    icon: Icon(AppIcons.plus, size: 16, color: c.brand),
+                    label: Text(
+                      'Add',
+                      style: AtmosphereTextStyles.caption(c.brand),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AtmosphereTokens.space12),
+            roomsState.when(
+              data: (rooms) => Container(
+                decoration: BoxDecoration(
+                  color: c.paper,
+                  borderRadius:
+                      BorderRadius.circular(AtmosphereTokens.radiusCard),
+                  border: Border.all(color: c.line),
+                ),
+                child: rooms.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(AtmosphereTokens.space16),
+                        child: Text(
+                          'No rooms yet',
+                          style: AtmosphereTextStyles.caption(c.ink3),
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          for (var i = 0; i < rooms.length; i++) ...[
+                            if (i > 0) Divider(height: 1, color: c.line),
+                            _RoomRow(
+                              name: rooms[i].name,
+                              canManage: isOwner,
+                              onEdit: () =>
+                                  _showEditRoom(rooms[i].id, rooms[i].name),
+                              onDelete: () => _confirmDeleteRoom(rooms[i].id),
+                            ),
+                          ],
+                        ],
+                      ),
+              ),
+              loading: () => Container(
+                padding: const EdgeInsets.all(AtmosphereTokens.space16),
+                decoration: BoxDecoration(
+                  color: c.paper,
+                  borderRadius:
+                      BorderRadius.circular(AtmosphereTokens.radiusCard),
+                  border: Border.all(color: c.line),
+                ),
+                child: Center(
+                  child: CircularProgressIndicator(color: c.brand),
+                ),
+              ),
+              error: (error, _) => Container(
+                padding: const EdgeInsets.all(AtmosphereTokens.space16),
+                decoration: BoxDecoration(
+                  color: c.paper,
+                  borderRadius:
+                      BorderRadius.circular(AtmosphereTokens.radiusCard),
+                  border: Border.all(color: c.line),
+                ),
+                child: Text(
+                  error.toString(),
+                  style: AtmosphereTextStyles.caption(c.danger),
+                ),
+              ),
+            ),
+            const SizedBox(height: AtmosphereTokens.space32),
+            Text(
+              'DANGER ZONE',
+              style: AtmosphereTextStyles.label(c.danger),
+            ),
+            const SizedBox(height: AtmosphereTokens.space12),
+            if (isOwner) ...[
+              DangerButton(
+                label: 'Delete home',
+                onPressed: _confirmDeleteHome,
+              ),
+              const SizedBox(height: AtmosphereTokens.space8),
+              Text(
+                'This deletes the home, every device in it, and their associated data.',
+                style: AtmosphereTextStyles.caption(c.danger),
+                textAlign: TextAlign.center,
+              ),
+            ] else
+              Container(
+                padding: const EdgeInsets.all(AtmosphereTokens.space16),
+                decoration: BoxDecoration(
+                  color: c.paper,
+                  borderRadius:
+                      BorderRadius.circular(AtmosphereTokens.radiusCard),
+                  border: Border.all(color: c.line),
+                ),
+                child: Text(
+                  'Leaving a home is not exposed by the current API yet.',
+                  style: AtmosphereTextStyles.caption(c.ink3),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            const SizedBox(height: AtmosphereTokens.space32),
+          ],
+        ),
       ),
     );
   }

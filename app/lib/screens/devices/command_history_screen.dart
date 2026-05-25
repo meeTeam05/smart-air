@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/back_navigation.dart';
 import '../../design/palette.dart';
 import '../../design/tokens.dart';
 import '../../design/text_styles.dart';
@@ -33,74 +34,81 @@ class _CommandHistoryScreenState extends ConsumerState<CommandHistoryScreen> {
     final c = context.colors;
     final commands = ref.watch(commandsProvider(widget.deviceId));
 
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: const AtmosphereAppBar.back(
-        title: 'Command history',
-      ),
-      body: Column(
-        children: [
-          const SizedBox(height: AtmosphereTokens.space16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-                horizontal: AtmosphereTokens.space16),
-            child: Row(
-              children: [
-                AtmosphereFilterChip(
-                  label: 'All',
-                  active: _filter == _CommandFilter.all,
-                  onTap: () => setState(() => _filter = _CommandFilter.all),
-                ),
-                const SizedBox(width: AtmosphereTokens.space8),
-                AtmosphereFilterChip(
-                  label: 'Done',
-                  active: _filter == _CommandFilter.done,
-                  onTap: () => setState(() => _filter = _CommandFilter.done),
-                ),
-                const SizedBox(width: AtmosphereTokens.space8),
-                AtmosphereFilterChip(
-                  label: 'Failed',
-                  active: _filter == _CommandFilter.failed,
-                  onTap: () => setState(() => _filter = _CommandFilter.failed),
-                ),
-                const SizedBox(width: AtmosphereTokens.space8),
-                AtmosphereFilterChip(
-                  label: 'Pending',
-                  active: _filter == _CommandFilter.pending,
-                  onTap: () => setState(() => _filter = _CommandFilter.pending),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AtmosphereTokens.space16),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async =>
-                  ref.invalidate(commandsProvider(widget.deviceId)),
-              child: AsyncValueWidget(
-                value: commands,
-                data: (list) {
-                  final filtered = _filterCommands(list);
-                  if (filtered.isEmpty) {
-                    return const EmptyState(
-                      icon: AppIcons.chart,
-                      title: 'No commands yet',
-                      body:
-                          'Command history will appear here once you interact with the device.',
-                    );
-                  }
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AtmosphereTokens.space16),
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) => _CommandRow(cmd: filtered[i]),
-                  );
-                },
+    return BackNavigationScope(
+      fallbackRoute: '/devices/${widget.deviceId}',
+      child: Scaffold(
+        backgroundColor: c.bg,
+        appBar: AtmosphereAppBar.back(
+          title: 'Command history',
+          onBack: () =>
+              handleBackOrFallback(context, '/devices/${widget.deviceId}'),
+        ),
+        body: Column(
+          children: [
+            const SizedBox(height: AtmosphereTokens.space16),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AtmosphereTokens.space16),
+              child: Row(
+                children: [
+                  AtmosphereFilterChip(
+                    label: 'All',
+                    active: _filter == _CommandFilter.all,
+                    onTap: () => setState(() => _filter = _CommandFilter.all),
+                  ),
+                  const SizedBox(width: AtmosphereTokens.space8),
+                  AtmosphereFilterChip(
+                    label: 'Done',
+                    active: _filter == _CommandFilter.done,
+                    onTap: () => setState(() => _filter = _CommandFilter.done),
+                  ),
+                  const SizedBox(width: AtmosphereTokens.space8),
+                  AtmosphereFilterChip(
+                    label: 'Failed',
+                    active: _filter == _CommandFilter.failed,
+                    onTap: () =>
+                        setState(() => _filter = _CommandFilter.failed),
+                  ),
+                  const SizedBox(width: AtmosphereTokens.space8),
+                  AtmosphereFilterChip(
+                    label: 'Pending',
+                    active: _filter == _CommandFilter.pending,
+                    onTap: () =>
+                        setState(() => _filter = _CommandFilter.pending),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: AtmosphereTokens.space16),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async =>
+                    ref.invalidate(commandsProvider(widget.deviceId)),
+                child: AsyncValueWidget(
+                  value: commands,
+                  data: (list) {
+                    final filtered = _filterCommands(list);
+                    if (filtered.isEmpty) {
+                      return const EmptyState(
+                        icon: AppIcons.chart,
+                        title: 'No commands yet',
+                        body:
+                            'Command history will appear here once you interact with the device.',
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AtmosphereTokens.space16),
+                      itemCount: filtered.length,
+                      itemBuilder: (_, i) => _CommandRow(cmd: filtered[i]),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

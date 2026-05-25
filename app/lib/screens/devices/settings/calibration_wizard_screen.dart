@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../app_theme.dart';
+import '../../../core/back_navigation.dart';
 import '../../../services/device_service.dart';
 import '../../../widgets/shell/atmosphere_app_bar.dart';
 import '../../../widgets/atoms/step_dots.dart';
@@ -38,23 +39,30 @@ class _CalibrationWizardScreenState
 
     final sensorLabel = widget.sensor.toUpperCase();
 
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AtmosphereAppBar.back(
-        title: 'Calibrate $sensorLabel sensor',
-      ),
-      body: Column(
-        children: [
-          const SizedBox(height: AtmosphereTokens.space24),
-          StepDots(current: _currentStep, total: 3),
-          const SizedBox(height: AtmosphereTokens.space32),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(AtmosphereTokens.space20),
-              child: _buildStepContent(c, sensorLabel),
-            ),
+    return BackNavigationScope(
+      fallbackRoute: '/devices/${widget.deviceId}/settings',
+      child: Scaffold(
+        backgroundColor: c.bg,
+        appBar: AtmosphereAppBar.back(
+          title: 'Calibrate $sensorLabel sensor',
+          onBack: () => handleBackOrFallback(
+            context,
+            '/devices/${widget.deviceId}/settings',
           ),
-        ],
+        ),
+        body: Column(
+          children: [
+            const SizedBox(height: AtmosphereTokens.space24),
+            StepDots(current: _currentStep, total: 3),
+            const SizedBox(height: AtmosphereTokens.space32),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(AtmosphereTokens.space20),
+                child: _buildStepContent(c, sensorLabel),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
