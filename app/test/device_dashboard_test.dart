@@ -362,9 +362,12 @@ void main() {
     await events.close();
   });
 
-  testWidgets('waits for relay command completion before refreshing shadow', (
+  testWidgets(
+      'relay toggle waits for realtime shadow confirmation instead of polling',
+      (
     WidgetTester tester,
   ) async {
+    final events = StreamController<RealtimeEvent>.broadcast();
     final fakeService = _FakeDeviceService(
       devices: const [
         Device(
@@ -391,7 +394,7 @@ void main() {
       ProviderScope(
         overrides: [
           deviceServiceProvider.overrideWithValue(fakeService),
-          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
+          realtimeEventsProvider.overrideWith((ref) => events.stream),
         ],
         child: const MaterialApp(
           home: DeviceDashboardScreen(deviceId: 'device-1'),
@@ -405,15 +408,61 @@ void main() {
     await tester.ensureVisible(relaySwitch);
     await tester.tap(relaySwitch, warnIfMissed: false);
     await tester.pump();
-    await tester.pumpAndSettle();
 
-    expect(fakeService.waitCalled, isTrue);
-    expect(fakeService.shadowRefreshedBeforeWait, isFalse);
+    expect(fakeService.waitCalled, isFalse);
+    expect(fakeService.relaySetCalls, 1);
+
+    events.add(
+      RealtimeEvent(
+        id: 'relay-sent',
+        type: 'command.updated',
+        deviceId: 'device-1',
+        occurredAt: DateTime(2026, 5, 12, 8, 0, 1),
+        payload: {
+          'command_id': 'cmd-1',
+          'status': 'sent',
+          'payload': {
+            'type': 'relay_set',
+            'relay': 1,
+            'state': true,
+          },
+        },
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(relaySwitch, warnIfMissed: false);
+    await tester.pump();
+    expect(fakeService.relaySetCalls, 1);
+
+    events.add(
+      RealtimeEvent(
+        id: 'relay-shadow',
+        type: 'shadow.reported',
+        deviceId: 'device-1',
+        occurredAt: DateTime(2026, 5, 12, 8, 0, 2),
+        payload: {
+          'reported': {
+            'mode': 'on',
+            'relay_1': true,
+          },
+          'patch': {
+            'relay_1': true,
+          },
+        },
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(relaySwitch, warnIfMissed: false);
+    await tester.pump();
+    expect(fakeService.relaySetCalls, 2);
     expect(fakeService.telemetryFetchCount, 1);
+    await events.close();
   });
 
   testWidgets(
-      'shows queued message instead of failure when relay command stays pending',
+      'shows queued message after relay command stays pending for five seconds',
       (
     WidgetTester tester,
   ) async {
@@ -437,7 +486,6 @@ void main() {
       telemetry: const {
         'device-1': [],
       },
-      waitShouldTimeout: true,
     );
 
     await tester.pumpWidget(
@@ -458,13 +506,87 @@ void main() {
     await tester.ensureVisible(relaySwitch);
     await tester.tap(relaySwitch, warnIfMissed: false);
     await tester.pump();
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
 
     expect(
       find.text('Command queued. It will run when the device reconnects.'),
       findsOneWidget,
     );
     expect(find.textContaining('Failed to toggle relay:'), findsNothing);
+    expect(fakeService.waitCalled, isFalse);
+  });
+
+  testWidgets('mode toggle also resolves from realtime shadow updates', (
+    WidgetTester tester,
+  ) async {
+    final events = StreamController<RealtimeEvent>.broadcast();
+    final fakeService = _FakeDeviceService(
+      devices: const [
+        Device(
+          id: 'device-1',
+          name: 'Living Room',
+          homeId: 'home-1',
+          online: true,
+        ),
+      ],
+      shadows: const {
+        'device-1': DeviceShadow(
+          reported: {
+            'mode': 'off',
+          },
+        ),
+      },
+      telemetry: const {
+        'device-1': [],
+      },
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceServiceProvider.overrideWithValue(fakeService),
+          realtimeEventsProvider.overrideWith((ref) => events.stream),
+        ],
+        child: const MaterialApp(
+          home: DeviceDashboardScreen(deviceId: 'device-1'),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final modeSwitch = find.byType(AtmosphereSwitch).first;
+    await tester.tap(modeSwitch, warnIfMissed: false);
+    await tester.pump();
+
+    expect(fakeService.modeSetCalls, 1);
+    expect(fakeService.waitCalled, isFalse);
+
+    await tester.tap(modeSwitch, warnIfMissed: false);
+    await tester.pump();
+    expect(fakeService.modeSetCalls, 1);
+
+    events.add(
+      RealtimeEvent(
+        id: 'mode-shadow',
+        type: 'shadow.reported',
+        deviceId: 'device-1',
+        occurredAt: DateTime(2026, 5, 12, 8, 0, 2),
+        payload: {
+          'reported': {
+            'mode': 'on',
+          },
+          'patch': {
+            'mode': 'on',
+          },
+        },
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('ON'), findsOneWidget);
+    await events.close();
   });
 
   testWidgets('dashboard can unmount while realtime stream is still open', (
@@ -554,7 +676,6 @@ class _FakeDeviceService extends DeviceService {
     required this.telemetry,
     this.shadowCompleter,
     this.shadowError,
-    this.waitShouldTimeout = false,
   }) : super(Dio());
 
   final List<Device> devices;
@@ -562,9 +683,10 @@ class _FakeDeviceService extends DeviceService {
   final Map<String, List<TelemetryPoint>> telemetry;
   final Completer<DeviceShadow>? shadowCompleter;
   final Object? shadowError;
-  final bool waitShouldTimeout;
   final List<Command> commands = [];
   int telemetryFetchCount = 0;
+  int relaySetCalls = 0;
+  int modeSetCalls = 0;
   bool relay1On = false;
   bool waitCalled = false;
   bool shadowRefreshedBeforeWait = false;
@@ -611,7 +733,26 @@ class _FakeDeviceService extends DeviceService {
       String deviceId, Map<String, dynamic> desired) async {}
 
   @override
+  Future<String> setMode(String deviceId, String mode) async {
+    modeSetCalls += 1;
+    commands.clear();
+    commands.add(
+      Command(
+        id: 'mode-cmd-1',
+        payload: {
+          'type': 'device_mode',
+          'mode': mode,
+        },
+        status: 'pending',
+        createdAt: DateTime(2026, 5, 12, 8),
+      ),
+    );
+    return 'mode-cmd-1';
+  }
+
+  @override
   Future<String> setRelay(String deviceId, int channel, bool state) async {
+    relaySetCalls += 1;
     actionStarted = true;
     relay1On = state;
     commands.clear();
@@ -638,9 +779,6 @@ class _FakeDeviceService extends DeviceService {
     Duration pollInterval = const Duration(seconds: 2),
   }) async {
     waitCalled = true;
-    if (waitShouldTimeout) {
-      throw TimeoutException('pending');
-    }
     commands
       ..clear()
       ..add(

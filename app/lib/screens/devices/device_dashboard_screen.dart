@@ -19,6 +19,36 @@ import '../../widgets/atoms/history_row.dart';
 import '../../widgets/atoms/pill.dart';
 import '../../widgets/atoms/card.dart';
 
+const _commandPendingUiTimeout = Duration(seconds: 5);
+const _shadowRefreshGrace = Duration(seconds: 1);
+
+enum _PendingControlKind { mode, relay }
+
+class _PendingControlAction {
+  _PendingControlAction.mode({
+    required this.commandId,
+    required this.expectedMode,
+  })  : kind = _PendingControlKind.mode,
+        channel = null,
+        expectedRelayState = null;
+
+  _PendingControlAction.relay({
+    required this.commandId,
+    required this.channel,
+    required this.expectedRelayState,
+  })  : kind = _PendingControlKind.relay,
+        expectedMode = null;
+
+  final String commandId;
+  final _PendingControlKind kind;
+  final int? channel;
+  final String? expectedMode;
+  final bool? expectedRelayState;
+  Timer? queueTimer;
+  Timer? shadowRefreshTimer;
+  bool queuedNoticeShown = false;
+}
+
 class DeviceDashboardScreen extends ConsumerStatefulWidget {
   const DeviceDashboardScreen({super.key, required this.deviceId});
   final String deviceId;
@@ -32,6 +62,17 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
   bool _modeLoading = false;
   final Map<int, bool> _relayLoading = {};
   bool _refreshing = false;
+  _PendingControlAction? _pendingModeAction;
+  final Map<int, _PendingControlAction> _pendingRelayActions = {};
+
+  @override
+  void dispose() {
+    _cancelPendingAction(_pendingModeAction);
+    for (final action in _pendingRelayActions.values) {
+      _cancelPendingAction(action);
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +102,14 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     final latestTelemetry = telemetryState?.latest;
     final commandsAsync = ref.watch(commandsProvider(widget.deviceId));
     final recentCommands = commandsAsync.valueOrNull ?? const <Command>[];
+    ref.listen<AsyncValue<List<Command>>>(
+      commandsProvider(widget.deviceId),
+      _handleCommandsChanged,
+    );
+    ref.listen<AsyncValue<DeviceShadow>>(
+      shadowProvider(widget.deviceId),
+      _handleShadowChanged,
+    );
     final blockingError = _blockingErrorMessage(
       device: device,
       devicesAsync: devicesAsync,
@@ -466,37 +515,6 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     }
   }
 
-  Future<bool> _waitForCommandAndRefresh(String commandId) async {
-    ref.invalidate(commandsProvider(widget.deviceId));
-    final deviceService = ref.read(deviceServiceProvider);
-    Command command;
-    try {
-      command = await deviceService.waitForCommandCompletion(
-        widget.deviceId,
-        commandId,
-        timeout: const Duration(seconds: 30),
-        pollInterval: const Duration(seconds: 2),
-      );
-    } on TimeoutException catch (err) {
-      final commands = await deviceService.getCommands(
-        widget.deviceId,
-        limit: 100,
-      );
-      final pending =
-          commands.where((item) => item.id == commandId).firstOrNull;
-      if (pending == null) rethrow;
-      command = pending;
-      if (command.status != 'pending' && command.status != 'sent') {
-        throw err;
-      }
-    }
-
-    await _refreshLiveData(refreshTelemetry: false);
-    if (command.status == 'done') return true;
-    if (command.status == 'pending' || command.status == 'sent') return false;
-    throw StateError('Command finished with status ${command.status}');
-  }
-
   void _showQueuedCommandSnackBar() {
     final c = context.colors;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -507,6 +525,175 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
         backgroundColor: c.warn,
       ),
     );
+  }
+
+  void _showCommandFailureSnackBar(String message) {
+    final c = context.colors;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: c.danger,
+      ),
+    );
+  }
+
+  void _cancelPendingAction(_PendingControlAction? action) {
+    action?.queueTimer?.cancel();
+    action?.shadowRefreshTimer?.cancel();
+  }
+
+  void _trackPendingAction(_PendingControlAction action) {
+    _cancelPendingAction(action);
+    action.queueTimer = Timer(_commandPendingUiTimeout, () {
+      if (!mounted) return;
+      if (!_matchesCurrentPendingAction(action)) return;
+      action.queuedNoticeShown = true;
+      _clearPendingAction(action);
+      _showQueuedCommandSnackBar();
+    });
+
+    setState(() {
+      switch (action.kind) {
+        case _PendingControlKind.mode:
+          _pendingModeAction = action;
+          _modeLoading = true;
+          break;
+        case _PendingControlKind.relay:
+          final channel = action.channel!;
+          _pendingRelayActions[channel] = action;
+          _relayLoading[channel] = true;
+          break;
+      }
+    });
+  }
+
+  bool _matchesCurrentPendingAction(_PendingControlAction action) {
+    return switch (action.kind) {
+      _PendingControlKind.mode => identical(_pendingModeAction, action),
+      _PendingControlKind.relay =>
+        identical(_pendingRelayActions[action.channel], action),
+    };
+  }
+
+  void _clearPendingAction(_PendingControlAction action) {
+    _cancelPendingAction(action);
+    if (!mounted) return;
+    setState(() {
+      switch (action.kind) {
+        case _PendingControlKind.mode:
+          if (identical(_pendingModeAction, action)) {
+            _pendingModeAction = null;
+            _modeLoading = false;
+          }
+          break;
+        case _PendingControlKind.relay:
+          final channel = action.channel!;
+          if (identical(_pendingRelayActions[channel], action)) {
+            _pendingRelayActions.remove(channel);
+            _relayLoading[channel] = false;
+          }
+          break;
+      }
+    });
+  }
+
+  void _scheduleShadowRefresh(_PendingControlAction action) {
+    action.shadowRefreshTimer?.cancel();
+    action.shadowRefreshTimer = Timer(_shadowRefreshGrace, () async {
+      if (!mounted || !_matchesCurrentPendingAction(action)) return;
+      await ref.read(shadowProvider(widget.deviceId).notifier).refresh();
+      final refreshedShadow =
+          ref.read(shadowProvider(widget.deviceId)).valueOrNull;
+      if (refreshedShadow == null) return;
+      if (!_applyShadowResolution(refreshedShadow, action)) {
+        _clearPendingAction(action);
+      }
+    });
+  }
+
+  void _handleCommandsChanged(
+    AsyncValue<List<Command>>? previous,
+    AsyncValue<List<Command>> next,
+  ) {
+    final commands = next.valueOrNull;
+    if (commands == null) return;
+
+    final pendingActions = <_PendingControlAction>[
+      if (_pendingModeAction != null) _pendingModeAction!,
+      ..._pendingRelayActions.values,
+    ];
+
+    for (final action in pendingActions) {
+      final command =
+          commands.where((item) => item.id == action.commandId).firstOrNull;
+      if (command == null) continue;
+
+      switch (command.status) {
+        case 'done':
+          action.queueTimer?.cancel();
+          action.queueTimer = null;
+          final currentShadow =
+              ref.read(shadowProvider(widget.deviceId)).valueOrNull;
+          if (currentShadow != null &&
+              _applyShadowResolution(currentShadow, action)) {
+            continue;
+          }
+          _scheduleShadowRefresh(action);
+          break;
+        case 'timeout':
+          _clearPendingAction(action);
+          if (!action.queuedNoticeShown) {
+            _showQueuedCommandSnackBar();
+          }
+          break;
+        case 'error':
+          _clearPendingAction(action);
+          _showCommandFailureSnackBar(
+            action.kind == _PendingControlKind.mode
+                ? 'Failed to change mode.'
+                : 'Failed to toggle relay.',
+          );
+          break;
+        case 'pending':
+        case 'sent':
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  void _handleShadowChanged(
+    AsyncValue<DeviceShadow>? previous,
+    AsyncValue<DeviceShadow> next,
+  ) {
+    final shadow = next.valueOrNull;
+    if (shadow == null) return;
+
+    if (_pendingModeAction != null) {
+      _applyShadowResolution(shadow, _pendingModeAction!);
+    }
+
+    for (final action in _pendingRelayActions.values.toList()) {
+      _applyShadowResolution(shadow, action);
+    }
+  }
+
+  bool _applyShadowResolution(
+    DeviceShadow shadow,
+    _PendingControlAction action,
+  ) {
+    final reported = shadow.reported;
+    final resolved = switch (action.kind) {
+      _PendingControlKind.mode =>
+        (reported['mode'] as String?)?.toLowerCase() == action.expectedMode,
+      _PendingControlKind.relay =>
+        reported['relay_${action.channel}'] == action.expectedRelayState,
+    };
+
+    if (!resolved) return false;
+    _clearPendingAction(action);
+    return true;
   }
 
   Future<void> _handleModeToggle(bool value) async {
@@ -535,28 +722,20 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
       if (confirmed != true) return;
     }
 
-    setState(() => _modeLoading = true);
-
     try {
       final commandId = await ref
           .read(deviceServiceProvider)
           .setMode(widget.deviceId, newMode);
-      final completed = await _waitForCommandAndRefresh(commandId);
-      if (!completed && mounted) {
-        _showQueuedCommandSnackBar();
-      }
+      _trackPendingAction(
+        _PendingControlAction.mode(
+          commandId: commandId,
+          expectedMode: newMode,
+        ),
+      );
     } catch (e) {
       if (mounted) {
-        final c = context.colors;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to change mode: $e'),
-            backgroundColor: c.danger,
-          ),
-        );
+        _showCommandFailureSnackBar('Failed to change mode: $e');
       }
-    } finally {
-      if (mounted) setState(() => _modeLoading = false);
     }
   }
 
@@ -573,29 +752,21 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
       return;
     }
 
-    setState(() => _relayLoading[channel] = true);
-
     try {
+      final nextState = !currentState;
       final commandId = await ref
           .read(deviceServiceProvider)
-          .setRelay(widget.deviceId, channel, !currentState);
-      final completed = await _waitForCommandAndRefresh(commandId);
-      if (!completed && mounted) {
-        _showQueuedCommandSnackBar();
-      }
+          .setRelay(widget.deviceId, channel, nextState);
+      _trackPendingAction(
+        _PendingControlAction.relay(
+          commandId: commandId,
+          channel: channel,
+          expectedRelayState: nextState,
+        ),
+      );
     } catch (e) {
       if (mounted) {
-        final c = context.colors;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to toggle relay: $e'),
-            backgroundColor: c.danger,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _relayLoading[channel] = false);
+        _showCommandFailureSnackBar('Failed to toggle relay: $e');
       }
     }
   }
