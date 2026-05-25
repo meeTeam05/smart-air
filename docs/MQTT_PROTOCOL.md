@@ -1,253 +1,203 @@
-# MQTT_PROTOCOL.md — smart-air Integration Contract
+# MQTT Protocol — smart-air
 
-> Đây là **nguồn sự thật duy nhất** về giao tiếp MQTT giữa ESP32 và Cloud.
-> Firmware và API đều phải tuân theo file này. Không được tự ý thay đổi field name, topic, hay format mà không cập nhật file này trước.
-
----
-
-## 1. Thông tin kết nối
-
-| Thông số         | Giá trị |
-| ---------------- | ------ |
-| Broker ESP32     | `wss://minhnhat05.xyz/mqtt` qua Cloudflare Tunnel -> `nginx` -> `emqx:8083` |
-| Broker nội bộ API| `emqx:1883` trong Docker network |
-| Flutter WSS path | `wss://minhnhat05.xyz/mqtt` qua `nginx -> emqx:8083` |
-| Port ESP32       | Public `443` qua WSS; `8883` chỉ là direct override khi có TCP public |
-| Port WSS nội bộ  | `8083` (không expose trực tiếp ra host) |
-| TLS              | Bắt buộc cho device qua `wss://` hoặc direct `mqtts://`; plain `1883` chỉ dùng nội bộ Docker |
-| Auth device      | `username = deviceId`, `password = secret_key` |
-| Auth bridge      | `username = sa-server`, `password = EMQX_MQTT_PASSWORD` |
-| QoS mặc định     | 1 (at least once) |
-| Keep-alive       | 60 giây |
-
-> `secret_key` chỉ được backend cấp khi app gọi `POST /api/devices`.
-> Thiết bị chưa đăng ký chưa có quyền đăng nhập MQTT broker.
+> `docs/MQTT_PROTOCOL.md` là nguồn sự thật cho giao tiếp MQTT giữa firmware ESP32 và broker/server.
+> Hợp đồng app production vẫn là REST + SSE; app không dùng MQTT trực tiếp trong flow hiện tại.
 
 ---
 
-## 2. Topic Map
+## 1. Runtime boundary
 
-```
-Direction: ESP32 → Broker   ký hiệu: →
-Direction: Broker → ESP32   ký hiệu: ←
-```
+MQTT hiện được dùng ở ba phía:
 
-| Topic                              | Direction | QoS | Retain | Mô tả                        |
-| ---------------------------------- | --------- | --- | ------ | ---------------------------- |
-| `device/{deviceId}/status`         | →         | 1   | true   | Online/offline heartbeat + LWT |
-| `device/{deviceId}/telemetry`      | →         | 1   | false  | Sensor data mỗi `SA_SENSOR_POLLING_INTERVAL` giây |
-| `device/{deviceId}/command`        | ←         | 1   | false  | Lệnh điều khiển từ app       |
-| `device/{deviceId}/response`       | →         | 1   | false  | Kết quả thực thi lệnh        |
-| `device/{deviceId}/shadow/report`  | →         | 1   | false  | Device báo trạng thái hiện tại |
-| `device/{deviceId}/shadow/get`     | →         | 1   | false  | Device xin desired state khi boot |
-| `device/{deviceId}/shadow/get_response` | ←    | 1   | false  | Server trả về desired state  |
-| `device/{deviceId}/ota/update`     | ←         | 1   | false  | Trigger OTA                  |
-| `device/{deviceId}/ota/progress`   | →         | 1   | false  | Tiến trình OTA               |
+- Firmware ESP32-S3 kết nối broker qua `wss://minhnhat05.xyz/mqtt` theo mặc định.
+- Fastify API chạy MQTT bridge nội bộ tới `mqtt://emqx:1883`.
+- EMQX giữ per-device auth + ACL để cô lập topic theo `device_id`.
 
-> `{deviceId}` là MAC lowercase của ESP32, ví dụ: `dc:b4:d9:13:ed:8c`.
-> Per-device user và ACL được tạo bởi API server trong EMQX built-in database, không thêm thủ công trong dashboard cho flow bình thường.
+Các giá trị runtime hiện tại:
+
+| Thông số | Giá trị repo-truth hiện tại |
+| --- | --- |
+| Public device broker URI mặc định | `wss://minhnhat05.xyz/mqtt` |
+| Public ingress path | Cloudflare Tunnel -> `nginx` -> EMQX WebSocket `8083` |
+| API bridge broker URI mặc định | `mqtt://emqx:1883` |
+| Device auth | `username = device_id`, `password = secret_key` |
+| Bridge auth | `username = sa-server`, `password = EMQX_MQTT_PASSWORD` |
+| QoS mặc định | `1` cho mọi publish/subscribe do code hiện tại tạo |
+| Keep-alive device | `60` giây |
+
+Ghi chú:
+
+- `device_id` là MAC lowercase dạng `aa:bb:cc:dd:ee:ff`.
+- `secret_key` chỉ xuất hiện sau `POST /api/devices`, rồi được app chuyển vào firmware qua local `POST /api/config`.
+- Plain `1883` chỉ là hop nội bộ Docker cho API bridge, không phải device contract công khai.
 
 ---
 
-## 3. Payload Schema chi tiết
+## 2. Topic ownership
 
-### 3.1 `device/{id}/status` — Online/Offline
+Direction:
 
-**Publish khi connect (online):**
+- `device -> broker` nghĩa là firmware publish.
+- `broker -> device` nghĩa là firmware subscribe.
+
+| Topic | Direction | QoS | Retain | Nguồn/đích hiện tại | Mục đích |
+| --- | --- | --- | --- | --- | --- |
+| `device/{deviceId}/status` | `device -> broker` | 1 | `true` | firmware -> bridge | online/LWT |
+| `device/{deviceId}/telemetry` | `device -> broker` | 1 | `false` | firmware -> bridge | sensor telemetry |
+| `device/{deviceId}/response` | `device -> broker` | 1 | `false` | firmware -> bridge | command ack cuối |
+| `device/{deviceId}/shadow/report` | `device -> broker` | 1 | `false` | firmware -> bridge | reported state patch |
+| `device/{deviceId}/shadow/get` | `device -> broker` | 1 | `false` | firmware -> bridge | xin desired/delta sau connect |
+| `device/{deviceId}/ota/progress` | `device -> broker` | 1 | `false` | firmware -> bridge | OTA progress snapshot |
+| `device/{deviceId}/command` | `broker -> device` | 1 | `false` | API bridge -> firmware | imperative command |
+| `device/{deviceId}/shadow/get_response` | `broker -> device` | 1 | `false` | API bridge -> firmware | desired + delta |
+| `device/{deviceId}/ota/update` | `broker -> device` | 1 | `false` | manual broker/admin publish -> firmware | OTA trigger |
+
+ACL device hiện tại cho phép đúng 9 topic ở trên, scoped theo device của chính nó.
+
+---
+
+## 3. Device-published topics
+
+### 3.1 `device/{id}/status`
+
+Firmware publish retained online status khi `MQTT_EVENT_CONNECTED`, và cấu hình LWT offline cùng topic.
+
+Online payload:
+
 ```json
 {
   "online": true,
-  "firmware": "1.0.3"
+  "firmware": "<firmware version>"
 }
 ```
 
-**LWT — Last Will Testament (offline):**
+Offline LWT payload:
+
 ```json
 {
   "online": false
 }
 ```
 
-> ESP32 cấu hình LWT message này khi khởi tạo MQTT client. Broker tự publish khi device mất kết nối đột ngột.
-> `retain = true` để Flutter app nhận được trạng thái ngay khi subscribe.
-> `firmware` chỉ có trên online status hiện tại; offline LWT chỉ giữ `online:false`.
-> Server chỉ xử lý payload là JSON object có `online` boolean; payload sai schema được ACK và bỏ qua.
+Contract:
 
----
+- `online` bắt buộc là boolean.
+- `firmware` hiện chỉ có trên online publish; server xử lý nếu đây là string.
+- Payload sai schema bị bridge bỏ qua.
 
-### 3.2 `device/{id}/telemetry` — Sensor Data
+Server-side effects:
+
+- `devices.online` được cập nhật theo `online`.
+- `devices.firmware_ver` chỉ cập nhật khi payload có `firmware` string.
+- Khi `online=true`, bridge set Redis `announce:{deviceId}` TTL 300s và gọi `flushPending()` cho command queue.
+
+### 3.2 `device/{id}/telemetry`
+
+Nguồn publish:
+
+- `sensor_task` theo chu kỳ `CONFIG_SA_SENSOR_POLLING_INTERVAL` giây.
+- `device_mode_set(false)` publish một final null telemetry khi chuyển sang OFF.
+
+Current schema:
 
 ```json
 {
-  "device_id": "dc:b4:d9:13:ed:8c",
+  "device_id": "aa:bb:cc:dd:ee:ff",
   "mode": "on",
   "ts": 1712345678,
   "temperature": 28.5,
   "humidity": 65.2,
-  "co_ppm": 12.3,
-  "no2_ppm": 0.4
+  "co_ppm": 3.1,
+  "no2_ppm": 0.04
 }
 ```
 
-| Field        | Type           | Unit | Ghi chú                                                  |
-| ------------ | -------------- | ---- | -------------------------------------------------------- |
-| `device_id`  | string         | —    | MAC string, trùng với topic                              |
-| `mode`       | string         | —    | `"on"` hoặc `"off"` — trạng thái device mode             |
-| `ts`         | integer        | —    | Unix timestamp, giây (không phải ms)                     |
-| `temperature`| float \| null  | °C   | null khi SA_ENABLE_SHT3X=n hoặc đọc lỗi hoặc mode=off   |
-| `humidity`   | float \| null  | %RH  | null khi SA_ENABLE_SHT3X=n hoặc đọc lỗi hoặc mode=off   |
-| `co_ppm`     | float \| null  | ppm  | null khi SA_ENABLE_CO_SENSOR=n hoặc chưa calibrate hoặc mode=off |
-| `no2_ppm`    | float \| null  | ppm  | null khi SA_ENABLE_NO2_SENSOR=n hoặc chưa calibrate hoặc mode=off |
+| Field | Type | Bắt buộc | Ghi chú |
+| --- | --- | --- | --- |
+| `device_id` | string | firmware luôn gửi | nếu có thì phải khớp topic device id |
+| `mode` | `"on"` \| `"off"` | có | sensor task gửi `"on"`; mode-off final publish gửi `"off"` |
+| `ts` | number | có | Unix timestamp giây, phải hữu hạn, `> 0`, `<= 4294967295` |
+| `temperature` | number \| null | có | null khi sensor không khả dụng hoặc mode off |
+| `humidity` | number \| null | có | null khi sensor không khả dụng hoặc mode off |
+| `co_ppm` | number \| null | có | null khi sensor không khả dụng hoặc mode off |
+| `no2_ppm` | number \| null | có | null khi sensor không khả dụng hoặc mode off |
 
-> Publish mỗi SA_SENSOR_POLLING_INTERVAL s từ `sensor_task`.
-> Khi `mode="off"`: sensor gate tắt; firmware publish final null telemetry khi chuyển OFF, sensor task dừng publish cho đến khi ON lại.
-> Khi `CONFIG_SA_DEMO_NO_PERIPHERALS=y`: firmware publish các field sensor từ mảng dữ liệu ảo nội bộ, vẫn giữ nguyên JSON schema và topics hiện tại.
-> Server INSERT vào TimescaleDB hypertable `telemetry` (JSON blob — field mới tự xuất hiện). QoS-1 redelivery cùng `messageId` được dedupe theo `(device_id, ts, mqtt_message_id)` trước khi emit realtime event.
-> Telemetry `ts` được clamp theo Postgres `NOW()`: giá trị quá cũ bị kéo lên `2000-01-01T00:00:00Z`, giá trị quá tương lai bị kéo về clock của DB thay vì clock Node.js.
+Validation và persistence ở bridge:
 
----
+- Payload phải là plain JSON object.
+- Payload tối đa `4096` bytes.
+- `mode` phải là `on` hoặc `off`.
+- Sensor fields nếu xuất hiện phải là `number` hoặc `null`.
+- Insert vào `telemetry` với QoS-1 dedupe theo `(device_id, ts, mqtt_message_id)` khi broker packet metadata có `messageId`.
+- `ts` nhỏ hơn `2000-01-01T00:00:00Z` bị clamp lên mốc đó.
+- `ts` lớn hơn `NOW() + 300s` bị clamp về `NOW()` của Postgres.
 
-### 3.3 `device/{id}/command` — Lệnh điều khiển
+Ghi chú:
 
-Firmware đăng ký command handlers qua `mqtt_register_command_handler(type, callback)` trong `sysload.c`.
-Server publish command dưới dạng `{ "command_id": "...", "type": "...", ... }`.
-Generic REST command chỉ nhận `relay_set`, `device_mode`, `set_time`, `calibrate_co`, `calibrate_no2`.
-`set_config` không được server gửi qua generic command vì đổi credential firmware; OTA dùng topic riêng `device/{id}/ota/update`, không dùng `ota_update` trên command topic.
-Firmware phải trả `{"status":"error"}` cho command thiếu `type`, thiếu field bắt buộc, hoặc không có handler trong build hiện tại. `relay_set` được ACK `done` trong cả normal mode và demo mode khi build bật `CONFIG_SA_ENABLE_RELAYS=y`; nếu relay feature bị tắt trong build thì firmware vẫn trả `error`.
-Firmware drop mọi inbound `command` payload lớn hơn `512` bytes trước khi parse JSON.
+- Demo mode `SA_DEMO_NO_PERIPHERALS` vẫn giữ nguyên topic và schema này; chỉ đổi nguồn dữ liệu sensor.
+- Realtime event app-facing sinh từ DB insert, không phát trực tiếp từ MQTT packet.
 
-#### 3.3.1 Command: `relay_set`
+### 3.3 `device/{id}/response`
 
-Điều khiển relay channel (1–3).
+Firmware publish ack cuối cho command đã nhận trên `device/{id}/command`.
 
-**Payload:**
-```json
-{
-  "command_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "type": "relay_set",
-  "relay": 1,
-  "state": true
-}
-```
-
-| Field   | Type    | Ghi chú                                              |
-| ------- | ------- | ---------------------------------------------------- |
-| `type`  | string  | `"relay_set"`                                       |
-| `relay` | integer | Channel number: 1, 2, hoặc 3                         |
-| `state` | boolean | `true` = bật relay, `false` = tắt relay              |
-
-**Validation:**
-- `relay` phải là integer trong khoảng 1–3
-- `state` phải là boolean
-- Lệnh bị reject với `ESP_ERR_INVALID_STATE` nếu device mode = off
-
-**Side effects:**
-- GPIO output thay đổi (active-high)
-- NVS persist state mới
-- Buzzer beep 50 ms
-- Publish shadow delta: `{"mode":"on","relay_N":<bool>,"ts":...}` lên `device/{id}/shadow/report`
-
-#### 3.3.2 Command: `device_mode`
-
-Bật/tắt toàn bộ thiết bị (sensor + relay).
-
-**Payload:**
-```json
-{
-  "command_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "type": "device_mode",
-  "mode": "on"
-}
-```
-
-| Field  | Type   | Ghi chú                                              |
-| ------ | ------ | ---------------------------------------------------- |
-| `type` | string | `"device_mode"`                                      |
-| `mode` | string | `"on"` hoặc `"off"`                                  |
-
-**Validation:**
-- `mode` phải là string `"on"` hoặc `"off"`
-
-**Side effects khi chuyển sang OFF:**
-1. Disable sensor gate (`sensor_task_set_enabled(false)`)
-2. Publish final null telemetry: `{"device_id":"...","mode":"off","ts":...,"temperature":null,...}`
-3. Force tất cả relay OFF (`relay_force_all_off()`)
-4. Publish mode-off shadow: `{"mode":"off","relay_1":false,"relay_2":false,"relay_3":false,"temperature":null,...}`
-5. Persist mode=0 vào NVS
-
-**Side effects khi chuyển sang ON:**
-1. Persist mode=1 vào NVS
-2. Enable sensor gate (`sensor_task_set_enabled(true)`)
-3. Publish mode-on shadow với relay states hiện tại: `{"mode":"on","relay_1":<bool>,"relay_2":<bool>,"relay_3":<bool>,"ts":...}`
-
-#### 3.3.3 Command: `set_time`
+Minimum schema:
 
 ```json
 {
-  "command_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "type": "set_time",
-  "ts": 1777631761
-}
-```
-
-`ts` là Unix timestamp theo giây, không phải milliseconds.
-
-#### 3.3.4 Command: `calibrate_co` / `calibrate_no2`
-
-```json
-{
-  "command_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "type": "calibrate_co"
-}
-```
-
-Không có field phụ. Firmware chạy calibration sensor tương ứng và publish response `done|error`.
-
----
-
-### 3.4 `device/{id}/response` — Kết quả lệnh
-
-Firmware publish response sau khi command thực sự hoàn tất. Handler ngắn có thể ACK ngay trong MQTT callback; handler dài có thể defer sang worker task rồi ACK sau. `status` vẫn map theo kết quả cuối cùng:
-- `ESP_OK` → `"status":"done"`
-- `ESP_ERR_NOT_FINISHED` → handler đã nhận command và sẽ publish response cuối cùng bất đồng bộ
-- lỗi khác `ESP_OK` → `"status":"error"`
-- command type không hỗ trợ trong build hiện tại → `"status":"error"`
-
-**Ví dụ response thành công:**
-```json
-{
-  "command_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "status": "done"
 }
 ```
 
-**Ví dụ response lỗi:**
-```json
-{
-  "command_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "status": "error"
-}
-```
+Allowed fields bridge hiện xử lý:
 
----
+| Field | Type | Bắt buộc | Ghi chú |
+| --- | --- | --- | --- |
+| `command_id` | string | có | phải khớp command row hiện có |
+| `status` | `"done"` \| `"error"` | có | chỉ hai trạng thái này được bridge chấp nhận |
+| `device_id` | string | không | nếu có và không khớp topic thì payload bị bỏ qua |
+| `reason` | string | không | bridge trim và lưu vào `commands.error_message` khi `status="error"` |
 
-### 3.5 `device/{id}/shadow/report` — Device báo trạng thái
+Ack semantics:
 
-Firmware publish shadow report từ 3 nguồn:
+- Sync handler trả `ESP_OK` -> publish `done`.
+- Handler trả lỗi khác `ESP_OK` -> publish `error`.
+- Handler trả `ESP_ERR_NOT_FINISHED` -> không ack ngay; worker phải publish ack sau.
+- Duplicate command đã có kết quả sẽ republish cùng status cache thay vì chạy lại handler.
 
-1. **Sensor task** (mỗi SA_SENSOR_POLLING_INTERVAL s):
+Bridge effects:
+
+- `pending` có thể được chuẩn hóa sang `sent` nếu response tới trước update dispatch.
+- Command chỉ transition terminal từ `sent` sang `done` hoặc `error`.
+- Duplicate/stale terminal responses bị bỏ qua.
+
+### 3.4 `device/{id}/shadow/report`
+
+Topic này mang patch reported-state dạng flat JSON, không có wrapper `reported`.
+
+Các nguồn publish hiện tại:
+
+1. `sensor_task` sau mỗi telemetry tick.
+2. `relay_set()` sau khi relay thay đổi thành công.
+3. `device_mode_set()` khi đổi mode.
+4. `device_mode_publish_current_shadow()` ngay sau MQTT reconnect bootstrap.
+
+Ví dụ sensor patch:
+
 ```json
 {
   "mode": "on",
   "temperature": 28.5,
   "humidity": 65.2,
-  "co_ppm": 12.3,
-  "no2_ppm": 0.4,
+  "co_ppm": 3.1,
+  "no2_ppm": 0.04,
   "ts": 1712345678
 }
 ```
 
-2. **Relay delta** (sau `relay_set` thành công):
+Ví dụ relay delta:
+
 ```json
 {
   "mode": "on",
@@ -256,9 +206,8 @@ Firmware publish shadow report từ 3 nguồn:
 }
 ```
 
-3. **Device mode change** (sau `device_mode` command):
+Ví dụ mode-off patch:
 
-Mode OFF:
 ```json
 {
   "mode": "off",
@@ -273,47 +222,185 @@ Mode OFF:
 }
 ```
 
-Mode ON:
+Allowed keys bridge hiện validate:
+
+- `mode` -> `on` hoặc `off`
+- `relay_1`, `relay_2`, `relay_3` -> boolean
+- `temperature`, `humidity`, `co_ppm`, `no2_ppm` -> number hoặc null
+- `ts` -> Unix timestamp giây hữu hạn nếu có
+
+Bridge rules:
+
+- Payload tối đa `16384` bytes.
+- `payload.ts` là ordering key cho `reported`.
+- Report có `ts` cũ hơn `reported.ts` hiện tại bị bỏ qua.
+- Report có `ts` tương lai quá `300s` bị normalize về current time trước khi UPSERT.
+- Patch hợp lệ được merge vào `device_shadows.reported` và cache Redis `shadow:{deviceId}`.
+
+### 3.5 `device/{id}/shadow/get`
+
+Firmware publish topic này ngay sau khi reconnect và subscribe xong required topics.
+
+Schema hiện tại:
+
 ```json
 {
-  "mode": "on",
-  "relay_1": false,
-  "relay_2": true,
-  "relay_3": false,
   "ts": 1712345678
 }
 ```
 
-4. **MQTT reconnect bootstrap** (ngay sau `device/{id}/status online`, trước `shadow/get`):
+Bridge chỉ yêu cầu payload là plain JSON object. Sau đó bridge load shadow hiện tại và best-effort publish `shadow/get_response`.
+
+### 3.6 `device/{id}/ota/progress`
+
+Firmware OTA task publish JSON progress snapshots trong lúc cập nhật OTA.
+
+Payloads thực tế hiện tại:
+
 ```json
-{
-  "mode": "on",
-  "relay_1": false,
-  "relay_2": true,
-  "relay_3": false,
-  "ts": 1712345678
-}
+{ "progress": 0, "status": "starting" }
 ```
 
-> Shadow report không có wrapper `{"reported":{...}}` — payload là flat JSON.
-> Server merge các shadow reports vào Redis cache + DB backup.
-> `ts` là ordering key cho `reported`: report có `ts` cũ hơn state hiện tại sẽ bị bỏ qua để không overwrite state mới hơn.
+```json
+{ "progress": 10 }
+```
+
+```json
+{ "progress": 100, "status": "rebooting" }
+```
+
+Các `status` firmware đang phát ra:
+
+| Status | Khi nào |
+| --- | --- |
+| `starting` | vừa dequeue OTA request |
+| `failed` | `esp_https_ota_begin`, `perform`, hoặc `finish` fail |
+| `sha256_mismatch` | hash không khớp trước `finish()` |
+| `busy` | trigger mới đến khi queue OTA depth=1 đã đầy |
+| `rebooting` | OTA thành công, chuẩn bị reboot |
+
+Ghi chú:
+
+- Progress bucket 10% trong download loop có thể không có `status`.
+- Bridge hiện không validate schema OTA progress; nó chỉ cache JSON và phát realtime event.
+- Notification feed app chỉ project các status terminal `rebooting` và `failed`.
 
 ---
 
-### 3.6 `device/{id}/shadow/get` — Xin desired state khi boot
+## 4. Broker-to-device topics
+
+### 4.1 `device/{id}/command`
+
+API bridge publish command JSON với envelope:
 
 ```json
 {
-  "ts": 1712345678
+  "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "type": "relay_set",
+  "relay": 1,
+  "state": true
 }
 ```
 
-> Publish ngay sau khi MQTT connect. Server sẽ trả lời qua `shadow/get_response`.
+Generic command types mà API hiện chấp nhận:
 
----
+- `relay_set`
+- `device_mode`
+- `set_time`
+- `calibrate_co`
+- `calibrate_no2`
 
-### 3.7 `device/{id}/shadow/get_response` — Server trả về desired
+Bridge-side validation:
+
+- `payload` phải là plain object.
+- `type` phải thuộc whitelist trên.
+- `set_config` và `ota_update` bị reject ở generic REST endpoint.
+- `relay_set` chỉ nhận `type`, `relay`, `state`.
+- `device_mode` chỉ nhận `type`, `mode`.
+- `set_time` chỉ nhận `type`, `ts`.
+- `calibrate_*` chỉ nhận `type`.
+
+Firmware-side validation và handling:
+
+- Inbound payload cho `command` bị drop nếu tổng payload > `512` bytes.
+- `set_time` được xử lý trực tiếp trong MQTT component qua `mqtt_register_time_sync_cb`.
+- `relay_set`, `device_mode`, `calibrate_co`, `calibrate_no2` được dispatch qua bảng handler đăng ký bởi `sysload.c`.
+- `set_config` luôn bị firmware reject trên MQTT với log hướng dẫn dùng local `POST /api/config`.
+- Unsupported command type hoặc thiếu field -> command ack `error`.
+
+#### `relay_set`
+
+```json
+{
+  "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "type": "relay_set",
+  "relay": 1,
+  "state": true
+}
+```
+
+Behavior:
+
+- `relay` phải là integer `1..3`.
+- `state` phải là boolean.
+- `relay_set()` trả `ESP_ERR_INVALID_STATE` nếu `device_mode` đang OFF.
+- Thành công sẽ persist NVS, publish `shadow/report`, và beep buzzer.
+
+#### `device_mode`
+
+```json
+{
+  "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "type": "device_mode",
+  "mode": "off"
+}
+```
+
+Behavior:
+
+- `mode` phải là `on` hoặc `off`.
+- Chuyển OFF sẽ publish final null telemetry rồi publish mode-off shadow.
+- Chuyển ON sẽ enable sensor task và publish mode-on shadow với relay state hiện tại.
+
+#### `set_time`
+
+```json
+{
+  "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "type": "set_time",
+  "ts": 1777631761
+}
+```
+
+Behavior:
+
+- `ts` phải là Unix timestamp giây hữu hạn trong khoảng `1..4294967295`.
+- Callback hiện tại update system clock; nếu DS3231 enable thì còn ghi RTC.
+
+#### `calibrate_co` / `calibrate_no2`
+
+```json
+{
+  "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "type": "calibrate_co"
+}
+```
+
+Behavior:
+
+- Command được enqueue vào calibration worker queue.
+- Worker publish ack sau khi calibration + config persist hoàn tất.
+- Nếu queue đầy hoặc không khởi tạo, command kết thúc bằng `error`.
+
+### 4.2 `device/{id}/shadow/get_response`
+
+Bridge publish topic này trong ba tình huống:
+
+- thiết bị vừa gọi `shadow/get`
+- app gọi `PUT /api/devices/:id/shadow/desired` khi device đang online
+- các flow nội bộ khác tái dùng `publishShadowGetResponse()`
+
+Schema hiện tại:
 
 ```json
 {
@@ -329,212 +416,120 @@ Mode ON:
 }
 ```
 
-> `delta` = những field mà `reported` khác `desired`. ESP32 chỉ cần execute delta, không cần apply toàn bộ desired.
-> Firmware hiện chỉ apply các desired keys `mode`, `relay_1`, `relay_2`, `relay_3`. Key khác phải bị chặn ở API layer hoặc được bổ sung support rõ ràng trước khi đưa vào contract.
-> API cũng phải reject mọi desired payload có `relay_N=true` khi mode hiệu lực resolve thành `off` (`body.mode` → desired đang lưu → reported hiện tại), vì firmware sẽ bỏ qua relay apply trong trạng thái đó.
-> Firmware drop mọi inbound `shadow/get_response` payload lớn hơn `512` bytes trước khi parse JSON.
+Meaning:
 
----
+- `desired` là desired state hiện tại.
+- `delta` = `desired - reported` theo `computeDelta()`.
+- `ts` là thời điểm bridge publish response này.
 
-### 3.8 `device/{id}/ota/update` — Trigger OTA
+Constraints:
 
-```json
-{
-  "url": "https://yourdomain.com/firmware/smart-air-v1.0.4.bin",
-  "sha256": "a3f5b2c1d4e6f7890123456789abcdef0123456789abcdef0123456789abcdef",
-  "version": "1.0.4",
-  "ts": 1712345678
-}
-```
+- API chỉ cho desired keys `mode`, `relay_1`, `relay_2`, `relay_3`.
+- API reject mọi payload muốn bật relay khi effective desired mode là `off`.
+- Inbound payload này vào firmware bị drop nếu > `512` bytes.
 
-| Field     | Ghi chú                                                  |
-| --------- | -------------------------------------------------------- |
-| `url`     | HTTPS only — ESP32 từ chối nếu không có `https://`      |
-| `sha256`  | Hash của file binary, verify sau khi download xong      |
-| `version` | String, dùng để log và hiển thị trong app               |
+Firmware apply rules:
 
-> Firmware drop mọi inbound `ota/update` payload lớn hơn `512` bytes trước khi parse JSON. `url` cũng phải fit buffer OTA nội bộ `255` bytes cộng null terminator.
+- Firmware ưu tiên apply `delta` nếu `delta` là object; nếu không có thì fallback sang `desired`.
+- Chỉ `mode` và `relay_1..3` được apply; key khác bị log là unsupported và bị bỏ qua.
+- Nếu patch set `mode="off"` thì relay keys trong cùng patch không được apply tiếp.
+- Nếu relay key xuất hiện khi mode hiện tại OFF thì relay key đó bị bỏ qua.
 
----
+### 4.3 `device/{id}/ota/update`
 
-### 3.9 `device/{id}/ota/progress` — Tiến trình OTA
+OTA trigger hiện không do API bridge publish; bridge ACL cũng không có quyền publish topic này.
+Flow hiện tại là manual broker/admin publish, ví dụ qua EMQX dashboard.
+
+Minimum payload firmware chấp nhận:
 
 ```json
 {
-  "status": "downloading",
-  "progress": 45,
-  "version": "1.0.4",
-  "ts": 1712345678
+  "url": "https://example.com/ota/smart-air.bin",
+  "sha256": "a3f5b2c1d4e6f7890123456789abcdef0123456789abcdef0123456789abcdef"
 }
 ```
 
-| `status`      | Khi nào                                      |
-| ------------- | -------------------------------------------- |
-| `downloading` | Đang download, `progress` = 0–99            |
-| `validating`  | Download xong, đang verify SHA256           |
-| `rebooting`   | Chuẩn bị reboot với firmware mới            |
-| `failed`      | Thất bại, kèm field `reason`                |
+Constraints:
+
+- `url` và `sha256` phải là string.
+- `url` phải bắt đầu bằng `https://`.
+- Firmware drop inbound OTA payload nếu > `512` bytes.
+- `url` phải fit buffer OTA nội bộ `256` bytes cả null terminator.
+- Extra keys hiện bị firmware bỏ qua.
 
 ---
 
-## 4. Command-Response Flow
+## 5. Delivery, ordering, and retry behavior
 
-> Firmware publish explicit response message lên `device/{id}/response` sau khi thực thi command.
+### 5.1 Command queue on the server
 
-### 4.1 Device ONLINE — xử lý ngay
+- REST command requests luôn insert DB row `status='pending'`.
+- Nếu MQTT bridge ready, `flushPending()` cố publish command FIFO theo device.
+- Publish fail sau dispatch commit sẽ cố revert row từ `sent` về `pending`.
+- Pending row quá hạn `COMMAND_PENDING_TIMEOUT_SECONDS` sẽ thành `timeout`.
 
-```
-App                   API (Node.js)         EMQX              ESP32
- │                        │                   │                  │
- ├─POST /command──────────→│                   │                  │
- │                        ├─INSERT commands DB │                  │
- │                        ├─publish command───→│─────────────────→│
- │                        │                   │                  ├─parse JSON payload
- │                        │                   │                  ├─execute action (relay_set/device_mode)
- │                        │                   │←─response────────┤ {"command_id":"...","status":"done|error"}
- │                        │←─subscribe response│                  │
- │                        ├─UPDATE command status by response    │
- │                        │                   │←─shadow/report───┤ (state sync side effect)
-```
+### 5.2 Duplicate command handling on firmware
 
-**Verification:** API dùng response topic để xác nhận trạng thái execute (`done|error`); shadow/report vẫn dùng để đồng bộ trạng thái thực tế của thiết bị.
+Firmware giữ cache RAM tối đa 20 `command_id`.
 
-### 4.2 Device OFFLINE — queue lại
+- Duplicate khi command gốc còn `pending` -> bỏ qua execution, chờ ack gốc.
+- Duplicate khi command đã `done` hoặc `error` -> publish lại cùng terminal ack.
+- Cache không durable qua reboot.
 
-```
-App                   API / PostgreSQL     EMQX               ESP32
- │                        │                   │                  │
- ├─POST /command──────────→│                   │                  │
- │                        ├─INSERT commands status=pending       │
- │←─201 command_id────────┤                   │                  │
- │                        │                   │    (boot + connect)
- │                        │                   │←─status online───┤
- │                        ├─DB FIFO flush pending commands       │
- │                        ├─UPDATE status=sent │                  │
- │                        ├─COMMIT dispatch    │                  │
- │                        ├─publish command───→│─────────────────→│
- │                        ├─publish fail? → revert status=pending │
- │                        │                   │                  ├─execute
- │                        │                   │←─response────────┤
- │                        ├─UPDATE status done/error             │
-```
+### 5.3 Shadow ordering
+
+- `shadow/report` dùng `payload.ts` làm ordering key.
+- Older patch không được phép overwrite reported state mới hơn.
+- Desired state không có timestamp riêng; bridge tính `delta` tại thời điểm publish `shadow/get_response`.
+
+### 5.4 MQTT reconnect bootstrap
+
+Ngay sau `MQTT_EVENT_CONNECTED`, firmware hiện làm theo thứ tự:
+
+1. subscribe `command`, `shadow/get_response`, `ota/update`
+2. publish retained `status` online
+3. publish current `shadow/report`
+4. publish `shadow/get`
+
+Thứ tự này quan trọng vì firmware cần subscribe xong trước khi status/shadow/get có thể kéo desired state mới về.
 
 ---
 
-## 5. Idempotency & Retry Rules
+## 6. Security and provisioning constraints
 
-> **Ghi chú:** Firmware hiện tại track `command_id` trong RAM để chặn re-execute khi MQTT QoS 1 redeliver cùng một command trong cùng vòng đời boot/MQTT client.
+- Device chỉ được pub/sub topic `device/{own_id}/*` theo EMQX built-in authz rules.
+- `secret_key` là credential MQTT per-device, do backend sinh ra lúc đăng ký.
+- Firmware mặc định verify TLS qua ESP CRT bundle khi kết nối broker public.
+- Build repo hiện tại vẫn để `CONFIG_NVS_ENCRYPTION=n` và `CONFIG_FLASH_ENCRYPTION_ENABLED=n`, nên MQTT `secret_key` và Wi-Fi credentials đang nằm plaintext trong flash/NVS nếu deployment không bật lớp bảo vệ ngoài repo.
 
-### 5.1 ESP32 xử lý duplicate command thế nào
+Provisioning sequence hiện tại:
 
-```
-Nhận message trên device/{id}/command
-    │
-    ├─ Parse JSON, lấy command_id
-    │
-    ├─ Kiểm tra command_id trong RAM cache (tối đa 20 entries)
-    │       │
-    │       ├─ ĐANG pending → bỏ qua duplicate, chờ handler gốc publish ack cuối
-    │       │
-    │       ├─ ĐÃ done/error → publish lại cùng response cũ, không chạy lại handler
-    │       │
-    │       └─ CHƯA thấy → ghi state=pending → thực thi handler
-    │
-    └─ Khi command hoàn tất
-            ├─ sync handler: publish `response` với `done|error`
-            └─ async handler: worker gọi `mqtt_publish_command_ack()` với `done|error`
+1. App gọi `POST /api/devices`.
+2. API tạo EMQX user + ACL cho `device_id`, trả `secret_key` đúng 1 lần.
+3. App gọi local `POST http://<device-ip>/api/config` với:
+
+```json
+{
+  "device_id": "aa:bb:cc:dd:ee:ff",
+  "secret_key": "device secret",
+  "broker_uri": "wss://minhnhat05.xyz/mqtt"
+}
 ```
 
-> Tại sao cần: MQTT QoS 1 đảm bảo "at least once" — broker có thể gửi lại cùng 1 message nếu không nhận được PUBACK. Không có `command_id` dedupe, một lệnh side-effect như calibration có thể chạy lặp lại.
+4. Firmware chỉ chấp nhận request đầu tiên khi chưa có `secret_key`, validate `device_id` phải khớp MAC thật, rồi lưu config và reboot.
+5. Sau reboot, firmware mới bắt đầu login MQTT.
 
-**Current behavior (v1.0):** Firmware giữ tối đa 20 `command_id` gần nhất trong RAM. Duplicate khi command gốc còn `pending` sẽ bị bỏ qua; duplicate sau khi command đã có kết quả sẽ re-publish cùng status `done|error`.
+Security note:
 
-**Giới hạn:** Cache chỉ ở RAM, không durable qua reboot hay `mqtt_stop()`/`mqtt_start()` mới. MQTT reconnect bình thường trong cùng boot vẫn giữ cache này.
-
-### 5.2 API retry policy
-
-- API **không tự retry** command đã gửi qua MQTT.
-- Nếu timeout: cập nhật status = `timeout`, app hiển thị lỗi, user tự gửi lại nếu muốn.
-- Mỗi lần gửi lại = 1 `command_id` mới = 1 lần execute mới (không phải retry cũ).
-
-### 5.3 ESP32 reconnect
-
-- Sau khi reconnect WiFi/MQTT: firmware nên publish `shadow/get` để xin desired state mới nhất.
-- Server flush pending commands từ PostgreSQL `commands` khi nhận `status` online=true.
-- ESP32 xử lý commands tuần tự (single-threaded MQTT event handler).
+- Hop local `POST /api/config` hiện là plain HTTP trên LAN, không có TLS hay bootstrap token.
+- BLE provisioning và local HTTP bootstrap hiện dựa vào giả định môi trường cài đặt tin cậy.
 
 ---
 
-## 6. Security Rules
+## 7. App boundary
 
-- **ACL:** Device chỉ được pub/sub `device/{own_id}/*`. Device A không thể gửi command đến Device B.
-- **TLS:** ESP32 mặc định kết nối `wss://minhnhat05.xyz/mqtt` và verify Cloudflare/public cert bằng embedded CA bundle. Direct `mqtts://...:8883` chỉ là override khi có public TCP phù hợp. Không dùng plain 1883.
-- **Auth:** Mỗi device có `secret_key` riêng sinh ra lúc đăng ký, lưu trong NVS. Không hardcode.
-- **Provisioning order:** App phải gọi `POST /api/devices` trước; backend tạo EMQX user + ACL rồi mới chuyển `secret_key` xuống firmware.
-- **Flutter/WSS:** EMQX WebSocket hiện dùng MQTT username/password từ built-in database; JWT REST API chưa được dùng cho MQTT/WSS.
-- **Storage:** Build repo hiện vẫn để `CONFIG_NVS_ENCRYPTION=n` và `CONFIG_FLASH_ENCRYPTION_ENABLED=n`, nên `secret_key` và Wi-Fi password đang nằm ở plaintext trong flash/NVS trừ khi deployment pipeline bật cơ chế mã hóa khác ngoài repo mặc định.
+Các điểm sau dễ gây nhầm:
 
-> Kênh app chuyển `secret_key` xuống firmware là local device provisioning, không phải MQTT contract công khai của backend.
-> Firmware hiện hỗ trợ `POST http://<device-ip>/api/config` với JSON `{ "device_id": "...", "secret_key": "...", "broker_uri": "wss://minhnhat05.xyz/mqtt" }`; `broker_uri` optional. Nếu bỏ qua, firmware xóa override cũ và dùng Kconfig default. Endpoint này chỉ dùng trước lần MQTT login đầu tiên, validate `device_id` phải trùng MAC thật của ESP32, sau đó firmware lưu NVS và reboot.
-> Security note: hop này hiện là plain HTTP trên LAN, không có TLS, request auth, hay one-time bootstrap token trong firmware. Triển khai hiện tại giả định installer tin cậy local network trong lúc provisioning; shared/untrusted LAN có thể intercept hoặc race `secret_key`.
-
-### 6.1 Provisioning sequence bắt buộc
-
-```text
-1. Flutter lấy device_id từ BLE / local provisioning
-2. Flutter gọi POST /api/devices
-3. API tạo secret_key + EMQX built-in user + per-device ACL
-4. API trả secret_key về app đúng 1 lần
-5. App chuyển credential đó xuống ESP32 qua local provisioning endpoint `POST /api/config`
-6. ESP32 mới được phép login MQTT qua WSS/TLS (`wss://minhnhat05.xyz/mqtt` mặc định, hoặc `mqtts://...:8883` nếu operator override)
-7. Factory reset vật lý phải xóa toàn bộ NVS mặc định của firmware, nên sau reset không được giữ lại `broker_uri`, `secret_key`, `mode`, hay calibration cũ.
-```
-
----
-
-## 7. Ví dụ đầy đủ — Bật relay khi device online
-
-```
-1. User bấm nút bật relay 1 trong Flutter app
-
-2. App gọi:
-   POST /api/devices/dc:b4:d9:13:ed:8c/command
-   Body: { "relay": 1, "state": true }
-
-3. API INSERT command status=`pending`; nếu MQTT bridge ready thì flush ngay từ PostgreSQL
-
-4. API publish MQTT:
-   Topic: device/dc:b4:d9:13:ed:8c/command
-   Payload: {
-     "command_id": "...",
-     "type": "relay_set",
-     "relay": 1,
-     "state": true
-   }
-
-5. ESP32 nhận, parse JSON:
-   → Gọi handle_relay_set() trong sysload.c
-   → relay_set(1, true) thực thi
-   → GPIO set high, NVS persist, buzzer beep 50ms
-   → Publish shadow delta:
-     Topic: device/dc:b4:d9:13:ed:8c/shadow/report
-     Payload: { "mode": "on", "relay_1": true, "ts": 1712345679 }
-
-6. API subscribe response:
-   → Nhận {command_id,status}
-   → UPDATE commands SET status='done|error', executed_at=NOW()
-
-7. API subscribe shadow/report:
-   → Nhận shadow delta, UPSERT device_shadows để đồng bộ trạng thái relay thực tế
-
-8. App refresh dữ liệu qua REST hoặc lớp realtime tương lai và hiển thị relay 1 = "bật"
-```
-
----
-
-## 8. Changelog
-
-| Ngày       | Thay đổi                        | Người thay đổi |
-| ---------- | ------------------------------- | -------------- |
-| 2026-04-13 | Khởi tạo file, version 1.0      | —              |
-| 2026-05-11 | Thêm `relay_set` + `device_mode` commands, cập nhật telemetry/shadow với `mode` field | Atlas |
+- Public MQTT WebSocket endpoint tồn tại, nhưng app production hiện không subscribe MQTT trực tiếp.
+- Flutter app dùng REST cho snapshot/history/command và dùng `/api/realtime` SSE cho live updates.
+- Nếu có client MQTT ngoài firmware, nó phải tự dùng credential MQTT do EMQX hiểu; JWT REST không được dùng cho MQTT broker hiện tại.
