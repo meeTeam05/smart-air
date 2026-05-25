@@ -6,6 +6,11 @@ import {
     clearDeviceCleanupJob,
     scheduleDeviceCleanupJob,
 } from '../services/device-cleanup.js';
+import {
+    computeOtaArtifactSha256,
+    listOtaArtifacts,
+    resolveOtaArtifact,
+} from '../services/ota.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
 import { checkDeviceAccess } from '../utils/check-access.js';
 import { RATE_LIMIT_DEVICE, MAX_DEVICES_PER_HOME } from '../constants.js';
@@ -79,6 +84,14 @@ async function prepareDeviceRegistration(client, normalizedDeviceId, homeId, roo
         "SELECT id FROM device_types WHERE name = 'smart_air_v1' LIMIT 1"
     );
     return typeRows[0]?.id || null;
+}
+
+async function getDeviceOtaState(fastify, deviceId) {
+    const { rows } = await fastify.db.query(
+        'SELECT id, firmware_ver, online FROM devices WHERE id = $1',
+        [deviceId]
+    );
+    return rows[0] ?? null;
 }
 
 export default async function devicesRoutes(fastify) {
@@ -209,6 +222,65 @@ export default async function devicesRoutes(fastify) {
             [userId, limit, offset]
         );
         return rows;
+    });
+
+    fastify.get('/devices/:id/ota/versions', auth, async (request, reply) => {
+        const userId = request.user.sub;
+        const deviceId = normalizeDeviceId(request.params.id);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
+
+        const allowed = await checkDeviceAccess(fastify, deviceId, userId);
+        if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
+
+        const device = await getDeviceOtaState(fastify, deviceId);
+        if (!device) return reply.code(404).send({ error: 'Not found' });
+
+        const versions = await listOtaArtifacts();
+        return {
+            device_id: device.id,
+            current_version: device.firmware_ver,
+            device_online: device.online,
+            versions,
+        };
+    });
+
+    fastify.post('/devices/:id/ota', {
+        preHandler: fastify.authenticate,
+        config: { rateLimit: RATE_LIMIT_DEVICE },
+    }, async (request, reply) => {
+        const userId = request.user.sub;
+        const deviceId = normalizeDeviceId(request.params.id);
+        if (!deviceId) return reply.code(400).send({ error: 'Invalid device ID' });
+
+        const version = cleanRequiredString(request.body?.version);
+        if (!version) return reply.code(400).send({ error: 'version required' });
+
+        const allowed = await checkDeviceAccess(fastify, deviceId, userId);
+        if (!allowed) return reply.code(403).send({ error: 'Forbidden' });
+
+        const device = await getDeviceOtaState(fastify, deviceId);
+        if (!device) return reply.code(404).send({ error: 'Not found' });
+        if (!device.online) return reply.code(409).send({ error: 'device offline' });
+
+        const artifact = await resolveOtaArtifact(version);
+        if (!artifact) return reply.code(404).send({ error: 'OTA version not found' });
+
+        const sha256 = await computeOtaArtifactSha256(artifact.filePath);
+        await fastify.mqttPublish(
+            `device/${deviceId}/ota/update`,
+            JSON.stringify({
+                url: artifact.url,
+                sha256,
+            }),
+            { qos: 1, retain: false }
+        );
+
+        return reply.code(202).send({
+            device_id: device.id,
+            version: artifact.version,
+            filename: artifact.filename,
+            status: 'accepted',
+        });
     });
 
     // PUT /api/devices/:id

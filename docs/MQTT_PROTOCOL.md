@@ -50,7 +50,7 @@ Direction:
 | `device/{deviceId}/ota/progress` | `device -> broker` | 1 | `false` | firmware -> bridge | OTA progress snapshot |
 | `device/{deviceId}/command` | `broker -> device` | 1 | `false` | API bridge -> firmware | imperative command |
 | `device/{deviceId}/shadow/get_response` | `broker -> device` | 1 | `false` | API bridge -> firmware | desired + delta |
-| `device/{deviceId}/ota/update` | `broker -> device` | 1 | `false` | manual broker/admin publish -> firmware | OTA trigger |
+| `device/{deviceId}/ota/update` | `broker -> device` | 1 | `false` | server/api OTA route or manual admin publish -> firmware | OTA trigger |
 
 ACL device hiện tại cho phép đúng 9 topic ở trên, scoped theo device của chính nó.
 
@@ -437,8 +437,7 @@ Firmware apply rules:
 
 ### 4.3 `device/{id}/ota/update`
 
-OTA trigger hiện không do API bridge publish; bridge ACL cũng không có quyền publish topic này.
-Flow hiện tại là manual broker/admin publish, ví dụ qua EMQX dashboard.
+OTA trigger hiện có thể do API bridge publish khi app gọi `POST /api/devices/:id/ota`; manual broker/admin publish vẫn là fallback operator path.
 
 Minimum payload firmware chấp nhận:
 

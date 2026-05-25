@@ -8,6 +8,7 @@ import '../core/app_config.dart';
 import '../core/app_exception.dart';
 import '../models/command.dart';
 import '../models/device.dart';
+import '../models/ota.dart';
 import '../models/telemetry.dart';
 
 final deviceServiceProvider = Provider<DeviceService>((ref) {
@@ -41,6 +42,18 @@ class DeviceService {
       throw const ApiException(0, 'Unexpected server response');
     }
     return commandId;
+  }
+
+  String _requiredStringField(Map<String, dynamic> body, String key) {
+    final value = body[key];
+    if (value is String && value.isNotEmpty) return value;
+    throw const ApiException(0, 'Unexpected server response');
+  }
+
+  bool _requiredBoolField(Map<String, dynamic> body, String key) {
+    final value = body[key];
+    if (value is bool) return value;
+    throw const ApiException(0, 'Unexpected server response');
   }
 
   String _normalizeProvisioningHost(String value) {
@@ -225,6 +238,53 @@ class DeviceService {
       final normalizedDeviceId = _normalizeDeviceId(deviceId);
       final res = await _dio.get('/devices/$normalizedDeviceId/shadow');
       return DeviceShadow.fromJson(_bodyAsMap(res.data));
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<DeviceOtaCatalog> getOtaCatalog(String deviceId) async {
+    try {
+      final normalizedDeviceId = _normalizeDeviceId(deviceId);
+      final res = await _dio.get('/devices/$normalizedDeviceId/ota/versions');
+      final body = _bodyAsMap(res.data);
+      final versions = body['versions'];
+      if (versions is! List) {
+        throw const ApiException(0, 'Unexpected server response');
+      }
+
+      final parsedVersions = versions.map((item) {
+        final versionBody = _bodyAsMap(item);
+        return OtaVersionInfo(
+          version: _requiredStringField(versionBody, 'version'),
+          filename: _requiredStringField(versionBody, 'filename'),
+          url: _requiredStringField(versionBody, 'url'),
+        );
+      }).toList();
+
+      final currentVersion = body['current_version'];
+      if (currentVersion != null && currentVersion is! String) {
+        throw const ApiException(0, 'Unexpected server response');
+      }
+
+      return DeviceOtaCatalog(
+        deviceId: _requiredStringField(body, 'device_id'),
+        currentVersion: currentVersion as String?,
+        deviceOnline: _requiredBoolField(body, 'device_online'),
+        versions: parsedVersions,
+      );
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<void> startOtaUpdate(String deviceId, String version) async {
+    try {
+      final normalizedDeviceId = _normalizeDeviceId(deviceId);
+      await _dio.post(
+        '/devices/$normalizedDeviceId/ota',
+        data: {'version': version},
+      );
     } on DioException catch (e) {
       throw _map(e);
     }

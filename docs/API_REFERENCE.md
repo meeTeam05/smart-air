@@ -719,7 +719,7 @@ curl -X POST https://minhnhat05.xyz/api/devices/dc:b4:d9:13:ed:8c/command \
 
 > Status cuối do firmware quyết định hoặc timeout job. CHECK constraint: `('pending','sent','done','error','timeout')`.
 > Firmware dedupe duplicate MQTT QoS 1 replays theo `command_id` trong RAM cache 20 entries: duplicate khi command gốc còn chạy sẽ bị bỏ qua, duplicate sau khi đã có kết quả sẽ re-publish cùng `done|error`, và cache không giữ qua reboot.
-> `set_config` và `ota_update` bị chặn ở generic endpoint; `set_config` chỉ đi qua local device `POST /api/config`, còn OTA trigger hiện là manual broker publish trên topic riêng.
+> `set_config` và `ota_update` bị chặn ở generic endpoint; `set_config` chỉ đi qua local device `POST /api/config`. OTA app flow đi qua endpoint riêng `POST /api/devices/:id/ota`, rồi server publish topic riêng `device/{id}/ota/update`.
 
 **Các lệnh thực tế:**
 
@@ -733,7 +733,7 @@ curl -X POST https://minhnhat05.xyz/api/devices/dc:b4:d9:13:ed:8c/command \
 
 > Calibration là maintenance command nhưng vẫn dùng quyền member như các command generic khác.
 
-`set_config` và `ota_update` không được nhận qua generic command endpoint. OTA hiện đi qua topic riêng `device/{id}/ota/update`.
+`set_config` và `ota_update` không được nhận qua generic command endpoint. OTA app flow đi qua endpoint riêng `POST /api/devices/:id/ota`, rồi server publish topic `device/{id}/ota/update`.
 
 > ESP32 nhận → thực thi → publish `device/{id}/response`: `{ command_id, status: "done" }`
 > Server `handleResponse()` → UPDATE `commands.status`, `executed_at = NOW()`.
@@ -801,13 +801,99 @@ Typed endpoint để đổi mode thiết bị, tương đương payload command:
 { "command_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
 ```
 
-| Error                              | Code | Message               |
-| ---------------------------------- | ---- | --------------------- |
-| Invalid MAC                        | 400  | `"Invalid device ID"` |
-| Body thiếu / `mode` không phải `on | off` | 400                   | Fastify schema validation |
-| Không phải thành viên              | 403  | `"Forbidden"`         |
+| Error                                | Code | Message                    |
+| ------------------------------------ | ---- | -------------------------- |
+| Invalid MAC                          | 400  | `"Invalid device ID"`      |
+| Body thiếu / `mode` không phải `on` hoặc `off` | 400  | Fastify schema validation |
+| Không phải thành viên                | 403  | `"Forbidden"`              |
 
 **Internal:** Server chuẩn hóa thành command payload `device_mode`, lưu vào `commands`, rồi dispatch qua cùng luồng `sendCommand()` như endpoint generic.
+
+---
+
+### `GET /api/devices/:id/ota/versions` 🔒
+
+Authorization: `checkDeviceAccess()`
+
+Trả về catalog OTA hiện có cho thiết bị bằng cách scan `server/ota-files`. Mỗi file `.bin` là một version khả dụng; version label là tên file bỏ hậu tố `.bin`.
+
+**200 OK:**
+
+```json
+{
+  "device_id": "aa:bb:cc:dd:ee:ff",
+  "current_version": "0.1.1",
+  "device_online": false,
+  "versions": [
+    {
+      "version": "0.1.2",
+      "filename": "0.1.2.bin",
+      "url": "https://updates.example.com/ota/0.1.2.bin"
+    },
+    {
+      "version": "0.1.1",
+      "filename": "0.1.1.bin",
+      "url": "https://updates.example.com/ota/0.1.1.bin"
+    }
+  ]
+}
+```
+
+| Error               | Code | Message               |
+| ------------------- | ---- | --------------------- |
+| Invalid device ID   | 400  | `"Invalid device ID"` |
+| Không có quyền      | 403  | `"Forbidden"`         |
+
+**Internal:**
+1. Validate device ID
+2. Lookup device mà user hiện tại có quyền truy cập
+3. Scan `server/ota-files` lấy tất cả file `.bin`
+4. Sort version giảm dần theo dot-segment numeric nếu có thể, fallback lexical
+5. Build public OTA URL từ `OTA_PUBLIC_BASE_URL` nếu được cấu hình; nếu không thì dùng runtime default
+
+---
+
+### `POST /api/devices/:id/ota` 🔒
+
+**Rate limit:** 20/phút/IP
+Authorization: `checkDeviceAccess()`
+
+Trigger OTA cho một version cụ thể từ catalog server-side. Endpoint này không queue request khi device offline; request sẽ fail ngay.
+
+**Request body:**
+
+```json
+{ "version": "0.1.2" }
+```
+
+**202 Accepted:**
+
+```json
+{
+  "device_id": "aa:bb:cc:dd:ee:ff",
+  "version": "0.1.2",
+  "filename": "0.1.2.bin",
+  "status": "accepted"
+}
+```
+
+| Error               | Code | Message                   |
+| ------------------- | ---- | ------------------------- |
+| Invalid device ID   | 400  | `"Invalid device ID"`     |
+| Thiếu version       | 400  | `"version required"`      |
+| Không có quyền      | 403  | `"Forbidden"`             |
+| Không có artifact   | 404  | `"OTA version not found"` |
+| Device đang offline | 409  | `"device offline"`        |
+
+**Internal:**
+1. Validate device ID + `version`
+2. Lookup device mà user hiện tại có quyền truy cập
+3. Reject ngay nếu `devices.online = false`
+4. Resolve `version -> filename` bằng cách scan `server/ota-files`
+5. Tính SHA-256 của artifact trên disk
+6. MQTT publish `device/{id}/ota/update` với payload `{ url, sha256 }`
+
+> Endpoint này cho phép chọn bất kỳ version nào đang có trong catalog, kể cả downgrade. API layer hiện chưa áp policy tương thích hoặc release channel.
 
 ---
 
@@ -1069,7 +1155,7 @@ EMQX Admin API provisioning/cleanup dùng `EMQX_API_URL` và timeout `EMQX_API_T
 | `device/{id}/command`             | `sendCommand()` / `flushPending()`                   | `{ command_id, ...payload }` |
 | `device/{id}/shadow/get_response` | Device online / `PUT /shadow/desired` / `shadow/get` | `{ desired, delta, ts }`     |
 
-> OTA trigger `device/{id}/ota/update` không do API bridge publish trong code hiện tại; flow hiện tại là manual broker/admin publish.
+> OTA trigger `device/{id}/ota/update` hiện do API bridge publish khi app gọi `POST /api/devices/:id/ota`. Manual broker/admin publish vẫn là fallback operator path nếu cần.
 
 ---
 
@@ -1151,17 +1237,17 @@ Tất cả centralized tại `src/constants.js`:
 8. Flutter SSE updates recent command state; REST command history remains available for history/backfill
 ```
 
-### Flow 4 — OTA thủ công
+### Flow 4 — OTA từ app
 
 ```
-1. idf.py build
-2. scp build/smart-air.bin → Pi:~/Working_Space/smart-air/server/ota-files/
-3. sha256sum smart-air.bin
-4. EMQX Dashboard → publish device/{id}/ota/update:
-   {"url":"https://192.168.1.16/ota/smart-air.bin","sha256":"<hash>"}
-5. ESP32 download → verify SHA256 → reboot
-6. Server handleOtaProgress() → Redis ota_progress:{id}
-7. ESP32 boot → ota_validate_and_commit() → committed
+1. Drop `0.1.2.bin` vào `server/ota-files/`
+2. Flutter `GET /api/devices/:id/ota/versions`
+3. User chọn version trong app
+4. Flutter `POST /api/devices/:id/ota` với `{ "version": "0.1.2" }`
+5. Server resolve file, tính SHA-256, rồi MQTT publish `device/{id}/ota/update`
+6. ESP32 download → verify SHA256 → reboot
+7. Server handleOtaProgress() → Redis ota_progress:{id}
+8. ESP32 boot → ota_validate_and_commit() → committed
 ```
 
 ### Admin surfaces hiện có

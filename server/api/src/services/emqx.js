@@ -110,6 +110,7 @@ function bridgeRules() {
         { topic: 'device/+/ota/progress', action: 'subscribe', permission: 'allow' },
         { topic: 'device/+/command', action: 'publish', permission: 'allow' },
         { topic: 'device/+/shadow/get_response', action: 'publish', permission: 'allow' },
+        { topic: 'device/+/ota/update', action: 'publish', permission: 'allow' },
     ];
 }
 

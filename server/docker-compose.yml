@@ -62,6 +62,7 @@ services:
     container_name: sa-api
     volumes:
       - ./db:/db:ro
+      - ./ota-files:/ota-files:ro
     env_file: .env
     depends_on:
       postgres: { condition: service_healthy }
