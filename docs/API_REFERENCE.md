@@ -18,7 +18,7 @@
 6. [Shadow — Trạng thái thiết bị](#6-shadow--trạng-thái-thiết-bị)
 7. [Commands — Điều khiển](#7-commands--điều-khiển)
 8. [Telemetry — Dữ liệu cảm biến](#8-telemetry--dữ-liệu-cảm-biến)
-9. [Realtime — App SSE and MQTT WSS](#9-realtime--app-sse-and-mqtt-wss)
+9. [Realtime — App SSE and Notifications Feed](#9-realtime--app-sse-and-notifications-feed)
 10. [Redis Keys Reference](#10-redis-keys-reference)
 11. [MQTT Bridge — Server-side](#11-mqtt-bridge--server-side)
 12. [Constants Reference](#12-constants-reference)
@@ -61,6 +61,7 @@
 | POST   | `/api/devices/:id/mode`           |   🔒   |   30/min   | Đổi mode thiết bị trực tiếp                               |
 | GET    | `/api/devices/:id/commands`       |   🔒   |            | Lịch sử command                                           |
 | GET    | `/api/devices/:id/telemetry`      |   🔒   |            | Dữ liệu cảm biến                                          |
+| GET    | `/api/notifications`              |   🔒   |            | Feed thông báo thiết bị theo thời gian                    |
 | GET    | `/api/realtime`                   |   🔒   |            | App realtime stream (SSE)                                 |
 
 ### Authentication
@@ -597,7 +598,7 @@ Shadow = snapshot state gồm:
 
 Cache: Redis `shadow:{deviceId}` TTL 1h (`REDIS_TTL_SHADOW`), fallback DB `device_shadows`.
 Malformed Redis JSON is deleted. Cache writes are versioned by `updatedAt`, and a failed write clears the key so stale Redis state cannot outrun Postgres.
-For `device/{id}/shadow/report`, top-level `reported.ts` is the ordering key: older reports are ignored so out-of-order MQTT delivery cannot overwrite newer state.
+For inbound `device/{id}/shadow/report`, `payload.ts` is the ordering key: older reports are ignored so out-of-order MQTT delivery cannot overwrite newer state. Reports more than 300 seconds in the future are normalized to current server time before persistence.
 
 ### `GET /api/devices/:id/shadow` 🔒
 
@@ -668,6 +669,7 @@ Nếu mode hiệu lực là `off` thì mọi `relay_N=true` đều bị reject. 
 3. Nếu offline → chỉ lưu DB, push khi device online lại hoặc khi device publish `shadow/get`
 
 > `PUT /shadow/desired` là declarative target state cho các keys firmware hỗ trợ qua `shadow/get_response`. Typed command endpoints vẫn tồn tại cho imperative command/history flow.
+> Chi tiết topic/payload MQTT tương ứng nằm ở `docs/MQTT_PROTOCOL.md`.
 
 ---
 
@@ -717,6 +719,7 @@ curl -X POST https://minhnhat05.xyz/api/devices/dc:b4:d9:13:ed:8c/command \
 
 > Status cuối do firmware quyết định hoặc timeout job. CHECK constraint: `('pending','sent','done','error','timeout')`.
 > Firmware dedupe duplicate MQTT QoS 1 replays theo `command_id` trong RAM cache 20 entries: duplicate khi command gốc còn chạy sẽ bị bỏ qua, duplicate sau khi đã có kết quả sẽ re-publish cùng `done|error`, và cache không giữ qua reboot.
+> `set_config` và `ota_update` bị chặn ở generic endpoint; `set_config` chỉ đi qua local device `POST /api/config`, còn OTA trigger hiện là manual broker publish trên topic riêng.
 
 **Các lệnh thực tế:**
 
@@ -841,7 +844,16 @@ Lịch sử command, mới nhất trước. Authorization: `checkDeviceAccess()`
 
 ## 8. Telemetry — Dữ liệu cảm biến
 
-ESP32 publish mỗi 5s lên `device/{id}/telemetry`. Server `handleTelemetry()` INSERT vào TimescaleDB hypertable. QoS-1 redelivery được dedupe theo `(device_id, ts, mqtt_message_id)` khi packet metadata có sẵn. Retention: 1 year.
+ESP32 publish telemetry theo `CONFIG_SA_SENSOR_POLLING_INTERVAL` giây, hiện default trong repo là 5 giây. Server `handleTelemetry()` validate payload rồi INSERT vào TimescaleDB hypertable. QoS-1 redelivery được dedupe theo `(device_id, ts, mqtt_message_id)` khi packet metadata có sẵn. Retention: 1 year.
+
+Telemetry guardrails:
+
+- `mode` phải là `on` hoặc `off`
+- `ts` phải là Unix timestamp giây hữu hạn
+- `device_id`, nếu có trong payload, phải khớp topic device id
+- sensor fields phải là `number` hoặc `null`
+- payload quá cũ bị clamp lên `2000-01-01T00:00:00Z`
+- payload quá tương lai bị clamp về `NOW()` của Postgres
 
 ### `GET /api/devices/:id/telemetry` 🔒
 
@@ -900,7 +912,51 @@ Sắp xếp `ts DESC`.
 
 ---
 
-## 9. Realtime — App SSE and MQTT WSS
+## 9. Realtime — App SSE and Notifications Feed
+
+### `GET /api/notifications` 🔒
+
+App-facing notification feed. Trả về newest-first history của các event có ý nghĩa vận hành thay vì raw telemetry.
+
+Authorization: user phải là thành viên của home sở hữu device tạo ra notification event. Route hiện truy vấn qua `notification_events -> devices -> home_members`, không nhận `device_id` từ client.
+
+**Query params:**
+
+| Param       | Default | Max | Mô tả                                       |
+| ----------- | ------- | --- | ------------------------------------------- |
+| `limit`     | `50`    | 100 | Số item trả về                              |
+| `before_id` | _(none)_| —   | Cursor phân trang theo `source_event_id`    |
+
+**200 OK:**
+```json
+[
+  {
+    "id": "42",
+    "type": "command.done",
+    "device_id": "aa:bb:cc:dd:ee:ff",
+    "device_name": "Living Room Air",
+    "title": "Relay 1 turned on",
+    "body": "Command completed successfully.",
+    "severity": "success",
+    "occurred_at": "2026-05-24T13:55:00.000Z",
+    "payload": { "command_id": "cmd-1", "status": "done", "payload": { "type": "relay_set", "relay": 1, "state": true } }
+  }
+]
+```
+
+**Included sources:**
+
+- `device.status` -> `device.online`, `device.offline`
+- `command.updated` -> terminal states only: `command.done`, `command.error`, `command.timeout`
+- `ota.progress` -> actionable milestones only: `ota.rebooting`, `ota.failed`
+
+**Excluded sources:** `telemetry.point`, `shadow.reported`, `replay.reset`
+
+| Error                    | Code | Message                                  |
+| ------------------------ | ---- | ---------------------------------------- |
+| `before_id` sai định dạng| 400  | `"before_id must be a numeric event id"` |
+| `limit` không hợp lệ     | 400  | `"limit must be a positive integer"`     |
+| Chưa đăng nhập           | 401  | `"Unauthorized"`                         |
 
 ### `GET /api/realtime` 🔒
 
@@ -967,14 +1023,15 @@ Protocol:     MQTT v3.1.1 over WebSocket
 
 > **Lưu ý:** Flutter app production flow dùng `/api/realtime`, không subscribe trực tiếp `/mqtt`.
 > Nếu dùng WebSocket MQTT trực tiếp, EMQX đang xác thực bằng MQTT username/password theo built-in database; JWT của REST API không được dùng cho MQTT/WSS.
+> `docs/MQTT_PROTOCOL.md` mới là contract chi tiết cho toàn bộ topics và payload MQTT.
 
 **Topics subscribe:**
 
 | Topic                      | Payload                                                           | Dùng để         |
 | -------------------------- | ----------------------------------------------------------------- | --------------- |
-| `device/{id}/status`       | `{"online":true,"firmware":"1.0.0"}`                              | Online/offline  |
-| `device/{id}/telemetry`    | `{"device_id":"...","ts":123,"temperature":28.5,"humidity":65.2}` | Realtime sensor |
-| `device/{id}/ota/progress` | `{"progress":50,"status":"downloading"}`                          | OTA progress    |
+| `device/{id}/status`       | `{"online":true,"firmware":"<firmware version>"}`                 | Online/offline  |
+| `device/{id}/telemetry`    | `{"device_id":"...","mode":"on","ts":123,"temperature":28.5,"humidity":65.2,"co_ppm":3.1,"no2_ppm":0.04}` | Realtime sensor |
+| `device/{id}/ota/progress` | `{"progress":10}` or `{"progress":100,"status":"rebooting"}`      | OTA progress    |
 
 ---
 
@@ -998,12 +1055,12 @@ EMQX Admin API provisioning/cleanup dùng `EMQX_API_URL` và timeout `EMQX_API_T
 
 | Topic                    | Handler                | Xử lý                                                                                                                                                                                |
 | ------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `device/+/status`        | `handleStatus()`       | Validate `{online:boolean}`; UPDATE `devices.online` + `last_seen`; emit `device.status`; SET `announce:`; `flushPending()`                                                         |
-| `device/+/telemetry`     | `handleTelemetry()`    | Validate device/topic, mode, sensor fields, ts; INSERT TimescaleDB with QoS-1 dedupe; emit `telemetry.point`                                                                         |
-| `device/+/response`      | `handleResponse()`     | UPDATE `commands.status` + `executed_at`; emit `command.updated`. Status whitelist: `done`/`error`                                                                                   |
-| `device/+/shadow/report` | `handleShadowReport()` | Drop unknown devices, validate known fields, UPSERT `device_shadows` only when `payload.ts` is not older than current `reported.ts`; emit `shadow.reported` only for applied updates |
-| `device/+/shadow/get`    | `handleShadowGet()`    | Load shadow and publish `shadow/get_response`                                                                                                                                        |
-| `device/+/ota/progress`  | `handleOtaProgress()`  | SET Redis TTL 600s; emit `ota.progress`                                                                                                                                              |
+| `device/+/status`        | `handleStatus()`       | Validate `{online:boolean}`; update `devices.online`; persist firmware version when present; emit `device.status`; SET `announce:`; `flushPending()`                                 |
+| `device/+/telemetry`     | `handleTelemetry()`    | Validate plain-object schema, size, device/topic match, mode, sensor fields, ts; clamp stale/future ts; INSERT TimescaleDB with QoS-1 dedupe; emit `telemetry.point`                 |
+| `device/+/response`      | `handleResponse()`     | Accept `done`/`error`; guard device mismatch; update `commands` from `sent` to terminal state; persist optional error message; emit `command.updated`                                 |
+| `device/+/shadow/report` | `handleShadowReport()` | Drop unknown devices, validate known fields and size, normalize future ts, UPSERT `device_shadows` only when `payload.ts` is not older than current `reported.ts`; emit applied patch |
+| `device/+/shadow/get`    | `handleShadowGet()`    | Require plain object payload, load shadow, best-effort publish `shadow/get_response`                                                                                                  |
+| `device/+/ota/progress`  | `handleOtaProgress()`  | Cache raw JSON at `ota_progress:` TTL 600s; emit `ota.progress` without additional schema validation                                                                                 |
 
 **Publish:**
 
@@ -1011,6 +1068,8 @@ EMQX Admin API provisioning/cleanup dùng `EMQX_API_URL` và timeout `EMQX_API_T
 | --------------------------------- | ---------------------------------------------------- | ---------------------------- |
 | `device/{id}/command`             | `sendCommand()` / `flushPending()`                   | `{ command_id, ...payload }` |
 | `device/{id}/shadow/get_response` | Device online / `PUT /shadow/desired` / `shadow/get` | `{ desired, delta, ts }`     |
+
+> OTA trigger `device/{id}/ota/update` không do API bridge publish trong code hiện tại; flow hiện tại là manual broker/admin publish.
 
 ---
 
@@ -1052,7 +1111,7 @@ Tất cả centralized tại `src/constants.js`:
  8. Server tạo EMQX user + ACL → trả về secret_key đúng 1 lần
 9. App chuyển `device_id` + `secret_key` xuống firmware qua local endpoint `POST http://<device-ip>/api/config`
 10. ESP32 validate `device_id` phải trùng Wi-Fi STA MAC, lưu credential vào NVS, reboot, rồi kết nối MQTT broker (`wss://minhnhat05.xyz/mqtt` mặc định)
-11. ESP32 publish device/{device_id}/status = {"online":true,"firmware":"1.0.0"}
+11. ESP32 publish `device/{device_id}/status = {"online":true,"firmware":"<current firmware version>" }`
 12. Server handleStatus() → UPDATE devices → SET announce:{device_id} TTL 300s
 13. Flutter polling GET /api/devices/announce/{device_id} → announced: true
 14. Flutter navigate → device detail screen
