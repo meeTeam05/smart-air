@@ -62,3 +62,5 @@ scripts/ddns-cloudflare.sh
 .sisyphus/
 .beads/
 .mnhat/
+.claude/
+CLAUDE.md

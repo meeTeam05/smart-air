@@ -6,8 +6,8 @@ Working instructions for the `smart-air` repository.
 
 `smart-air` is an ESP32-S3 indoor air quality monitor and smart home controller with four tightly-coupled domains:
 
-- `firmware/`: ESP-IDF v5.x firmware running on ESP32-S3.
-- `app/`: Flutter mobile app for iOS and Android.
+- `firmware/`: ESP-IDF v5.4.2 firmware running on ESP32-S3.
+- `app/`: Flutter mobile app for Android.
 - `server/`: self-hosted cloud stack, Docker Compose wiring, EMQX, Redis, PostgreSQL/TimescaleDB, Grafana, and related operations.
 - `server/api/`: Fastify API that bridges the mobile app, MQTT broker, persistence, and device state.
 - `docs/`: architecture, API, MQTT contract, hardware references, and audits.
@@ -173,7 +173,7 @@ npm run dev
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **smart-air** (13373 symbols, 31144 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **smart-air** (14278 symbols, 32529 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
