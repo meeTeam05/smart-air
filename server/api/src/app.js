@@ -19,6 +19,7 @@ import devicesRoutes from './routes/devices.js';
 import shadowRoutes from './routes/shadow.js';
 import commandsRoutes from './routes/commands.js';
 import telemetryRoutes from './routes/telemetry.js';
+import notificationsRoutes from './routes/notifications.js';
 import realtimeRoutes from './routes/realtime.js';
 import { registerCommandTimeoutJob } from './jobs/command-timeout.js';
 import { registerDataRetentionJob } from './jobs/data-retention.js';
@@ -114,6 +115,7 @@ await fastify.register(devicesRoutes, { prefix: '/api' });
 await fastify.register(shadowRoutes, { prefix: '/api' });
 await fastify.register(commandsRoutes, { prefix: '/api' });
 await fastify.register(telemetryRoutes, { prefix: '/api' });
+await fastify.register(notificationsRoutes, { prefix: '/api' });
 await fastify.register(realtimeRoutes, { prefix: '/api' });
 
 // ── Global Error Handler ─────────────────────────────────────────

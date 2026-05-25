@@ -1,3 +1,5 @@
+import { projectNotificationEvent } from './notification-events.js';
+
 export const REALTIME_NOTIFY_CHANNEL = 'realtime_events';
 export const DEFAULT_REALTIME_REPLAY_LIMIT = 1000;
 
@@ -86,6 +88,8 @@ export async function createRealtimeEvent(target, { type, deviceId, occurredAt =
     if (!event) {
         throw new Error('realtime event insert returned no row');
     }
+
+    await projectNotificationEvent(db, event);
 
     if (!inserted) {
         return event;

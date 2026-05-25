@@ -308,7 +308,7 @@ export async function handleResponse(fastify, deviceId, payload) {
         `UPDATE commands
          SET status = $1, executed_at = NOW(), error_message = $4
          WHERE id = $2 AND device_id = $3 AND status = 'sent'
-         RETURNING id, device_id, status, executed_at, error_message`,
+         RETURNING id, device_id, status, executed_at, error_message, payload`,
         [status, commandId, deviceId, status === 'error' ? cleanCommandErrorMessage(payload) : null]
     );
 
@@ -321,6 +321,7 @@ export async function handleResponse(fastify, deviceId, payload) {
             payload: {
                 command_id: command.id,
                 status: command.status,
+                payload: command.payload,
                 error_message: command.error_message ?? null,
             },
             idempotencyKey: `command.updated:${command.id}:${command.status}`,
