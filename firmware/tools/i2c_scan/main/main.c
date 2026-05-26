@@ -12,8 +12,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define SDA_PIN GPIO_NUM_8
-#define SCL_PIN GPIO_NUM_9
+#define SDA_PIN  GPIO_NUM_12
+#define SCL_PIN  GPIO_NUM_13
 #define PROBE_MS 20 /* timeout per address probe */
 
 static const char *TAG = "I2C_SCAN";
