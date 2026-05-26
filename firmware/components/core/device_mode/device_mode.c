@@ -9,6 +9,7 @@
 #include "device_mode.h"
 
 #include "config.h"
+#include "display_service.h"
 #include "esp_log.h"
 #include "nvs.h"
 
@@ -218,6 +219,7 @@ esp_err_t device_mode_init(const char *device_id)
 
     s_mode_on = persisted_mode_on;
     sensor_task_set_enabled(s_mode_on);
+    display_service_set_mode(s_mode_on);
 
 #if SA_ENABLE_RELAYS
     if (!persisted_mode_on) {
@@ -260,6 +262,7 @@ esp_err_t device_mode_set(bool on)
         if (relays_forced_off) {
             s_mode_on = false;
             sensor_task_set_enabled(false);
+            display_service_set_mode(false);
         }
 
         err = publish_mode_off_shadow();
@@ -277,6 +280,7 @@ esp_err_t device_mode_set(bool on)
 
     s_mode_on = true;
     sensor_task_set_enabled(true);
+    display_service_set_mode(true);
 
     err = persist_mode(true);
     if (err != ESP_OK && first_err == ESP_OK) {

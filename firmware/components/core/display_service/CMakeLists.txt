@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "display_service.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        config
+        ili9225
+        lvgl
+        wifi
+    PRIV_REQUIRES
+        esp_timer
+        freertos
+        log
+)

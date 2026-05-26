@@ -9,6 +9,7 @@
 #include "sensor_task.h"
 
 #include "cJSON.h"
+#include "display_service.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -282,6 +283,18 @@ static void sensor_task_fn(void *arg)
             timestamp = (uint32_t)time(NULL);
         }
 #endif
+
+        display_sensor_snapshot_t display_snapshot = {
+            .have_temperature_humidity = have_sht,
+            .temperature_c = temperature,
+            .humidity_pct = humidity,
+            .have_co = have_co,
+            .co_ppm = co_ppm,
+            .have_no2 = have_no2,
+            .no2_ppm = no2_ppm,
+            .timestamp = timestamp,
+        };
+        display_service_set_sensor_snapshot(&display_snapshot);
 
         /* Telemetry — always publish; null for unavailable sensor fields */
         cJSON *root = cJSON_CreateObject();

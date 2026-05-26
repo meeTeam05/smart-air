@@ -33,6 +33,7 @@
 #include "buzzer.h"
 #include "relay.h"
 #include "device_mode.h"
+#include "display_service.h"
 
 #include "cJSON.h"
 
@@ -710,6 +711,17 @@ static void init_network_stack_stage(void)
     }
 }
 
+static void start_display_stage(void)
+{
+    esp_err_t err = display_service_init();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "display_service_init failed (%s) - continuing headless", esp_err_to_name(err));
+        return;
+    }
+
+    display_service_set_boot_phase(DISPLAY_BOOT_PHASE_BOOT);
+}
+
 static void init_i2c_bus_stage(void)
 {
 #if SA_ENABLE_SHT3X || SA_ENABLE_DS3231
@@ -734,6 +746,7 @@ static void run_ble_provisioning_stage(void)
         return;
     }
 
+    display_service_set_boot_phase(DISPLAY_BOOT_PHASE_BLE);
     ESP_LOGI(TAG, "Not provisioned — starting BLE provisioning");
     led_set_state(LED_STATE_BLE);
 
@@ -754,6 +767,8 @@ static void load_wifi_credentials_stage(char *ssid, size_t ssid_len, char *passw
 
 static void connect_wifi_stage(const char *ssid, const char *password)
 {
+    display_service_set_boot_phase(DISPLAY_BOOT_PHASE_WIFI);
+
     if (wifi_sta_is_connected()) {
         led_set_state(LED_STATE_WIFI);
         return;
@@ -825,6 +840,8 @@ static void init_runtime_control_stage(const char *resolved_id)
 
 static void start_mqtt_stage(const char *broker_uri, const char *resolved_id, const char *secret_key)
 {
+    display_service_set_boot_phase(DISPLAY_BOOT_PHASE_MQTT);
+
     esp_err_t err = mqtt_start(broker_uri, resolved_id, secret_key);
     if (err != ESP_OK) {
         reboot_after_boot_error("mqtt_start", err);
@@ -869,6 +886,9 @@ void sysload_init(void)
 
     /* 0.5 — Factory reset button (early so it works in every boot phase) */
     init_factory_reset_stage();
+
+    /* 0.75 — Optional display bring-up (non-fatal, for boot/provisioning visibility) */
+    start_display_stage();
 
     /* 1 — NVS init (required by Wi-Fi and BLE provisioning) */
     init_nvs_stage();
@@ -987,6 +1007,7 @@ void sysload_init(void)
 #endif
 
     if (secret_key[0] == '\0') {
+        display_service_set_boot_phase(DISPLAY_BOOT_PHASE_WAITING_CONFIG);
         ESP_LOGW(TAG, "MQTT secret_key not provisioned yet — waiting for local POST /api/config");
         s_boot_failure_count = 0;
         vTaskDelete(NULL);
@@ -1053,6 +1074,7 @@ void sysload_init(void)
     /* 11 — Validate OTA firmware after all subsystems running (SEC-03) */
     ota_validate_and_commit();
 
+    display_service_set_boot_phase(DISPLAY_BOOT_PHASE_READY);
     s_boot_failure_count = 0;
     vTaskDelete(NULL);
 }

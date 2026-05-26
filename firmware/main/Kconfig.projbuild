@@ -251,6 +251,29 @@ menu "Smart Air Configuration"
             help
                 ILI9225 chip select (active low).
 
+        config SA_DISP_SPI_HZ
+            int "Display SPI clock (Hz)"
+            default 10000000
+            range 1000000 40000000
+            help
+                10 MHz is the conservative default for the ILI9225 display.
+
+        config SA_DISP_SELF_TEST
+            bool "Run display self-test during boot"
+            default n
+            help
+                Show a short color and orientation sequence before the normal
+                UI starts. Useful for bench validation of panel wiring,
+                color order, and LVGL rotation.
+
+        config SA_DISP_SELF_TEST_HOLD_MS
+            int "Display self-test hold per screen (ms)"
+            default 700
+            range 100 5000
+            depends on SA_DISP_SELF_TEST
+            help
+                How long each self-test screen remains visible.
+
     endmenu
 
     # SD Card SPI

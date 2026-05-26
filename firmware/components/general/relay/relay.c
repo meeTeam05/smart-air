@@ -18,6 +18,7 @@
 
 #include "buzzer.h"
 #include "config.h"
+#include "display_service.h"
 #include "mqtt.h"
 
 #include "cJSON.h"
@@ -51,6 +52,14 @@ static const char *s_keys[RELAY_CHANNEL_COUNT] = {
 static bool s_state[RELAY_CHANNEL_COUNT] = {false, false, false};
 static char s_shadow_topic[96] = {0};
 static portMUX_TYPE s_state_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static void relay_push_display_state(void)
+{
+    bool states[RELAY_CHANNEL_COUNT] = {false, false, false};
+    if (relay_get_all(states) == ESP_OK) {
+        display_service_set_relay_states(states);
+    }
+}
 
 static esp_err_t relay_persist_state_value(int index, bool on)
 {
@@ -205,6 +214,7 @@ esp_err_t relay_init(const char *device_id)
     }
 
     snprintf(s_shadow_topic, sizeof(s_shadow_topic), "device/%s/shadow/report", device_id);
+    relay_push_display_state();
 
     ESP_LOGI(TAG,
              "init OK (pins=%d,%d,%d state=[%s,%s,%s])",
@@ -262,6 +272,7 @@ esp_err_t relay_set(int channel, bool on)
                  esp_err_to_name(err));
     }
 
+    relay_push_display_state();
     buzzer_beep_ms(RELAY_BEEP_MS_SINGLE);
     return ESP_OK;
 }
@@ -334,5 +345,6 @@ esp_err_t relay_force_all_off(void)
         buzzer_beep_ms(RELAY_BEEP_MS_ALL_OFF);
     }
 
+    relay_push_display_state();
     return first_err;
 }

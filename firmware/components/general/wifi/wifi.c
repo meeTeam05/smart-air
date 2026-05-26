@@ -359,6 +359,22 @@ bool wifi_sta_is_connected(void)
     return is_connected;
 }
 
+esp_err_t wifi_sta_get_rssi(int *rssi_dbm)
+{
+    if (rssi_dbm == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    wifi_ap_record_t ap_info = {0};
+    esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    *rssi_dbm = ap_info.rssi;
+    return ESP_OK;
+}
+
 void wifi_sta_get_ip(char *buf, size_t len)
 {
     if (buf == NULL || len == 0)
