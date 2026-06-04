@@ -54,6 +54,15 @@ menu "Smart Air Configuration"
             Wi-Fi connects. If the timeout elapses, firmware continues boot
             without failing and falls back to existing timestamp sources.
 
+    config SA_TIMEZONE
+        string "POSIX timezone for local display time"
+        default "ICT-7"
+        help
+            POSIX timezone string used by localtime() for TFT clock rendering.
+            Keep telemetry, MQTT, set_time, and RTC timestamps as Unix UTC.
+            Example: UTC+7 is "ICT-7" because POSIX timezone offsets use the
+            opposite sign.
+
     config SA_PROV_TIMEOUT_MS
         int "BLE provisioning timeout (ms)"
         default 300000

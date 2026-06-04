@@ -39,6 +39,7 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
@@ -140,6 +141,17 @@ static void sync_system_clock(uint32_t ts, const char *reason)
     } else {
         ESP_LOGW(TAG, "settimeofday failed for %s (errno=%d)", reason, errno);
     }
+}
+
+static void configure_local_timezone(void)
+{
+    if (setenv("TZ", CONFIG_SA_TIMEZONE, 1) != 0) {
+        ESP_LOGW(TAG, "setenv(TZ) failed (errno=%d)", errno);
+        return;
+    }
+
+    tzset();
+    ESP_LOGI(TAG, "Local timezone configured: %s", CONFIG_SA_TIMEZONE);
 }
 
 static void ensure_system_clock_seeded(bool rtc_ready)
@@ -1005,6 +1017,7 @@ void sysload_init(void)
     ensure_system_clock_seeded(false);
     sync_time_from_sntp_stage(false);
 #endif
+    configure_local_timezone();
 
     if (secret_key[0] == '\0') {
         display_service_set_boot_phase(DISPLAY_BOOT_PHASE_WAITING_CONFIG);
