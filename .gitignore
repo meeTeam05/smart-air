@@ -57,10 +57,13 @@ server/api/node_modules/
 *.db
 .beads-credential-key
 
+# Claude
+.claude/
+CLAUDE.md
+
 # Others
 scripts/ddns-cloudflare.sh
+.understand-anything/
 .sisyphus/
 .beads/
 .mnhat/
-.claude/
-CLAUDE.md
