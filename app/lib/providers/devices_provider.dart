@@ -87,6 +87,7 @@ final devicesProvider =
 
 class DevicesNotifier extends AsyncNotifier<List<Device>> {
   late DeviceService _service;
+  var _refreshInFlight = false;
 
   @override
   Future<List<Device>> build() async {
@@ -97,6 +98,11 @@ class DevicesNotifier extends AsyncNotifier<List<Device>> {
   }
 
   void _handleRealtimeEvent(RealtimeEvent event) {
+    if (event.type == 'replay.reset') {
+      unawaited(refresh());
+      return;
+    }
+
     final current = state.valueOrNull;
     if (current == null) return;
 
@@ -130,6 +136,16 @@ class DevicesNotifier extends AsyncNotifier<List<Device>> {
         else
           device,
     ]);
+  }
+
+  Future<void> refresh() async {
+    if (_refreshInFlight) return;
+    _refreshInFlight = true;
+    try {
+      state = await AsyncValue.guard(_service.getDevices);
+    } finally {
+      _refreshInFlight = false;
+    }
   }
 
   Future<Device> register({

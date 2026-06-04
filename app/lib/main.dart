@@ -7,6 +7,8 @@ import 'app_theme.dart';
 import 'app_state.dart';
 import 'core/router.dart';
 import 'core/env.dart';
+import 'providers/auth_provider.dart';
+import 'providers/devices_provider.dart';
 
 void main() {
   // Disable runtime font fetching - all fonts must be bundled
@@ -20,11 +22,36 @@ void main() {
   }
 }
 
-class SmartAirApp extends ConsumerWidget {
+class SmartAirApp extends ConsumerStatefulWidget {
   const SmartAirApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SmartAirApp> createState() => _SmartAirAppState();
+}
+
+class _SmartAirAppState extends ConsumerState<SmartAirApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (ref.read(authProvider).valueOrNull == null) return;
+    ref.read(devicesProvider.notifier).refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: AppState.themeMode,
