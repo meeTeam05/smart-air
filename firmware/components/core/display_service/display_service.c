@@ -43,7 +43,6 @@ static const char *TAG = "display_service";
 #define DISPLAY_SENSORS_H (DISPLAY_LOGICAL_H - DISPLAY_STATUSBAR_H - DISPLAY_CLOCK_H - DISPLAY_DATE_ROW_H)
 #define DISPLAY_SENSOR_CELL_W (DISPLAY_LOGICAL_W / 4)
 #define DISPLAY_TEXT_W 208
-#define DISPLAY_BOOT_TEXT_W 208
 #define DISPLAY_MIN_VALID_UNIX_TS 946684800UL
 #define DISPLAY_RELAY_COUNT 3
 #define DISPLAY_SIGNAL_BAR_COUNT 4
@@ -129,13 +128,15 @@ static lv_color_t *s_buf1 = NULL;
 static lv_color_t *s_buf2 = NULL;
 static uint8_t *s_swap_buf = NULL;
 
+LV_IMG_DECLARE(LOGO);
+
 typedef struct {
     lv_obj_t *value;
     lv_obj_t *sub;
 } display_sensor_cell_t;
 
 static lv_obj_t *s_boot_view = NULL;
-static lv_obj_t *s_boot_title = NULL;
+static lv_obj_t *s_boot_logo = NULL;
 static lv_obj_t *s_boot_status = NULL;
 static lv_obj_t *s_runtime_view = NULL;
 static lv_obj_t *s_status_ssid = NULL;
@@ -177,13 +178,6 @@ static void snapshot_state(display_state_t *out)
     portENTER_CRITICAL(&s_state_lock);
     *out = s_state;
     portEXIT_CRITICAL(&s_state_lock);
-}
-
-static void set_centered_label_style(lv_obj_t *label)
-{
-    lv_obj_set_width(label, DISPLAY_TEXT_W);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 }
 
 static void set_hidden(lv_obj_t *obj, bool hidden)
@@ -301,19 +295,17 @@ static void build_screen(void)
     prepare_panel_obj(s_boot_view, DISPLAY_COLOR_BG);
     lv_obj_set_size(s_boot_view, DISPLAY_LOGICAL_W, DISPLAY_LOGICAL_H);
 
-    s_boot_title = lv_label_create(s_boot_view);
-    set_centered_label_style(s_boot_title);
-    lv_obj_set_width(s_boot_title, DISPLAY_BOOT_TEXT_W);
-    style_text(s_boot_title, DISPLAY_FONT_MD, DISPLAY_COLOR_TEXT);
-    lv_label_set_text(s_boot_title, "Smart Air");
-    lv_obj_align(s_boot_title, LV_ALIGN_TOP_MID, 0, 18);
+    s_boot_logo = lv_img_create(s_boot_view);
+    lv_img_set_src(s_boot_logo, &LOGO);
+    lv_obj_align(s_boot_logo, LV_ALIGN_CENTER, 0, -10);
 
     s_boot_status = lv_label_create(s_boot_view);
-    set_centered_label_style(s_boot_status);
-    lv_obj_set_width(s_boot_status, DISPLAY_BOOT_TEXT_W);
+    lv_obj_set_width(s_boot_status, DISPLAY_TEXT_W);
     style_text(s_boot_status, DISPLAY_FONT_SM, DISPLAY_COLOR_MUTED);
     lv_label_set_text(s_boot_status, "Booting");
-    lv_obj_align(s_boot_status, LV_ALIGN_TOP_MID, 0, 52);
+    lv_label_set_long_mode(s_boot_status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(s_boot_status, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(s_boot_status, LV_ALIGN_BOTTOM_MID, 0, -12);
 
     s_runtime_view = lv_obj_create(scr);
     prepare_panel_obj(s_runtime_view, DISPLAY_COLOR_BG);
@@ -429,6 +421,13 @@ static void build_screen(void)
 }
 
 #if SA_DISP_SELF_TEST
+static void set_centered_label_style(lv_obj_t *label)
+{
+    lv_obj_set_width(label, DISPLAY_TEXT_W);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+}
+
 static void self_test_wait(uint32_t duration_ms)
 {
     uint32_t elapsed_ms = 0;
@@ -527,14 +526,13 @@ static void run_self_test(void)
 
 static void render_boot_phase(display_boot_phase_t phase)
 {
-    if (s_boot_title == NULL || s_boot_status == NULL) {
+    if (s_boot_logo == NULL || s_boot_status == NULL) {
         return;
     }
 
     set_hidden(s_boot_view, false);
     set_hidden(s_runtime_view, true);
 
-    const char *title = "Smart Air";
     const char *status = "Booting";
 
     switch (phase) {
@@ -542,30 +540,24 @@ static void render_boot_phase(display_boot_phase_t phase)
         status = "Starting system";
         break;
     case DISPLAY_BOOT_PHASE_BLE:
-        title = "Provisioning";
         status = "Waiting for Wi-Fi setup";
         break;
     case DISPLAY_BOOT_PHASE_WIFI:
-        title = "Wi-Fi";
         status = "Connecting to network";
         break;
     case DISPLAY_BOOT_PHASE_WAITING_CONFIG:
-        title = "Provisioning";
         status = "Waiting for cloud secret";
         break;
     case DISPLAY_BOOT_PHASE_MQTT:
-        title = "Cloud";
         status = "Connecting MQTT";
         break;
     case DISPLAY_BOOT_PHASE_READY:
-        title = "Smart Air";
         status = "System online";
         break;
     default:
         break;
     }
 
-    lv_label_set_text(s_boot_title, title);
     lv_label_set_text(s_boot_status, status);
 }
 

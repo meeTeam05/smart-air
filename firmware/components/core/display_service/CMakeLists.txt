@@ -1,6 +1,12 @@
+set(display_service_srcs "display_service.c")
+
+if(CONFIG_SA_ENABLE_ILI9225)
+    list(APPEND display_service_srcs "logo.c")
+endif()
+
 idf_component_register(
     SRCS
-        "display_service.c"
+        ${display_service_srcs}
     INCLUDE_DIRS
         "include"
     REQUIRES
