@@ -37,12 +37,68 @@ static const char *TAG = "display_service";
 #define DISPLAY_TICK_MS 5
 #define DISPLAY_TASK_DELAY_MS 10
 #define DISPLAY_UI_REFRESH_MS 250
+#define DISPLAY_STATUSBAR_H 16
+#define DISPLAY_CLOCK_H 56
+#define DISPLAY_DATE_ROW_H 18
+#define DISPLAY_SENSORS_H (DISPLAY_LOGICAL_H - DISPLAY_STATUSBAR_H - DISPLAY_CLOCK_H - DISPLAY_DATE_ROW_H)
+#define DISPLAY_SENSOR_CELL_W (DISPLAY_LOGICAL_W / 4)
 #define DISPLAY_TEXT_W 208
+#define DISPLAY_BOOT_TEXT_W 208
 #define DISPLAY_MIN_VALID_UNIX_TS 946684800UL
 #define DISPLAY_RELAY_COUNT 3
+#define DISPLAY_SIGNAL_BAR_COUNT 4
 #define DISPLAY_SELF_TEST_TICK_MS 20
 #define DISPLAY_INIT_WAIT_BASE_MS 2000
 #define DISPLAY_INIT_WAIT_MARGIN_MS 500
+
+#define DISPLAY_COLOR_BG 0xFFFFFF
+#define DISPLAY_COLOR_STATUS_BG 0xF1F3F6
+#define DISPLAY_COLOR_DIVIDER 0xE4E7EC
+#define DISPLAY_COLOR_TEXT 0x0F172A
+#define DISPLAY_COLOR_MUTED 0x6B7280
+#define DISPLAY_COLOR_FAINT 0x9AA3B2
+#define DISPLAY_COLOR_ACCENT 0x2D7DD2
+
+/* Fall back to compiled-in LVGL fonts so the display service builds with lean sdkconfig variants. */
+#if CONFIG_LV_FONT_MONTSERRAT_10
+#define DISPLAY_FONT_XS (&lv_font_montserrat_10)
+#elif CONFIG_LV_FONT_MONTSERRAT_12
+#define DISPLAY_FONT_XS (&lv_font_montserrat_12)
+#else
+#define DISPLAY_FONT_XS LV_FONT_DEFAULT
+#endif
+
+#if CONFIG_LV_FONT_MONTSERRAT_12
+#define DISPLAY_FONT_SM (&lv_font_montserrat_12)
+#elif CONFIG_LV_FONT_MONTSERRAT_14
+#define DISPLAY_FONT_SM (&lv_font_montserrat_14)
+#else
+#define DISPLAY_FONT_SM LV_FONT_DEFAULT
+#endif
+
+#if CONFIG_LV_FONT_MONTSERRAT_14
+#define DISPLAY_FONT_MD (&lv_font_montserrat_14)
+#else
+#define DISPLAY_FONT_MD LV_FONT_DEFAULT
+#endif
+
+#if CONFIG_LV_FONT_MONTSERRAT_18
+#define DISPLAY_FONT_LG (&lv_font_montserrat_18)
+#elif CONFIG_LV_FONT_MONTSERRAT_14
+#define DISPLAY_FONT_LG (&lv_font_montserrat_14)
+#else
+#define DISPLAY_FONT_LG LV_FONT_DEFAULT
+#endif
+
+#if CONFIG_LV_FONT_MONTSERRAT_36
+#define DISPLAY_FONT_CLOCK (&lv_font_montserrat_36)
+#elif CONFIG_LV_FONT_MONTSERRAT_18
+#define DISPLAY_FONT_CLOCK (&lv_font_montserrat_18)
+#elif CONFIG_LV_FONT_MONTSERRAT_14
+#define DISPLAY_FONT_CLOCK (&lv_font_montserrat_14)
+#else
+#define DISPLAY_FONT_CLOCK LV_FONT_DEFAULT
+#endif
 
 #if SA_DISP_SELF_TEST
 #define DISPLAY_SELF_TEST_SCREEN_COUNT 4U
@@ -73,11 +129,38 @@ static lv_color_t *s_buf1 = NULL;
 static lv_color_t *s_buf2 = NULL;
 static uint8_t *s_swap_buf = NULL;
 
-static lv_obj_t *s_title = NULL;
-static lv_obj_t *s_status = NULL;
-static lv_obj_t *s_sensor_1 = NULL;
-static lv_obj_t *s_sensor_2 = NULL;
-static lv_obj_t *s_footer = NULL;
+typedef struct {
+    lv_obj_t *value;
+    lv_obj_t *sub;
+} display_sensor_cell_t;
+
+static lv_obj_t *s_boot_view = NULL;
+static lv_obj_t *s_boot_title = NULL;
+static lv_obj_t *s_boot_status = NULL;
+static lv_obj_t *s_runtime_view = NULL;
+static lv_obj_t *s_status_ssid = NULL;
+static lv_obj_t *s_status_rssi = NULL;
+static lv_obj_t *s_signal_bars[DISPLAY_SIGNAL_BAR_COUNT] = {0};
+static lv_obj_t *s_clock_hh = NULL;
+static lv_obj_t *s_clock_mm = NULL;
+static lv_obj_t *s_clock_ss = NULL;
+static lv_obj_t *s_date_dow = NULL;
+static lv_obj_t *s_date_value = NULL;
+static display_sensor_cell_t s_sensor_cells[DISPLAY_SIGNAL_BAR_COUNT] = {0};
+
+static const uint32_t SENSOR_ACCENT_COLORS[DISPLAY_SIGNAL_BAR_COUNT] = {
+    0xE0524A,
+    DISPLAY_COLOR_ACCENT,
+    0x8B5CF6,
+    0xD97706,
+};
+
+static const char *const SENSOR_LABELS[DISPLAY_SIGNAL_BAR_COUNT] = {
+    "TEM",
+    "HUM",
+    "CO",
+    "NO2",
+};
 
 static void lv_tick_cb(void *arg)
 {
@@ -103,6 +186,40 @@ static void set_centered_label_style(lv_obj_t *label)
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 }
 
+static void set_hidden(lv_obj_t *obj, bool hidden)
+{
+    if (obj == NULL) {
+        return;
+    }
+
+    if (hidden) {
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void style_text(lv_obj_t *obj, const lv_font_t *font, uint32_t color_hex)
+{
+    if (obj == NULL) {
+        return;
+    }
+
+    lv_obj_set_style_text_font(obj, font, 0);
+    lv_obj_set_style_text_color(obj, lv_color_hex(color_hex), 0);
+}
+
+static void prepare_panel_obj(lv_obj_t *obj, uint32_t bg_hex)
+{
+    lv_obj_remove_style_all(obj);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(bg_hex), 0);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(obj, 0, 0);
+    lv_obj_set_style_pad_all(obj, 0, 0);
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+}
+
 static void prepare_screen(lv_obj_t *scr, uint32_t bg_hex)
 {
     lv_obj_set_style_bg_color(scr, lv_color_hex(bg_hex), 0);
@@ -111,36 +228,203 @@ static void prepare_screen(lv_obj_t *scr, uint32_t bg_hex)
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 }
 
+static lv_obj_t *create_signal_bars(lv_obj_t *parent)
+{
+    lv_obj_t *wrap = lv_obj_create(parent);
+    prepare_panel_obj(wrap, DISPLAY_COLOR_STATUS_BG);
+    lv_obj_set_size(wrap, 11, 9);
+    lv_obj_set_layout(wrap, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(wrap, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(wrap, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    lv_obj_set_style_pad_column(wrap, 1, 0);
+
+    static const lv_coord_t bar_heights[DISPLAY_SIGNAL_BAR_COUNT] = {3, 5, 7, 9};
+    for (size_t i = 0; i < DISPLAY_SIGNAL_BAR_COUNT; i++) {
+        s_signal_bars[i] = lv_obj_create(wrap);
+        prepare_panel_obj(s_signal_bars[i], DISPLAY_COLOR_FAINT);
+        lv_obj_set_size(s_signal_bars[i], 2, bar_heights[i]);
+    }
+
+    return wrap;
+}
+
+static void create_sensor_cell(lv_obj_t *parent, size_t index)
+{
+    lv_obj_t *cell = lv_obj_create(parent);
+    prepare_panel_obj(cell, DISPLAY_COLOR_BG);
+    lv_obj_set_size(cell, DISPLAY_SENSOR_CELL_W, DISPLAY_SENSORS_H);
+    if (index < (DISPLAY_SIGNAL_BAR_COUNT - 1U)) {
+        lv_obj_set_style_border_side(cell, LV_BORDER_SIDE_RIGHT, 0);
+        lv_obj_set_style_border_width(cell, 1, 0);
+        lv_obj_set_style_border_color(cell, lv_color_hex(DISPLAY_COLOR_DIVIDER), 0);
+    }
+
+    lv_obj_t *header = lv_obj_create(cell);
+    prepare_panel_obj(header, DISPLAY_COLOR_BG);
+    lv_obj_set_size(header, DISPLAY_SENSOR_CELL_W, 12);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 6);
+    lv_obj_set_layout(header, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(header, 3, 0);
+
+    lv_obj_t *swatch = lv_obj_create(header);
+    prepare_panel_obj(swatch, SENSOR_ACCENT_COLORS[index]);
+    lv_obj_set_size(swatch, 5, 5);
+    lv_obj_set_style_radius(swatch, 1, 0);
+
+    lv_obj_t *label = lv_label_create(header);
+    lv_label_set_text(label, SENSOR_LABELS[index]);
+    style_text(label, DISPLAY_FONT_XS, DISPLAY_COLOR_MUTED);
+    lv_obj_set_style_text_letter_space(label, 1, 0);
+
+    s_sensor_cells[index].value = lv_label_create(cell);
+    style_text(s_sensor_cells[index].value, DISPLAY_FONT_LG, DISPLAY_COLOR_TEXT);
+    lv_obj_set_style_text_align(s_sensor_cells[index].value, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(s_sensor_cells[index].value, DISPLAY_SENSOR_CELL_W);
+    lv_obj_align(s_sensor_cells[index].value, LV_ALIGN_CENTER, 0, -4);
+
+    s_sensor_cells[index].sub = lv_label_create(cell);
+    style_text(s_sensor_cells[index].sub, DISPLAY_FONT_XS, DISPLAY_COLOR_FAINT);
+    lv_obj_set_style_text_align(s_sensor_cells[index].sub, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(s_sensor_cells[index].sub, DISPLAY_SENSOR_CELL_W);
+    lv_obj_align(s_sensor_cells[index].sub, LV_ALIGN_BOTTOM_MID, 0, -8);
+}
+
 static void build_screen(void)
 {
     lv_obj_t *scr = lv_scr_act();
-    prepare_screen(scr, 0xFFFFFF);
+    prepare_screen(scr, DISPLAY_COLOR_BG);
 
-    s_title = lv_label_create(scr);
-    set_centered_label_style(s_title);
-    lv_label_set_text(s_title, "Smart Air");
-    lv_obj_align(s_title, LV_ALIGN_TOP_MID, 0, 16);
+    s_boot_view = lv_obj_create(scr);
+    prepare_panel_obj(s_boot_view, DISPLAY_COLOR_BG);
+    lv_obj_set_size(s_boot_view, DISPLAY_LOGICAL_W, DISPLAY_LOGICAL_H);
 
-    s_status = lv_label_create(scr);
-    set_centered_label_style(s_status);
-    lv_label_set_text(s_status, "Booting");
-    lv_obj_align(s_status, LV_ALIGN_TOP_MID, 0, 52);
+    s_boot_title = lv_label_create(s_boot_view);
+    set_centered_label_style(s_boot_title);
+    lv_obj_set_width(s_boot_title, DISPLAY_BOOT_TEXT_W);
+    style_text(s_boot_title, DISPLAY_FONT_MD, DISPLAY_COLOR_TEXT);
+    lv_label_set_text(s_boot_title, "Smart Air");
+    lv_obj_align(s_boot_title, LV_ALIGN_TOP_MID, 0, 18);
 
-    s_sensor_1 = lv_label_create(scr);
-    set_centered_label_style(s_sensor_1);
-    lv_label_set_text(s_sensor_1, "");
-    lv_obj_align(s_sensor_1, LV_ALIGN_TOP_MID, 0, 84);
+    s_boot_status = lv_label_create(s_boot_view);
+    set_centered_label_style(s_boot_status);
+    lv_obj_set_width(s_boot_status, DISPLAY_BOOT_TEXT_W);
+    style_text(s_boot_status, DISPLAY_FONT_SM, DISPLAY_COLOR_MUTED);
+    lv_label_set_text(s_boot_status, "Booting");
+    lv_obj_align(s_boot_status, LV_ALIGN_TOP_MID, 0, 52);
 
-    s_sensor_2 = lv_label_create(scr);
-    set_centered_label_style(s_sensor_2);
-    lv_label_set_text(s_sensor_2, "");
-    lv_obj_align(s_sensor_2, LV_ALIGN_TOP_MID, 0, 108);
+    s_runtime_view = lv_obj_create(scr);
+    prepare_panel_obj(s_runtime_view, DISPLAY_COLOR_BG);
+    lv_obj_set_size(s_runtime_view, DISPLAY_LOGICAL_W, DISPLAY_LOGICAL_H);
 
-    s_footer = lv_label_create(scr);
-    set_centered_label_style(s_footer);
-    lv_obj_set_style_text_color(s_footer, lv_color_hex(0x666666), 0);
-    lv_label_set_text(s_footer, "ILI9225 + LVGL");
-    lv_obj_align(s_footer, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_t *status_bar = lv_obj_create(s_runtime_view);
+    prepare_panel_obj(status_bar, DISPLAY_COLOR_STATUS_BG);
+    lv_obj_set_size(status_bar, DISPLAY_LOGICAL_W, DISPLAY_STATUSBAR_H);
+    lv_obj_align(status_bar, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_border_side(status_bar, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_width(status_bar, 1, 0);
+    lv_obj_set_style_border_color(status_bar, lv_color_hex(DISPLAY_COLOR_DIVIDER), 0);
+    lv_obj_set_style_pad_left(status_bar, 5, 0);
+    lv_obj_set_style_pad_right(status_bar, 5, 0);
+    lv_obj_set_layout(status_bar, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(status_bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(status_bar, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *status_left = lv_obj_create(status_bar);
+    prepare_panel_obj(status_left, DISPLAY_COLOR_STATUS_BG);
+    lv_obj_set_size(status_left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_layout(status_left, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(status_left, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(status_left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(status_left, 3, 0);
+
+    lv_obj_t *wifi_icon = lv_label_create(status_left);
+    lv_label_set_text(wifi_icon, LV_SYMBOL_WIFI);
+    style_text(wifi_icon, DISPLAY_FONT_XS, DISPLAY_COLOR_TEXT);
+
+    s_status_ssid = lv_label_create(status_left);
+    lv_label_set_text(s_status_ssid, "No Wi-Fi");
+    style_text(s_status_ssid, DISPLAY_FONT_XS, DISPLAY_COLOR_TEXT);
+
+    lv_obj_t *status_right = lv_obj_create(status_bar);
+    prepare_panel_obj(status_right, DISPLAY_COLOR_STATUS_BG);
+    lv_obj_set_size(status_right, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_layout(status_right, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(status_right, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(status_right, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(status_right, 4, 0);
+
+    create_signal_bars(status_right);
+
+    s_status_rssi = lv_label_create(status_right);
+    lv_label_set_text(s_status_rssi, "-- dBm");
+    style_text(s_status_rssi, DISPLAY_FONT_XS, DISPLAY_COLOR_MUTED);
+
+    lv_obj_t *clock_wrap = lv_obj_create(s_runtime_view);
+    prepare_panel_obj(clock_wrap, DISPLAY_COLOR_BG);
+    lv_obj_set_size(clock_wrap, DISPLAY_LOGICAL_W, DISPLAY_CLOCK_H);
+    lv_obj_align(clock_wrap, LV_ALIGN_TOP_MID, 0, DISPLAY_STATUSBAR_H);
+    lv_obj_set_layout(clock_wrap, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(clock_wrap, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(clock_wrap, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    s_clock_hh = lv_label_create(clock_wrap);
+    lv_label_set_text(s_clock_hh, "--");
+    style_text(s_clock_hh, DISPLAY_FONT_CLOCK, DISPLAY_COLOR_TEXT);
+
+    lv_obj_t *clock_colon_1 = lv_label_create(clock_wrap);
+    lv_label_set_text(clock_colon_1, ":");
+    style_text(clock_colon_1, DISPLAY_FONT_CLOCK, DISPLAY_COLOR_ACCENT);
+
+    s_clock_mm = lv_label_create(clock_wrap);
+    lv_label_set_text(s_clock_mm, "--");
+    style_text(s_clock_mm, DISPLAY_FONT_CLOCK, DISPLAY_COLOR_TEXT);
+
+    lv_obj_t *clock_colon_2 = lv_label_create(clock_wrap);
+    lv_label_set_text(clock_colon_2, ":");
+    style_text(clock_colon_2, DISPLAY_FONT_CLOCK, DISPLAY_COLOR_ACCENT);
+
+    s_clock_ss = lv_label_create(clock_wrap);
+    lv_label_set_text(s_clock_ss, "--");
+    style_text(s_clock_ss, DISPLAY_FONT_CLOCK, DISPLAY_COLOR_ACCENT);
+
+    lv_obj_t *date_row = lv_obj_create(s_runtime_view);
+    prepare_panel_obj(date_row, DISPLAY_COLOR_BG);
+    lv_obj_set_size(date_row, DISPLAY_LOGICAL_W, DISPLAY_DATE_ROW_H);
+    lv_obj_align(date_row, LV_ALIGN_TOP_MID, 0, DISPLAY_STATUSBAR_H + DISPLAY_CLOCK_H);
+    lv_obj_set_layout(date_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(date_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(date_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(date_row, 5, 0);
+
+    s_date_dow = lv_label_create(date_row);
+    lv_label_set_text(s_date_dow, "WAIT");
+    style_text(s_date_dow, DISPLAY_FONT_XS, DISPLAY_COLOR_TEXT);
+    lv_obj_set_style_text_letter_space(s_date_dow, 1, 0);
+
+    lv_obj_t *date_dot = lv_label_create(date_row);
+    lv_label_set_text(date_dot, LV_SYMBOL_BULLET);
+    style_text(date_dot, DISPLAY_FONT_XS, DISPLAY_COLOR_FAINT);
+
+    s_date_value = lv_label_create(date_row);
+    lv_label_set_text(s_date_value, "Time sync");
+    style_text(s_date_value, DISPLAY_FONT_XS, DISPLAY_COLOR_MUTED);
+
+    lv_obj_t *sensor_row = lv_obj_create(s_runtime_view);
+    prepare_panel_obj(sensor_row, DISPLAY_COLOR_BG);
+    lv_obj_set_size(sensor_row, DISPLAY_LOGICAL_W, DISPLAY_SENSORS_H);
+    lv_obj_align(sensor_row, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_border_side(sensor_row, LV_BORDER_SIDE_TOP, 0);
+    lv_obj_set_style_border_width(sensor_row, 1, 0);
+    lv_obj_set_style_border_color(sensor_row, lv_color_hex(DISPLAY_COLOR_DIVIDER), 0);
+    lv_obj_set_layout(sensor_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(sensor_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_all(sensor_row, 0, 0);
+
+    for (size_t i = 0; i < DISPLAY_SIGNAL_BAR_COUNT; i++) {
+        create_sensor_cell(sensor_row, i);
+    }
 }
 
 #if SA_DISP_SELF_TEST
@@ -242,9 +526,12 @@ static void run_self_test(void)
 
 static void render_boot_phase(display_boot_phase_t phase)
 {
-    if (s_title == NULL || s_status == NULL || s_sensor_1 == NULL || s_sensor_2 == NULL || s_footer == NULL) {
+    if (s_boot_title == NULL || s_boot_status == NULL) {
         return;
     }
+
+    set_hidden(s_boot_view, false);
+    set_hidden(s_runtime_view, true);
 
     const char *title = "Smart Air";
     const char *status = "Booting";
@@ -277,101 +564,164 @@ static void render_boot_phase(display_boot_phase_t phase)
         break;
     }
 
-    lv_label_set_text(s_title, title);
-    lv_label_set_text(s_status, status);
-    lv_label_set_text(s_sensor_1, "");
-    lv_label_set_text(s_sensor_2, "");
-    lv_label_set_text(s_footer, "ILI9225 + LVGL");
+    lv_label_set_text(s_boot_title, title);
+    lv_label_set_text(s_boot_status, status);
 }
 
-static void format_runtime_status(char *buf, size_t len, time_t now, bool wifi_connected, bool have_rssi, int rssi_dbm)
+static uint8_t signal_level_from_rssi(int rssi_dbm)
 {
-    if (now >= (time_t)DISPLAY_MIN_VALID_UNIX_TS) {
-        struct tm tm_now = {0};
-        localtime_r(&now, &tm_now);
-        if (wifi_connected && have_rssi) {
-            snprintf(buf,
-                     len,
-                     "%02d:%02d:%02d  Wi-Fi %ddBm",
-                     tm_now.tm_hour,
-                     tm_now.tm_min,
-                     tm_now.tm_sec,
-                     rssi_dbm);
-            return;
-        }
-        snprintf(buf,
-                 len,
-                 "%02d:%02d:%02d  Wi-Fi %s",
-                 tm_now.tm_hour,
-                 tm_now.tm_min,
-                 tm_now.tm_sec,
-                 wifi_connected ? "on" : "off");
-        return;
+    if (rssi_dbm >= -55) {
+        return 4;
     }
+    if (rssi_dbm >= -67) {
+        return 3;
+    }
+    if (rssi_dbm >= -75) {
+        return 2;
+    }
+    if (rssi_dbm >= -85) {
+        return 1;
+    }
+    return 0;
+}
 
+static void set_signal_bars(bool wifi_connected, bool have_rssi, int rssi_dbm)
+{
+    uint8_t level = 0;
     if (wifi_connected && have_rssi) {
-        snprintf(buf, len, "Clock --  Wi-Fi %ddBm", rssi_dbm);
+        level = signal_level_from_rssi(rssi_dbm);
+    }
+
+    for (size_t i = 0; i < DISPLAY_SIGNAL_BAR_COUNT; i++) {
+        uint32_t color = (wifi_connected && i < level) ? DISPLAY_COLOR_TEXT : DISPLAY_COLOR_FAINT;
+        lv_obj_set_style_bg_color(s_signal_bars[i], lv_color_hex(color), 0);
+    }
+}
+
+static void format_sensor_value(char *value_buf, size_t value_len, float value, bool compact)
+{
+    if (compact && value < 10.0f) {
+        snprintf(value_buf, value_len, "%.2f", (double)value);
+        return;
+    }
+    if (value < 100.0f) {
+        snprintf(value_buf, value_len, "%.1f", (double)value);
+        return;
+    }
+    snprintf(value_buf, value_len, "%.0f", (double)value);
+}
+
+static void set_sensor_cell(size_t index, const char *value, const char *sub, uint32_t value_color)
+{
+    if (index >= DISPLAY_SIGNAL_BAR_COUNT) {
         return;
     }
 
-    snprintf(buf, len, "Clock --  Wi-Fi %s", wifi_connected ? "on" : "off");
-}
-
-static void format_runtime_footer(char *buf, size_t len, const display_state_t *state)
-{
-    snprintf(buf,
-             len,
-             "Mode %s  Relays %d %d %d",
-             state->mode_known ? (state->mode_on ? "ON" : "OFF") : "--",
-             state->relay_states[0] ? 1 : 0,
-             state->relay_states[1] ? 1 : 0,
-             state->relay_states[2] ? 1 : 0);
+    lv_label_set_text(s_sensor_cells[index].value, value);
+    lv_label_set_text(s_sensor_cells[index].sub, sub);
+    lv_obj_set_style_text_color(s_sensor_cells[index].value, lv_color_hex(value_color), 0);
 }
 
 static void render_runtime(const display_state_t *state, time_t now, bool wifi_connected, bool have_rssi, int rssi_dbm)
 {
-    if (state == NULL || s_title == NULL || s_status == NULL || s_sensor_1 == NULL || s_sensor_2 == NULL || s_footer == NULL) {
+    if (state == NULL || s_runtime_view == NULL) {
         return;
     }
 
-    char status[48] = {0};
-    char sensor_1[48] = {0};
-    char sensor_2[48] = {0};
-    char footer[48] = {0};
-
-    format_runtime_status(status, sizeof(status), now, wifi_connected, have_rssi, rssi_dbm);
-    format_runtime_footer(footer, sizeof(footer), state);
-
     if (state->mode_known && !state->mode_on) {
-        strlcpy(sensor_1, "Sensors paused", sizeof(sensor_1));
-        strlcpy(sensor_2, "CO --  NO2 --", sizeof(sensor_2));
-    } else {
-        if (state->sensor.have_temperature_humidity) {
-            snprintf(sensor_1,
-                     sizeof(sensor_1),
-                     "T %.1fC  H %.1f%%",
-                     (double)state->sensor.temperature_c,
-                     (double)state->sensor.humidity_pct);
-        } else {
-            strlcpy(sensor_1, "T --  H --", sizeof(sensor_1));
-        }
-
-        char co_buf[16] = "--";
-        char no2_buf[16] = "--";
-        if (state->sensor.have_co) {
-            snprintf(co_buf, sizeof(co_buf), "%.1fppm", (double)state->sensor.co_ppm);
-        }
-        if (state->sensor.have_no2) {
-            snprintf(no2_buf, sizeof(no2_buf), "%.2fppm", (double)state->sensor.no2_ppm);
-        }
-        snprintf(sensor_2, sizeof(sensor_2), "CO %s  NO2 %s", co_buf, no2_buf);
+        prepare_screen(lv_scr_act(), 0x000000);
+        set_hidden(s_boot_view, true);
+        set_hidden(s_runtime_view, true);
+        return;
     }
 
-    lv_label_set_text(s_title, "Smart Air");
-    lv_label_set_text(s_status, status);
-    lv_label_set_text(s_sensor_1, sensor_1);
-    lv_label_set_text(s_sensor_2, sensor_2);
-    lv_label_set_text(s_footer, footer);
+    prepare_screen(lv_scr_act(), DISPLAY_COLOR_BG);
+    set_hidden(s_boot_view, true);
+    set_hidden(s_runtime_view, false);
+
+    char ssid_buf[33] = "No Wi-Fi";
+    if (wifi_connected) {
+        if (wifi_sta_get_ssid(ssid_buf, sizeof(ssid_buf)) != ESP_OK || ssid_buf[0] == '\0') {
+            strlcpy(ssid_buf, "Wi-Fi", sizeof(ssid_buf));
+        }
+    }
+
+    char rssi_buf[20] = "-- dBm";
+    if (wifi_connected && have_rssi) {
+        snprintf(rssi_buf, sizeof(rssi_buf), "%d dBm", rssi_dbm);
+    } else if (!wifi_connected) {
+        strlcpy(rssi_buf, "offline", sizeof(rssi_buf));
+    }
+    lv_label_set_text(s_status_ssid, ssid_buf);
+    lv_label_set_text(s_status_rssi, rssi_buf);
+    set_signal_bars(wifi_connected, have_rssi, rssi_dbm);
+
+    if (now >= (time_t)DISPLAY_MIN_VALID_UNIX_TS) {
+        struct tm tm_now = {0};
+        static const char *const weekdays[] = {
+            "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY",
+            "THURSDAY", "FRIDAY", "SATURDAY",
+        };
+        static const char *const months[] = {
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        };
+
+        localtime_r(&now, &tm_now);
+
+        char hh_buf[3];
+        char mm_buf[3];
+        char ss_buf[3];
+        snprintf(hh_buf, sizeof(hh_buf), "%02d", tm_now.tm_hour);
+        snprintf(mm_buf, sizeof(mm_buf), "%02d", tm_now.tm_min);
+        snprintf(ss_buf, sizeof(ss_buf), "%02d", tm_now.tm_sec);
+        lv_label_set_text(s_clock_hh, hh_buf);
+        lv_label_set_text(s_clock_mm, mm_buf);
+        lv_label_set_text(s_clock_ss, ss_buf);
+
+        char date_buf[24];
+        snprintf(date_buf,
+                 sizeof(date_buf),
+                 "%d %s %d",
+                 tm_now.tm_mday,
+                 months[tm_now.tm_mon],
+                 tm_now.tm_year + 1900);
+        lv_label_set_text(s_date_dow, weekdays[tm_now.tm_wday]);
+        lv_label_set_text(s_date_value, date_buf);
+    } else {
+        lv_label_set_text(s_clock_hh, "--");
+        lv_label_set_text(s_clock_mm, "--");
+        lv_label_set_text(s_clock_ss, "--");
+        lv_label_set_text(s_date_dow, "WAIT");
+        lv_label_set_text(s_date_value, "Time sync");
+    }
+
+    char value_buf[24];
+    if (state->sensor.have_temperature_humidity) {
+        format_sensor_value(value_buf, sizeof(value_buf), state->sensor.temperature_c, false);
+        set_sensor_cell(0, value_buf, "C", SENSOR_ACCENT_COLORS[0]);
+
+        snprintf(value_buf, sizeof(value_buf), "%.0f", (double)state->sensor.humidity_pct);
+        set_sensor_cell(1, value_buf, "%RH", SENSOR_ACCENT_COLORS[1]);
+    } else {
+        set_sensor_cell(0, "--", "C", SENSOR_ACCENT_COLORS[0]);
+        set_sensor_cell(1, "--", "%RH", SENSOR_ACCENT_COLORS[1]);
+    }
+
+    if (state->sensor.have_co) {
+        format_sensor_value(value_buf, sizeof(value_buf), state->sensor.co_ppm, true);
+        set_sensor_cell(2, value_buf, "ppm", SENSOR_ACCENT_COLORS[2]);
+    } else {
+        set_sensor_cell(2, "--", "ppm", SENSOR_ACCENT_COLORS[2]);
+    }
+
+    if (state->sensor.have_no2) {
+        float no2_ppb = state->sensor.no2_ppm * 1000.0f;
+        snprintf(value_buf, sizeof(value_buf), "%.0f", (double)no2_ppb);
+        set_sensor_cell(3, value_buf, "ppb", SENSOR_ACCENT_COLORS[3]);
+    } else {
+        set_sensor_cell(3, "--", "ppb", SENSOR_ACCENT_COLORS[3]);
+    }
 }
 
 static void render_screen(void)

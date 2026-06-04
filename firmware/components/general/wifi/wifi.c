@@ -359,6 +359,22 @@ bool wifi_sta_is_connected(void)
     return is_connected;
 }
 
+esp_err_t wifi_sta_get_ssid(char *buf, size_t len)
+{
+    if (buf == NULL || len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    wifi_ap_record_t ap_info = {0};
+    esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    strlcpy(buf, (const char *)ap_info.ssid, len);
+    return ESP_OK;
+}
+
 esp_err_t wifi_sta_get_rssi(int *rssi_dbm)
 {
     if (rssi_dbm == NULL) {
