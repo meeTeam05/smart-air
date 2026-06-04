@@ -361,7 +361,7 @@ menu "Smart Air Configuration"
 
     config SA_BUZZER_PIN
         int "Buzzer GPIO"
-        default 6
+        default 11
         range 1 48
         help
             GPIO for buzzer output. Uses LEDC PWM for tone generation.
