@@ -261,6 +261,7 @@ static void create_sensor_cell(lv_obj_t *parent, size_t index)
 
     lv_obj_t *header = lv_obj_create(cell);
     prepare_panel_obj(header, DISPLAY_COLOR_BG);
+    lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
     lv_obj_set_size(header, DISPLAY_SENSOR_CELL_W, 12);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 6);
     lv_obj_set_layout(header, LV_LAYOUT_FLEX);
@@ -598,17 +599,9 @@ static void set_signal_bars(bool wifi_connected, bool have_rssi, int rssi_dbm)
     }
 }
 
-static void format_sensor_value(char *value_buf, size_t value_len, float value, bool compact)
+static void format_sensor_value(char *value_buf, size_t value_len, float value)
 {
-    if (compact && value < 10.0f) {
-        snprintf(value_buf, value_len, "%.2f", (double)value);
-        return;
-    }
-    if (value < 100.0f) {
-        snprintf(value_buf, value_len, "%.1f", (double)value);
-        return;
-    }
-    snprintf(value_buf, value_len, "%.0f", (double)value);
+    snprintf(value_buf, value_len, "%.2f", (double)value);
 }
 
 static void set_sensor_cell(size_t index, const char *value, const char *sub, uint32_t value_color)
@@ -698,10 +691,10 @@ static void render_runtime(const display_state_t *state, time_t now, bool wifi_c
 
     char value_buf[24];
     if (state->sensor.have_temperature_humidity) {
-        format_sensor_value(value_buf, sizeof(value_buf), state->sensor.temperature_c, false);
+        format_sensor_value(value_buf, sizeof(value_buf), state->sensor.temperature_c);
         set_sensor_cell(0, value_buf, "C", SENSOR_ACCENT_COLORS[0]);
 
-        snprintf(value_buf, sizeof(value_buf), "%.0f", (double)state->sensor.humidity_pct);
+        format_sensor_value(value_buf, sizeof(value_buf), state->sensor.humidity_pct);
         set_sensor_cell(1, value_buf, "%RH", SENSOR_ACCENT_COLORS[1]);
     } else {
         set_sensor_cell(0, "--", "C", SENSOR_ACCENT_COLORS[0]);
@@ -709,18 +702,17 @@ static void render_runtime(const display_state_t *state, time_t now, bool wifi_c
     }
 
     if (state->sensor.have_co) {
-        format_sensor_value(value_buf, sizeof(value_buf), state->sensor.co_ppm, true);
+        format_sensor_value(value_buf, sizeof(value_buf), state->sensor.co_ppm);
         set_sensor_cell(2, value_buf, "ppm", SENSOR_ACCENT_COLORS[2]);
     } else {
         set_sensor_cell(2, "--", "ppm", SENSOR_ACCENT_COLORS[2]);
     }
 
     if (state->sensor.have_no2) {
-        float no2_ppb = state->sensor.no2_ppm * 1000.0f;
-        snprintf(value_buf, sizeof(value_buf), "%.0f", (double)no2_ppb);
-        set_sensor_cell(3, value_buf, "ppb", SENSOR_ACCENT_COLORS[3]);
+        format_sensor_value(value_buf, sizeof(value_buf), state->sensor.no2_ppm);
+        set_sensor_cell(3, value_buf, "ppm", SENSOR_ACCENT_COLORS[3]);
     } else {
-        set_sensor_cell(3, "--", "ppb", SENSOR_ACCENT_COLORS[3]);
+        set_sensor_cell(3, "--", "ppm", SENSOR_ACCENT_COLORS[3]);
     }
 }
 
@@ -810,7 +802,7 @@ static esp_err_t init_runtime(void)
     disp_drv.ver_res = DISPLAY_NATIVE_H;
     disp_drv.flush_cb = display_flush;
     disp_drv.draw_buf = &s_draw_buf;
-    disp_drv.rotated = LV_DISP_ROT_90;
+    disp_drv.rotated = LV_DISP_ROT_270;
     disp_drv.sw_rotate = 1;
     lv_disp_drv_register(&disp_drv);
 
