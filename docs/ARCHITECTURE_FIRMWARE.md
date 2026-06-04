@@ -95,7 +95,7 @@ flowchart TD
 5. init I2C bus nếu có ít nhất một I2C device được bật
 6. init `SHT3x` nếu bật
 7. init `DS3231` nếu bật
-8. init `ADC1` bus và gas sensors nếu bật; load R0 calibration đã lưu và register command handlers `calibrate_co` / `calibrate_no2`
+8. init `ADC1` bus và gas sensors nếu bật; load R0 calibration đã lưu trong NVS partition `calib` và register command handlers `calibrate_co` / `calibrate_no2`
 9. start calibration worker nếu có gas sensor cần worker
 10. init Wi-Fi station
 11. nếu chưa provisioning Wi-Fi thì chạy BLE provisioning flow
@@ -204,9 +204,9 @@ NVS hiện đang giữ các nhóm state sau:
 
 - namespace `wifi_prov`: `ssid`, `password`, cờ `done`
 - namespace `device`: `secret_key`, optional `broker_uri`
-- namespace `device`: calibration baselines cho gas sensors (`co`, `no2`)
 - namespace `device`: persisted `mode`
 - namespace `device`: persisted `relay_1`, `relay_2`, `relay_3`
+- partition `calib`, namespace `gas_calib`: calibration baselines cho gas sensors (`r0_co`, `r0_no2`)
 
 `device_id` không phải mutable config trong trạng thái hiện tại. Nó luôn được derive từ Wi-Fi STA MAC, normalize về lowercase MAC format `aa:bb:cc:dd:ee:ff`.
 
@@ -446,10 +446,10 @@ Reset sequence hiện tại:
 2. set sensor publish gate = false
 3. deinit Wi-Fi best-effort
 4. stop MQTT sạch để tránh reconnect trước reboot
-5. erase toàn bộ default NVS partition
+5. erase toàn bộ default NVS partition; NVS partition `calib` giữ gas R0 vì calibration thuộc sensor vật lý
 6. reboot
 
-Scope reset được code log rõ là: Wi-Fi provisioning, MQTT creds/URI, mode, calibration, và thực tế là toàn bộ firmware state trong default NVS partition.
+Scope reset được code log rõ là: Wi-Fi provisioning, MQTT creds/URI, mode, relay state, và thực tế là toàn bộ firmware state trong default NVS partition. Gas calibration không thuộc scope reset; `r0_co` / `r0_no2` sống trong partition `calib` và chỉ bị overwrite khi người dùng chạy `calibrate_co` / `calibrate_no2` lại.
 
 ## 11. OTA architecture
 

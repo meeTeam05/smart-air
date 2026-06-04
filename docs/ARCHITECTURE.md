@@ -362,7 +362,7 @@ Các subsystem nghiệp vụ chính của firmware hiện phân chia như sau:
 - `relay`: quản lý ba relay thật trên GPIO, persist state, chỉ cho đổi khi device mode đang `on`.
 - `sensor_task`: publish telemetry và shadow/report theo chu kỳ `CONFIG_SA_SENSOR_POLLING_INTERVAL`.
 - `ota`: nhận trigger từ `device/{id}/ota/update`, tải artifact qua HTTPS, verify SHA-256, publish progress, reboot, rồi commit image sau boot thành công.
-- `factory_reset`: xóa default NVS partition và đưa thiết bị về provisioning state.
+- `factory_reset`: xóa default NVS partition và đưa thiết bị về provisioning state; gas calibration R0 nằm trong NVS partition `calib` nên vẫn thuộc sensor vật lý sau reset.
 
 Telemetry contract từ firmware hiện dùng các field:
 

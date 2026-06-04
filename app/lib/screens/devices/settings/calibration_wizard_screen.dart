@@ -101,7 +101,7 @@ class _CalibrationWizardScreenState
               _buildInstructionItem(
                 c,
                 '1',
-                'Place the device outdoors in clean, fresh air',
+                'Place the device in the cleanest stable air available',
               ),
               const SizedBox(height: AtmosphereTokens.space12),
               _buildInstructionItem(
@@ -113,7 +113,7 @@ class _CalibrationWizardScreenState
               _buildInstructionItem(
                 c,
                 '3',
-                'Avoid areas with traffic, smoke, or industrial emissions',
+                'Avoid traffic, smoke, cooking fumes, sprays, and strong odors',
               ),
               const SizedBox(height: AtmosphereTokens.space12),
               _buildInstructionItem(
@@ -132,7 +132,7 @@ class _CalibrationWizardScreenState
               const SizedBox(width: AtmosphereTokens.space12),
               Expanded(
                 child: Text(
-                  'Calibration takes approximately 2-3 minutes. Do not move the device during this process.',
+                  'Calibration takes about 3 minutes. Without reference gas, readings are for trends and alerts, not lab-grade ppm.',
                   style: AtmosphereTextStyles.caption(c.ink2),
                 ),
               ),
@@ -248,7 +248,7 @@ class _CalibrationWizardScreenState
               ),
               const SizedBox(height: AtmosphereTokens.space16),
               Text(
-                'Please wait while the sensor calibrates. This may take 2-3 minutes.',
+                'Please wait while the sensor samples a stable baseline. This takes about 3 minutes.',
                 style: AtmosphereTextStyles.caption(c.ink2),
                 textAlign: TextAlign.center,
               ),
@@ -319,7 +319,7 @@ class _CalibrationWizardScreenState
                   ),
                 const SizedBox(height: AtmosphereTokens.space8),
                 Text(
-                  'The $sensorLabel sensor has been successfully calibrated.',
+                  'The $sensorLabel sensor baseline has been saved. Factory reset will keep this calibration.',
                   style: AtmosphereTextStyles.body(c.ink2),
                   textAlign: TextAlign.center,
                 ),

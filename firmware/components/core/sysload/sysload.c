@@ -52,7 +52,7 @@ static const char *const SHADOW_SYNC_RELAY_KEYS[] = {"relay_1", "relay_2", "rela
 
 #define SYSLOAD_BOOT_RESTART_DELAY_MS      2000
 #define SYSLOAD_PROVISION_RESTART_DELAY_MS 5000
-#define SYSLOAD_BOOT_FAILURE_RETRY_LIMIT    3
+#define SYSLOAD_BOOT_FAILURE_RETRY_LIMIT   3
 #define CALIBRATION_TASK_QUEUE_LEN         2
 #define CALIBRATION_TASK_STACK_SIZE        4096
 #define CALIBRATION_TASK_PRIORITY          3
@@ -77,8 +77,18 @@ static gm102b_t s_no2_dev;
 static int build_month_index(const char *month)
 {
     static const char *months[] = {
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
     };
 
     for (int i = 0; i < 12; i++) {
@@ -209,9 +219,7 @@ static void sync_time_from_sntp_stage(bool rtc_ready)
 
     err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(CONFIG_SA_SNTP_SYNC_TIMEOUT_MS));
     if (err != ESP_OK) {
-        ESP_LOGW(TAG,
-                 "SNTP sync wait failed (%s) - continuing with existing fallback",
-                 esp_err_to_name(err));
+        ESP_LOGW(TAG, "SNTP sync wait failed (%s) - continuing with existing fallback", esp_err_to_name(err));
         esp_netif_sntp_deinit();
         return;
     }
@@ -298,10 +306,7 @@ static void calibration_task_fn(void *arg)
         }
         esp_err_t ack_err = mqtt_publish_command_ack(req.command_id, err == ESP_OK);
         if (ack_err != ESP_OK) {
-            ESP_LOGW(TAG,
-                     "Calibration ack publish failed for '%s': %s",
-                     req.command_id,
-                     esp_err_to_name(ack_err));
+            ESP_LOGW(TAG, "Calibration ack publish failed for '%s': %s", req.command_id, esp_err_to_name(ack_err));
         }
     }
 }
@@ -318,8 +323,13 @@ static esp_err_t calibration_task_start(void)
         return ESP_FAIL;
     }
 
-    BaseType_t rc = xTaskCreatePinnedToCore(
-        calibration_task_fn, CALIBRATION_TASK_NAME, CALIBRATION_TASK_STACK_SIZE, NULL, CALIBRATION_TASK_PRIORITY, NULL, APP_CPU_NUM);
+    BaseType_t rc = xTaskCreatePinnedToCore(calibration_task_fn,
+                                            CALIBRATION_TASK_NAME,
+                                            CALIBRATION_TASK_STACK_SIZE,
+                                            NULL,
+                                            CALIBRATION_TASK_PRIORITY,
+                                            NULL,
+                                            APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed for calibration task");
         vQueueDelete(s_calibration_queue);
@@ -528,10 +538,7 @@ static esp_err_t handle_shadow_get_response(const char *json_payload)
 
         esp_err_t relay_err = relay_set((int)i + 1, cJSON_IsTrue(j_relay));
         if (relay_err != ESP_OK) {
-            ESP_LOGW(TAG,
-                     "shadow/get_response: relay_set(%d) failed: %s",
-                     (int)i + 1,
-                     esp_err_to_name(relay_err));
+            ESP_LOGW(TAG, "shadow/get_response: relay_set(%d) failed: %s", (int)i + 1, esp_err_to_name(relay_err));
             cJSON_Delete(root);
             return relay_err;
         }
@@ -708,6 +715,15 @@ static void init_nvs_stage(void)
     if (err != ESP_OK) {
         reboot_after_boot_error("nvs_flash_init", err);
     }
+
+    err = nvs_flash_init_partition(SA_NVS_CALIB_PARTITION);
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase_partition(SA_NVS_CALIB_PARTITION));
+        err = nvs_flash_init_partition(SA_NVS_CALIB_PARTITION);
+    }
+    if (err != ESP_OK) {
+        reboot_after_boot_error("nvs_flash_init_partition(calib)", err);
+    }
 }
 
 static void init_network_stack_stage(void)
@@ -792,8 +808,8 @@ static void connect_wifi_stage(const char *ssid, const char *password)
     esp_err_t err = wifi_sta_connect(ssid, password, CONFIG_SA_WIFI_CONNECT_TIMEOUT_MS);
     if (err != ESP_OK) {
         led_set_state(LED_STATE_ERROR);
-        ESP_LOGE(TAG, "Wi-Fi connect failed (%s) — preserving provisioned credentials and rebooting",
-                 esp_err_to_name(err));
+        ESP_LOGE(
+            TAG, "Wi-Fi connect failed (%s) — preserving provisioned credentials and rebooting", esp_err_to_name(err));
         vTaskDelay(pdMS_TO_TICKS(SYSLOAD_BOOT_RESTART_DELAY_MS));
         esp_restart();
     }
@@ -801,7 +817,12 @@ static void connect_wifi_stage(const char *ssid, const char *password)
     led_set_state(LED_STATE_WIFI);
 }
 
-static void load_runtime_config_stage(char *broker_uri, size_t broker_uri_len, char *resolved_id, size_t resolved_id_len, char *secret_key, size_t secret_key_len)
+static void load_runtime_config_stage(char *broker_uri,
+                                      size_t broker_uri_len,
+                                      char *resolved_id,
+                                      size_t resolved_id_len,
+                                      char *secret_key,
+                                      size_t secret_key_len)
 {
     esp_err_t err = config_get_device_id(resolved_id, resolved_id_len);
     if (err != ESP_OK) {

@@ -59,9 +59,11 @@ static const ratio_point_t CO_CURVE[] = {
 };
 static const int CO_CURVE_LEN = sizeof(CO_CURVE) / sizeof(CO_CURVE[0]);
 
-#define CALIBRATION_SAMPLES           20
-#define CALIBRATION_DELAY_MS          50
-#define CALIBRATION_MIN_VALID_SAMPLES ((CALIBRATION_SAMPLES * 3) / 4)
+#define CALIBRATION_SAMPLES             180
+#define CALIBRATION_DELAY_MS            1000
+#define CALIBRATION_MIN_VALID_SAMPLES   ((CALIBRATION_SAMPLES * 4) / 5)
+#define CALIBRATION_TRIM_SAMPLES        (CALIBRATION_SAMPLES / 10)
+#define CALIBRATION_MAX_RELATIVE_STDDEV 0.05f
 
 /**
  * @brief Log-log interpolation between two points.
@@ -115,6 +117,66 @@ static float voltage_to_rs(float vout_v, float rl, float vc)
     return rl * (vc - vout_v) / vout_v;
 }
 
+static void sort_float_samples(float *samples, int len)
+{
+    for (int i = 1; i < len; i++) {
+        float value = samples[i];
+        int j = i - 1;
+        while (j >= 0 && samples[j] > value) {
+            samples[j + 1] = samples[j];
+            j--;
+        }
+        samples[j + 1] = value;
+    }
+}
+
+static esp_err_t calculate_stable_r0(const float *samples, int valid, float *r0, float *relative_stddev)
+{
+    if (valid < CALIBRATION_MIN_VALID_SAMPLES) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    float sorted[CALIBRATION_SAMPLES];
+    for (int i = 0; i < valid; i++) {
+        sorted[i] = samples[i];
+    }
+    sort_float_samples(sorted, valid);
+
+    int trim = CALIBRATION_TRIM_SAMPLES;
+    if ((valid - (trim * 2)) <= 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    int start = trim;
+    int end = valid - trim;
+    int count = end - start;
+    float sum = 0.0f;
+    for (int i = start; i < end; i++) {
+        sum += sorted[i];
+    }
+
+    float mean = sum / (float)count;
+    if (!isfinite(mean) || mean <= 0.0f) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    float variance_sum = 0.0f;
+    for (int i = start; i < end; i++) {
+        float delta = sorted[i] - mean;
+        variance_sum += delta * delta;
+    }
+
+    float stddev = sqrtf(variance_sum / (float)count);
+    float rel = stddev / mean;
+    if (!isfinite(rel)) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    *r0 = mean;
+    *relative_stddev = rel;
+    return rel <= CALIBRATION_MAX_RELATIVE_STDDEV ? ESP_OK : ESP_ERR_INVALID_STATE;
+}
+
 static void gm702b_get_calibration_state(gm702b_t *dev, float *r0, bool *calibrated)
 {
     portENTER_CRITICAL(&s_state_lock);
@@ -153,11 +215,12 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
 {
     CHECK_ARG(dev);
 
-    float rs_sum = 0.0f;
+    float rs_samples[CALIBRATION_SAMPLES];
     int valid = 0;
     esp_err_t last_err = ESP_FAIL;
 
-    ESP_LOGI(TAG, "Calibrating R0 in clean air (%d samples)...", CALIBRATION_SAMPLES);
+    ESP_LOGI(
+        TAG, "Calibrating R0 in clean air (%d samples, %d ms interval)...", CALIBRATION_SAMPLES, CALIBRATION_DELAY_MS);
 
     for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
         int mv;
@@ -180,10 +243,12 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
                      rs);
             continue;
         }
-        rs_sum += rs;
+        rs_samples[valid] = rs;
         valid++;
 
-        vTaskDelay(pdMS_TO_TICKS(CALIBRATION_DELAY_MS));
+        if (i < CALIBRATION_SAMPLES - 1) {
+            vTaskDelay(pdMS_TO_TICKS(CALIBRATION_DELAY_MS));
+        }
     }
 
     if (valid == 0) {
@@ -200,9 +265,24 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
         return ESP_ERR_INVALID_STATE;
     }
 
-    gm702b_set_calibration_state(dev, rs_sum / (float)valid, true);
+    float r0 = 0.0f;
+    float relative_stddev = 0.0f;
+    esp_err_t stability_err = calculate_stable_r0(rs_samples, valid, &r0, &relative_stddev);
+    if (stability_err != ESP_OK) {
+        ESP_LOGE(TAG,
+                 "Calibration failed — unstable clean-air baseline (relative stddev %.2f%%, max %.2f%%)",
+                 relative_stddev * 100.0f,
+                 CALIBRATION_MAX_RELATIVE_STDDEV * 100.0f);
+        return stability_err;
+    }
 
-    ESP_LOGI(TAG, "Calibration complete: R0 = %.0f ohm (%d samples)", dev->r0, valid);
+    gm702b_set_calibration_state(dev, r0, true);
+
+    ESP_LOGI(TAG,
+             "Calibration complete: R0 = %.0f ohm (%d valid samples, relative stddev %.2f%%)",
+             dev->r0,
+             valid,
+             relative_stddev * 100.0f);
     return ESP_OK;
 }
 

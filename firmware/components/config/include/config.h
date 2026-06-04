@@ -64,13 +64,13 @@
 #define SA_I2C_TIMEOUT_MS CONFIG_SA_I2C_TIMEOUT_MS
 
 /** Display SPI configuration */
-#define SA_DISP_CLK_PIN CONFIG_SA_DISP_CLK_PIN
-#define SA_DISP_SDA_PIN CONFIG_SA_DISP_SDA_PIN
-#define SA_DISP_RS_PIN  CONFIG_SA_DISP_RS_PIN
-#define SA_DISP_RST_PIN CONFIG_SA_DISP_RST_PIN
-#define SA_DISP_CS_PIN  CONFIG_SA_DISP_CS_PIN
-#define SA_DISP_SPI_HZ  CONFIG_SA_DISP_SPI_HZ
-#define SA_DISP_SELF_TEST CONFIG_SA_DISP_SELF_TEST
+#define SA_DISP_CLK_PIN           CONFIG_SA_DISP_CLK_PIN
+#define SA_DISP_SDA_PIN           CONFIG_SA_DISP_SDA_PIN
+#define SA_DISP_RS_PIN            CONFIG_SA_DISP_RS_PIN
+#define SA_DISP_RST_PIN           CONFIG_SA_DISP_RST_PIN
+#define SA_DISP_CS_PIN            CONFIG_SA_DISP_CS_PIN
+#define SA_DISP_SPI_HZ            CONFIG_SA_DISP_SPI_HZ
+#define SA_DISP_SELF_TEST         CONFIG_SA_DISP_SELF_TEST
 #define SA_DISP_SELF_TEST_HOLD_MS CONFIG_SA_DISP_SELF_TEST_HOLD_MS
 
 /** Gas sensor ADC pins + channel mapping (ESP32-S3 ADC1: CH = GPIO - 1) */
@@ -91,6 +91,9 @@
 #define SA_NVS_KEY_SSID       "ssid"
 #define SA_NVS_KEY_PASS       "password"
 #define SA_NVS_KEY_DONE       "done"
+
+/** NVS partition for sensor-owned calibration data preserved across factory reset. */
+#define SA_NVS_CALIB_PARTITION "calib"
 
 /* NVS credential API */
 
@@ -132,7 +135,7 @@ esp_err_t config_factory_reset_begin(void);
 void config_factory_reset_end(void);
 
 /**
- * @brief Read MQTT credentials from NVS (namespace "device").
+ * @brief Read MQTT credentials from default NVS namespace "device".
  *
  * @param broker_uri_buf  Output buffer for broker URI — at least 128 bytes.
  * @param broker_uri_len  Size of broker_uri_buf.
@@ -171,7 +174,7 @@ esp_err_t config_get_device_id(char *out, size_t out_len);
 esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, const char *secret_key);
 
 /**
- * @brief Load persisted gas sensor R0 baseline from NVS.
+ * @brief Load persisted gas sensor R0 baseline from the calibration NVS partition.
  *
  * @param sensor_name  "co" or "no2" — used as NVS key suffix.
  * @param r0           Output: R0 value in ohm.
@@ -182,7 +185,7 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
 esp_err_t config_load_gas_r0(const char *sensor_name, float *r0, bool *calibrated);
 
 /**
- * @brief Persist gas sensor R0 baseline to NVS.
+ * @brief Persist gas sensor R0 baseline to the calibration NVS partition.
  *
  * @param sensor_name  "co" or "no2".
  * @param r0           R0 value in ohm from sensor calibration.
