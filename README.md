@@ -16,7 +16,7 @@ The device uses BLE for Wi-Fi provisioning, then publishes telemetry and shadow 
 
 ## Features
 
-- ESP32-S3 firmware on ESP-IDF with BLE provisioning, Wi-Fi, MQTT, OTA hooks, sensor polling, display control, and relay control.
+- ESP32-S3 firmware on ESP-IDF with BLE provisioning, Wi-Fi, MQTT, OTA hooks, sensor polling, display control, LGVL and relay control.
 - Fastify API with PostgreSQL/TimescaleDB, Redis, and EMQX in Docker Compose.
 - Device registration flow that provisions per-device MQTT credentials through the API.
 - Realtime app updates over SSE, with REST kept as the canonical path for snapshots, history, replay, and fallback.
