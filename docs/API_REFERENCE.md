@@ -1260,10 +1260,9 @@ Tất cả centralized tại `src/constants.js`:
 | EMQX Dashboard      | `http://127.0.0.1:18083`          | localhost only          |
 | pgAdmin             | `http://127.0.0.1:5050`           | localhost only          |
 | Portainer           | `http://127.0.0.1:9000`           | localhost only          |
-| Grafana public path | `https://minhnhat05.xyz/grafana/` | qua nginx + cloudflared |
 | API public path     | `https://minhnhat05.xyz/api/...`  | qua nginx + cloudflared |
 
-> `api`, `nginx`, `grafana`, và `redis` không bind port trực tiếp ra host trong `docker-compose.yml`.
+> `api`, `nginx`, và `redis` không bind port trực tiếp ra host trong `docker-compose.yml`.
 
 ---
 

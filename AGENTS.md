@@ -8,7 +8,7 @@ Working instructions for the `smart-air` repository.
 
 - `firmware/`: ESP-IDF v5.4.2 firmware running on ESP32-S3.
 - `app/`: Flutter mobile app for Android.
-- `server/`: self-hosted cloud stack, Docker Compose wiring, EMQX, Redis, PostgreSQL/TimescaleDB, Grafana, and related operations.
+- `server/`: self-hosted cloud stack, Docker Compose wiring, EMQX, Redis, PostgreSQL/TimescaleDB, and related operations.
 - `server/api/`: Fastify API that bridges the mobile app, MQTT broker, persistence, and device state.
 - `docs/`: architecture, API, MQTT contract, hardware references, and audits.
 - `scripts/`: smoke tests and operator utilities.
@@ -115,7 +115,6 @@ Avoid treating these as normal editing/search targets unless the task explicitly
 - `firmware/build/`
 - `app/build/`
 - `app/.dart_tool/`
-- `server/grafana/data/`
 - `server/postgres/data/`
 - `server/portainer/data/`
 - `server/pgadmin/data/`

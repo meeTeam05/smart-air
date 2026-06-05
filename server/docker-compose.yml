@@ -117,26 +117,6 @@ services:
     networks:
       - sa-net
 
-  # Grafana — telemetry dashboards
-  grafana:
-    image: grafana/grafana:latest
-    container_name: sa-grafana
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
-      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana"
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-    volumes:
-      - ./grafana/data:/var/lib/grafana
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-    mem_limit: 384m
-    logging: *default-logging
-    networks:
-      - sa-net
-
   # pgAdmin — database management UI
   pgadmin:
     image: dpage/pgadmin4:8

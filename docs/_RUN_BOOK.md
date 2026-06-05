@@ -31,7 +31,6 @@ Core services:
 - `api`: Fastify API
 - `nginx`: public reverse proxy
 - `cloudflared`: Cloudflare Tunnel connector
-- `grafana`: dashboards
 
 Optional admin services:
 
@@ -41,7 +40,6 @@ Optional admin services:
 Notes:
 
 - `pgadmin` and `portainer` are optional and may be absent during normal runtime.
-- `grafana` is part of the compose stack but is operational rather than control-plane critical.
 
 ## Prerequisites
 
@@ -60,7 +58,6 @@ Common service credentials and settings:
 
 - `POSTGRES_DB`
 - `POSTGRES_USER`
-- `GRAFANA_PASSWORD`
 - `PGADMIN_EMAIL`
 - `PGADMIN_PASSWORD`
 - `EMQX_NODE_COOKIE`
@@ -136,7 +133,7 @@ cd /home/nhat/Working_Space/my-project/smart-air
 
 What the verification script checks:
 
-- Compose runtime state for `postgres`, `redis`, `api`, `nginx`, `cloudflared`, `emqx`, `grafana`, `pgadmin`, `portainer`
+- Compose runtime state for `postgres`, `redis`, `api`, `nginx`, `cloudflared`, `emqx`, `pgadmin`, `portainer`
 - `postgres` accepts `SELECT 1`
 - `redis` responds to `PING`
 - API live endpoint: `http://127.0.0.1:3000/api/health/live`
@@ -144,7 +141,7 @@ What the verification script checks:
 - Nginx health endpoint: `http://127.0.0.1/nginx/health`
 - EMQX broker status via `emqx ctl status`
 - EMQX admin API on `http://127.0.0.1:18083/api/v5/status`
-- `grafana`, `pgadmin`, and `portainer` availability when declared and running
+- `pgadmin` and `portainer` availability when declared and running
 
 Healthy API readiness must report:
 
@@ -336,7 +333,6 @@ rtk proxy docker compose logs --tail=200 api
 - Persistent data paths under `server/` include at least:
   - `postgres/data`
   - `redis/data`
-  - `grafana/data`
   - `pgadmin/data`
   - `portainer/data`
 - Treat `.env`, database state, Redis state, and EMQX credentials as operational data.

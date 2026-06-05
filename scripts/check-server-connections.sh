@@ -108,7 +108,7 @@ service_status_matrix() {
 }
 
 print_section "Compose Status"
-for service in postgres redis api nginx cloudflared emqx grafana pgadmin portainer; do
+for service in postgres redis api nginx cloudflared emqx pgadmin portainer; do
     service_status_matrix "$service"
 done
 
@@ -208,20 +208,6 @@ if service_available_for_probe "emqx"; then
         fail "emqx admin API probe failed"
         printf '%s\n' "$emqx_api_body"
     fi
-fi
-
-if compose_has_service "grafana"; then
-    grafana_state="$(service_state "grafana")"
-    grafana_health="$(service_health "grafana")"
-    if [[ "$grafana_state" == "running" && "$grafana_health" == "healthy" ]]; then
-        pass "grafana is running and healthy"
-    elif [[ "$grafana_state" == "running" && "$grafana_health" == "none" ]]; then
-        pass "grafana is running"
-    else
-        fail "grafana runtime is $(service_runtime_label "grafana")"
-    fi
-else
-    skip "grafana is not declared"
 fi
 
 if service_available_for_probe "pgadmin"; then
