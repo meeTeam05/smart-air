@@ -28,35 +28,36 @@
 
 static const char *TAG = "display_service";
 
-#define DISPLAY_LOGICAL_W 220
-#define DISPLAY_LOGICAL_H 176
-#define DISPLAY_NATIVE_W ILI9225_PHYS_W
-#define DISPLAY_NATIVE_H ILI9225_PHYS_H
-#define DISPLAY_BUF_LINES 16
-#define DISPLAY_BUF_PIXELS (DISPLAY_LOGICAL_W * DISPLAY_BUF_LINES)
-#define DISPLAY_TICK_MS 5
-#define DISPLAY_TASK_DELAY_MS 10
-#define DISPLAY_UI_REFRESH_MS 250
-#define DISPLAY_STATUSBAR_H 16
-#define DISPLAY_CLOCK_H 56
-#define DISPLAY_DATE_ROW_H 18
-#define DISPLAY_SENSORS_H (DISPLAY_LOGICAL_H - DISPLAY_STATUSBAR_H - DISPLAY_CLOCK_H - DISPLAY_DATE_ROW_H)
-#define DISPLAY_SENSOR_CELL_W (DISPLAY_LOGICAL_W / 4)
-#define DISPLAY_TEXT_W 208
-#define DISPLAY_MIN_VALID_UNIX_TS 946684800UL
-#define DISPLAY_RELAY_COUNT 3
-#define DISPLAY_SIGNAL_BAR_COUNT 4
-#define DISPLAY_SELF_TEST_TICK_MS 20
-#define DISPLAY_INIT_WAIT_BASE_MS 2000
+#define DISPLAY_LOGICAL_W           220
+#define DISPLAY_LOGICAL_H           176
+#define DISPLAY_NATIVE_W            ILI9225_PHYS_W
+#define DISPLAY_NATIVE_H            ILI9225_PHYS_H
+#define DISPLAY_BUF_LINES           16
+#define DISPLAY_BUF_PIXELS          (DISPLAY_LOGICAL_W * DISPLAY_BUF_LINES)
+#define DISPLAY_TICK_MS             5
+#define DISPLAY_TASK_DELAY_MS       10
+#define DISPLAY_UI_REFRESH_MS       250
+#define DISPLAY_STATUSBAR_H         16
+#define DISPLAY_VERSION_W           52
+#define DISPLAY_CLOCK_H             56
+#define DISPLAY_DATE_ROW_H          18
+#define DISPLAY_SENSORS_H           (DISPLAY_LOGICAL_H - DISPLAY_STATUSBAR_H - DISPLAY_CLOCK_H - DISPLAY_DATE_ROW_H)
+#define DISPLAY_SENSOR_CELL_W       (DISPLAY_LOGICAL_W / 4)
+#define DISPLAY_TEXT_W              208
+#define DISPLAY_MIN_VALID_UNIX_TS   946684800UL
+#define DISPLAY_RELAY_COUNT         3
+#define DISPLAY_SIGNAL_BAR_COUNT    4
+#define DISPLAY_SELF_TEST_TICK_MS   20
+#define DISPLAY_INIT_WAIT_BASE_MS   2000
 #define DISPLAY_INIT_WAIT_MARGIN_MS 500
 
-#define DISPLAY_COLOR_BG 0xFFFFFF
+#define DISPLAY_COLOR_BG        0xFFFFFF
 #define DISPLAY_COLOR_STATUS_BG 0xF1F3F6
-#define DISPLAY_COLOR_DIVIDER 0xE4E7EC
-#define DISPLAY_COLOR_TEXT 0x0F172A
-#define DISPLAY_COLOR_MUTED 0x6B7280
-#define DISPLAY_COLOR_FAINT 0x9AA3B2
-#define DISPLAY_COLOR_ACCENT 0x2D7DD2
+#define DISPLAY_COLOR_DIVIDER   0xE4E7EC
+#define DISPLAY_COLOR_TEXT      0x0F172A
+#define DISPLAY_COLOR_MUTED     0x6B7280
+#define DISPLAY_COLOR_FAINT     0x9AA3B2
+#define DISPLAY_COLOR_ACCENT    0x2D7DD2
 
 /* Fall back to compiled-in LVGL fonts so the display service builds with lean sdkconfig variants. */
 #if CONFIG_LV_FONT_MONTSERRAT_10
@@ -418,6 +419,14 @@ static void build_screen(void)
     for (size_t i = 0; i < DISPLAY_SIGNAL_BAR_COUNT; i++) {
         create_sensor_cell(sensor_row, i);
     }
+
+    lv_obj_t *status_version = lv_label_create(s_runtime_view);
+    lv_obj_set_width(status_version, DISPLAY_VERSION_W);
+    lv_label_set_long_mode(status_version, LV_LABEL_LONG_DOT);
+    lv_label_set_text_fmt(status_version, "%s", FIRMWARE_VERSION);
+    lv_obj_set_style_text_align(status_version, LV_TEXT_ALIGN_LEFT, 0);
+    style_text(status_version, DISPLAY_FONT_XS, DISPLAY_COLOR_MUTED);
+    lv_obj_align(status_version, LV_ALIGN_TOP_LEFT, 5, DISPLAY_STATUSBAR_H + 1);
 }
 
 #if SA_DISP_SELF_TEST
@@ -467,12 +476,8 @@ static void self_test_fullscreen(uint32_t bg_hex, uint32_t fg_hex, const char *t
     self_test_wait(SA_DISP_SELF_TEST_HOLD_MS);
 }
 
-static void self_test_corner_box(lv_obj_t *parent,
-                                 lv_align_t align,
-                                 lv_coord_t x_ofs,
-                                 lv_coord_t y_ofs,
-                                 uint32_t bg_hex,
-                                 const char *text)
+static void self_test_corner_box(
+    lv_obj_t *parent, lv_align_t align, lv_coord_t x_ofs, lv_coord_t y_ofs, uint32_t bg_hex, const char *text)
 {
     lv_obj_t *box = lv_obj_create(parent);
     lv_obj_remove_style_all(box);
@@ -644,12 +649,27 @@ static void render_runtime(const display_state_t *state, time_t now, bool wifi_c
     if (now >= (time_t)DISPLAY_MIN_VALID_UNIX_TS) {
         struct tm tm_now = {0};
         static const char *const weekdays[] = {
-            "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY",
-            "THURSDAY", "FRIDAY", "SATURDAY",
+            "SUNDAY",
+            "MONDAY",
+            "TUESDAY",
+            "WEDNESDAY",
+            "THURSDAY",
+            "FRIDAY",
+            "SATURDAY",
         };
         static const char *const months[] = {
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
         };
 
         localtime_r(&now, &tm_now);
@@ -665,12 +685,7 @@ static void render_runtime(const display_state_t *state, time_t now, bool wifi_c
         lv_label_set_text(s_clock_ss, ss_buf);
 
         char date_buf[24];
-        snprintf(date_buf,
-                 sizeof(date_buf),
-                 "%d %s %d",
-                 tm_now.tm_mday,
-                 months[tm_now.tm_mon],
-                 tm_now.tm_year + 1900);
+        snprintf(date_buf, sizeof(date_buf), "%d %s %d", tm_now.tm_mday, months[tm_now.tm_mon], tm_now.tm_year + 1900);
         lv_label_set_text(s_date_dow, weekdays[tm_now.tm_wday]);
         lv_label_set_text(s_date_value, date_buf);
     } else {
@@ -744,12 +759,8 @@ static void display_flush(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t 
     tx = s_swap_buf;
 #endif
 
-    esp_err_t err = ili9225_write_area((uint16_t)area->x1,
-                                       (uint16_t)area->y1,
-                                       (uint16_t)area->x2,
-                                       (uint16_t)area->y2,
-                                       tx,
-                                       byte_count);
+    esp_err_t err = ili9225_write_area(
+        (uint16_t)area->x1, (uint16_t)area->y1, (uint16_t)area->x2, (uint16_t)area->y2, tx, byte_count);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "ili9225_write_area failed (%s)", esp_err_to_name(err));
     }
@@ -905,13 +916,7 @@ esp_err_t display_service_init(void)
         return ESP_ERR_NO_MEM;
     }
 
-    BaseType_t rc = xTaskCreatePinnedToCore(display_task,
-                                            "display_service",
-                                            8192,
-                                            NULL,
-                                            5,
-                                            &s_task,
-                                            tskNO_AFFINITY);
+    BaseType_t rc = xTaskCreatePinnedToCore(display_task, "display_service", 8192, NULL, 5, &s_task, tskNO_AFFINITY);
     if (rc != pdPASS) {
         cleanup_failed_init();
         return ESP_ERR_NO_MEM;
