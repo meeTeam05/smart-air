@@ -27,6 +27,8 @@ class CalibrationWizardScreen extends ConsumerStatefulWidget {
 
 class _CalibrationWizardScreenState
     extends ConsumerState<CalibrationWizardScreen> {
+  static const _calibrationConfirmationTimeout = Duration(minutes: 7);
+
   int _currentStep = 0;
   bool _calibrating = false;
   String? _result;
@@ -132,7 +134,7 @@ class _CalibrationWizardScreenState
               const SizedBox(width: AtmosphereTokens.space12),
               Expanded(
                 child: Text(
-                  'Calibration takes about 3 minutes. Without reference gas, readings are for trends and alerts, not lab-grade ppm.',
+                  'Calibration takes about 3 minutes; final confirmation can take up to 7 minutes. Without reference gas, readings are for trends and alerts, not lab-grade ppm.',
                   style: AtmosphereTextStyles.caption(c.ink2),
                 ),
               ),
@@ -248,7 +250,7 @@ class _CalibrationWizardScreenState
               ),
               const SizedBox(height: AtmosphereTokens.space16),
               Text(
-                'Please wait while the sensor samples a stable baseline. This takes about 3 minutes.',
+                'Please wait while the sensor samples a stable baseline. Keep the app open for final confirmation.',
                 style: AtmosphereTextStyles.caption(c.ink2),
                 textAlign: TextAlign.center,
               ),
@@ -377,6 +379,7 @@ class _CalibrationWizardScreenState
           await ref.read(deviceServiceProvider).waitForCommandCompletion(
                 widget.deviceId,
                 commandId,
+                timeout: _calibrationConfirmationTimeout,
               );
 
       if (mounted) {
