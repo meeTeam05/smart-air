@@ -63,6 +63,17 @@ The device uses BLE for Wi-Fi provisioning, then publishes telemetry and shadow 
 
 ![Runtime](assets/firmware/run-time.gif)
 
+## App
+
+### Demo
+
+<p align="center">
+  <img src="assets/app/app-1.gif" alt="App Demo 1" width="23%">
+  <img src="assets/app/app-2.gif" alt="App Demo 2" width="23%">
+  <img src="assets/app/app-3.gif" alt="App Demo 3" width="23%">
+  <img src="assets/app/app-4.gif" alt="App Demo 4" width="23%">
+</p>
+
 ## Contributing
 
 - Read [AGENTS.md](AGENTS.md) before making changes.
