@@ -4,11 +4,9 @@ import {
     listDueDeviceCleanupJobs,
 } from '../services/device-cleanup.js';
 import { registerNonOverlappingIntervalJob } from './scheduler.js';
+import { config } from '../config.js';
 
-const DEFAULT_RETRY_INTERVAL_MS = 300_000;
-const DEFAULT_RETRY_LIMIT = 100;
-
-export async function runEmqxCleanupRetry(fastify, retryLimit = DEFAULT_RETRY_LIMIT) {
+export async function runEmqxCleanupRetry(fastify, retryLimit = config.emqx.cleanupRetryLimit) {
     try {
         await drainLegacyCleanupRetrySet(fastify);
     } catch (err) {
@@ -26,8 +24,8 @@ export async function runEmqxCleanupRetry(fastify, retryLimit = DEFAULT_RETRY_LI
 }
 
 export function registerEmqxCleanupRetryJob(fastify, options = {}) {
-    const retryIntervalMs = options.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
-    const retryLimit = options.retryLimit ?? DEFAULT_RETRY_LIMIT;
+    const retryIntervalMs = options.retryIntervalMs ?? config.emqx.cleanupRetryIntervalMs;
+    const retryLimit = options.retryLimit ?? config.emqx.cleanupRetryLimit;
 
     registerNonOverlappingIntervalJob(fastify, {
         intervalMs: retryIntervalMs,

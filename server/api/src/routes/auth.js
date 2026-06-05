@@ -2,9 +2,9 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { BCRYPT_ROUNDS, REFRESH_COOKIE_PATH, SECONDS_PER_DAY } from '../constants.js';
-import { isValidEmail, normalizeEmail, parsePositiveIntEnv } from '../utils/parse.js';
+import { config } from '../config.js';
+import { isValidEmail, normalizeEmail } from '../utils/parse.js';
 
-const REFRESH_EXPIRES_DAYS = parsePositiveIntEnv('REFRESH_TOKEN_EXPIRES_DAYS', 30);
 const REFRESH_RACE_GRACE_MS = 5_000;
 const DUMMY_PASSWORD_HASH = '$2a$12$3e3kkNZej.GAbhctAc65eefDYsUFcpdDifsvE5Uegz5qkrFU54iJu';
 const MAX_FULL_NAME_LENGTH = 255;
@@ -55,7 +55,7 @@ function isValidPassword(password) {
 async function createRefreshToken(client, userId) {
     const token = uuidv4();
     const tokenHash = hashRefreshToken(token);
-    const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * SECONDS_PER_DAY * 1000);
+    const expiresAt = new Date(Date.now() + config.refreshTokens.expiresDays * SECONDS_PER_DAY * 1000);
     await client.query(
         'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
         [userId, tokenHash, expiresAt]
@@ -68,8 +68,8 @@ function setRefreshCookie(reply, token) {
         httpOnly: true,
         sameSite: 'Strict',
         path: REFRESH_COOKIE_PATH,
-        maxAge: REFRESH_EXPIRES_DAYS * SECONDS_PER_DAY,
-        secure: process.env.NODE_ENV === 'production',
+        maxAge: config.refreshTokens.expiresDays * SECONDS_PER_DAY,
+        secure: config.isProduction,
     });
 }
 
@@ -217,7 +217,7 @@ export default async function authRoutes(fastify) {
 
             reply.clearCookie('refreshToken', {
                 path: REFRESH_COOKIE_PATH,
-                secure: process.env.NODE_ENV === 'production',
+                secure: config.isProduction,
             });
             return reply.code(401).send({ error: 'Invalid or expired refresh token' });
         }
@@ -232,7 +232,7 @@ export default async function authRoutes(fastify) {
         await revokeUserRefreshSessions(fastify, userId);
         reply.clearCookie('refreshToken', {
             path: REFRESH_COOKIE_PATH,
-            secure: process.env.NODE_ENV === 'production',
+            secure: config.isProduction,
         });
         return { success: true };
     });

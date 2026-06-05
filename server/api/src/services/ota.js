@@ -1,23 +1,19 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { config } from '../config.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DEFAULT_OTA_FILES_DIR = path.resolve(__dirname, '../../../ota-files');
-const DEFAULT_OTA_PUBLIC_BASE_URL = 'https://minhnhat05.xyz';
 const ESP_IMAGE_HEADER_MAGIC = 0xE9;
 const ESP_IMAGE_HEADER_SIZE = 24;
 const ESP_IMAGE_HASH_APPENDED_OFFSET = 23;
 const ESP_IMAGE_DIGEST_SIZE = 32;
 
 function otaFilesDir() {
-    return process.env.OTA_FILES_DIR || DEFAULT_OTA_FILES_DIR;
+    return config.ota.filesDir;
 }
 
 function otaPublicBaseUrl() {
-    return (process.env.OTA_PUBLIC_BASE_URL || DEFAULT_OTA_PUBLIC_BASE_URL).replace(/\/+$/, '');
+    return config.ota.publicBaseUrl;
 }
 
 function versionSegments(version) {

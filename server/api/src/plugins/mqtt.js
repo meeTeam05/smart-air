@@ -10,10 +10,8 @@ import {
 } from '../services/mqtt-handlers.js';
 import { normalizeDeviceId } from '../utils/device-id.js';
 import { ensureBridgeUser } from '../services/emqx.js';
-import { parsePositiveIntEnv } from '../utils/parse.js';
+import { config } from '../config.js';
 
-const DEFAULT_PUBLISH_TIMEOUT_MS = 5_000;
-const DEFAULT_PROVISION_RETRY_MS = 5_000;
 const SUBSCRIPTIONS = Object.freeze([
     'device/+/status',
     'device/+/telemetry',
@@ -34,18 +32,15 @@ export function waitForMqttClientEnd(client) {
 }
 
 async function mqttPlugin(fastify) {
-    const clientId = process.env.EMQX_MQTT_CLIENT_ID || 'sa-api-bridge';
-    const publishTimeoutMs = parsePositiveIntEnv('MQTT_PUBLISH_TIMEOUT_MS', DEFAULT_PUBLISH_TIMEOUT_MS);
-    const provisionRetryMs = parsePositiveIntEnv('MQTT_PROVISION_RETRY_MS', DEFAULT_PROVISION_RETRY_MS);
-    const client = mqtt.connect(process.env.EMQX_MQTT_URL || 'mqtt://emqx:1883', {
-        username: process.env.EMQX_MQTT_USER || 'sa-server',
-        password: process.env.EMQX_MQTT_PASSWORD || '',
-        clientId,
+    const client = mqtt.connect(config.emqx.mqttUrl, {
+        username: config.emqx.mqttUser,
+        password: config.emqx.mqttPassword,
+        clientId: config.emqx.mqttClientId,
         clean: false,
         manualAcks: true,
         manualConnect: true,
-        reconnectPeriod: 2000,
-        connectTimeout: 30_000,
+        reconnectPeriod: config.mqtt.reconnectPeriodMs,
+        connectTimeout: config.mqtt.connectTimeoutMs,
     });
     let closed = false;
     let connectingStarted = false;
@@ -61,8 +56,8 @@ async function mqttPlugin(fastify) {
 
         return new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
-                reject(new Error(`MQTT publish timed out after ${publishTimeoutMs}ms`));
-            }, publishTimeoutMs);
+                reject(new Error(`MQTT publish timed out after ${config.mqtt.publishTimeoutMs}ms`));
+            }, config.mqtt.publishTimeoutMs);
 
             client.publish(topic, payload, publishOptions, (err) => {
                 clearTimeout(timeoutId);
@@ -103,9 +98,9 @@ async function mqttPlugin(fastify) {
                 }
                 return;
             } catch (err) {
-                fastify.log.error({ err, retryMs: provisionRetryMs }, 'MQTT bridge provisioning failed; retrying');
+                fastify.log.error({ err, retryMs: config.mqtt.provisionRetryMs }, 'MQTT bridge provisioning failed; retrying');
                 await new Promise((resolve) => {
-                    setTimeout(resolve, provisionRetryMs);
+                    setTimeout(resolve, config.mqtt.provisionRetryMs);
                 });
             }
         }

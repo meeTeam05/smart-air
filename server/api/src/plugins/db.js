@@ -1,24 +1,20 @@
 import fp from 'fastify-plugin';
 import pg from 'pg';
+import { config } from '../config.js';
 
 const { Pool } = pg;
 
-function parseEnvInt(name, fallback) {
-    const value = Number.parseInt(process.env[name] || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-}
-
 async function dbPlugin(fastify) {
     const pool = new Pool({
-        host: process.env.POSTGRES_HOST || 'postgres',
-        port: parseEnvInt('POSTGRES_PORT', 5432),
-        database: process.env.POSTGRES_DB || 'smartair',
-        user: process.env.POSTGRES_USER || 'smartair',
-        password: process.env.POSTGRES_PASSWORD,
-        max: parseEnvInt('PG_POOL_MAX', 20),
-        idleTimeoutMillis: parseEnvInt('PG_IDLE_TIMEOUT_MS', 30_000),
-        connectionTimeoutMillis: parseEnvInt('PG_CONNECTION_TIMEOUT_MS', 5_000),
-        statement_timeout: parseEnvInt('PG_STATEMENT_TIMEOUT_MS', 10_000),
+        host: config.db.host,
+        port: config.db.port,
+        database: config.db.database,
+        user: config.db.user,
+        password: config.db.password,
+        max: config.db.poolMax,
+        idleTimeoutMillis: config.db.idleTimeoutMs,
+        connectionTimeoutMillis: config.db.connectionTimeoutMs,
+        statement_timeout: config.db.statementTimeoutMs,
     });
 
     await pool.query('SELECT 1'); // verify connection on startup

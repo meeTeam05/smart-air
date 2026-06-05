@@ -7,13 +7,18 @@ import path from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appPath = path.resolve(__dirname, '../src/app.js');
+const configPath = path.resolve(__dirname, '../src/config.js');
 
 async function readAppSource() {
     return readFile(appPath, 'utf8');
 }
 
+async function readConfigSource() {
+    return readFile(configPath, 'utf8');
+}
+
 test('startup guard lists required runtime environment variables', async () => {
-    const source = await readAppSource();
+    const source = await readConfigSource();
 
     const requiredVars = [
         'JWT_SECRET',

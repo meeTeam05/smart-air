@@ -4,7 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
 
 import { ALLOWED_ORIGINS } from './constants.js';
-import { parsePositiveIntEnv } from './utils/parse.js';
+import { config, getMissingRequiredEnvVars, REQUIRED_RUNTIME_ENV_VARS } from './config.js';
 import dbPlugin from './plugins/db.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -26,25 +26,6 @@ import { registerDataRetentionJob } from './jobs/data-retention.js';
 import { registerEmqxCleanupRetryJob } from './jobs/emqx-cleanup-retry.js';
 import { registerRefreshTokenMarkerCleanupJob } from './jobs/refresh-token-marker-cleanup.js';
 import { registerRealtimeEventRetentionJob } from './jobs/realtime-event-retention.js';
-
-// ── Startup guards ──────────────────────────────────────────────
-const REQUIRED_RUNTIME_ENV_VARS = [
-    'JWT_SECRET',
-    'POSTGRES_PASSWORD',
-    'REDIS_PASSWORD',
-    'EMQX_API_KEY',
-    'EMQX_API_SECRET',
-    'EMQX_MQTT_PASSWORD',
-];
-
-const DEFAULT_BODY_LIMIT_BYTES = 65_536;
-
-function getMissingRequiredEnvVars(requiredVars) {
-    return requiredVars.filter((name) => {
-        const value = process.env[name];
-        return typeof value !== 'string' || value.trim() === '';
-    });
-}
 
 function getSafeClientErrorMessage(error, statusCode) {
     if (error.validation) return 'Invalid request payload';
@@ -68,9 +49,9 @@ if (missingRequiredEnvVars.length > 0) {
 }
 
 const fastify = Fastify({
-    bodyLimit: parsePositiveIntEnv('BODY_LIMIT_BYTES', DEFAULT_BODY_LIMIT_BYTES),
+    bodyLimit: config.bodyLimitBytes,
     logger: {
-        level: process.env.LOG_LEVEL || 'info',
+        level: config.logLevel,
         redact: [
             'req.headers.authorization',
             'req.headers.cookie',
@@ -150,14 +131,13 @@ fastify.setErrorHandler((error, request, reply) => {
     const safeMessage = getSafeClientErrorMessage(error, statusCode);
     reply.code(statusCode).send({
         error: safeMessage,
-        ...(process.env.NODE_ENV === 'development' ? { originalError: error.message } : {})
+        ...(config.isDevelopment ? { originalError: error.message } : {})
     });
 });
 
 // ── Start ────────────────────────────────────────────────────────
-const port = parseInt(process.env.PORT || '3000');
 try {
-    await fastify.listen({ port, host: '0.0.0.0' });
+    await fastify.listen({ port: config.port, host: '0.0.0.0' });
 } catch (err) {
     fastify.log.error(err);
     process.exit(1);

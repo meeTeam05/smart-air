@@ -1,11 +1,9 @@
-import { parsePositiveIntEnv } from '../utils/parse.js';
 import { registerNonOverlappingIntervalJob } from './scheduler.js';
-
-const DEFAULT_SWEEP_INTERVAL_MS = 3_600_000;
+import { config } from '../config.js';
 
 export function registerRefreshTokenMarkerCleanupJob(fastify, options = {}) {
     const sweepIntervalMs = options.sweepIntervalMs
-        ?? parsePositiveIntEnv('REFRESH_REUSE_MARKER_SWEEP_INTERVAL_MS', DEFAULT_SWEEP_INTERVAL_MS);
+        ?? config.refreshTokens.reuseMarkerSweepIntervalMs;
 
     const runSweep = async () => {
         try {

@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
+import { config } from '../src/config.js';
 
 const { Pool } = pg;
 
@@ -51,11 +52,11 @@ async function seedLegacyInitialMigration(db) {
 
 async function run() {
     const pool = new Pool({
-        host: process.env.POSTGRES_HOST || 'postgres',
-        port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
-        database: process.env.POSTGRES_DB || 'smartair',
-        user: process.env.POSTGRES_USER || 'smartair',
-        password: process.env.POSTGRES_PASSWORD,
+        host: config.db.host,
+        port: config.db.port,
+        database: config.db.database,
+        user: config.db.user,
+        password: config.db.password,
     });
 
     const client = await pool.connect();

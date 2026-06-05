@@ -1,15 +1,11 @@
-import { parsePositiveIntEnv } from '../utils/parse.js';
 import { registerNonOverlappingIntervalJob } from './scheduler.js';
-
-const DEFAULT_COMMAND_RETENTION_DAYS = 30;
-const DEFAULT_REFRESH_TOKEN_RETENTION_DAYS = 30;
-const DEFAULT_SWEEP_INTERVAL_MS = 3_600_000;
+import { config } from '../config.js';
 
 export async function runDataRetentionCleanup(
     fastify,
     {
-        commandRetentionDays = DEFAULT_COMMAND_RETENTION_DAYS,
-        refreshTokenRetentionDays = DEFAULT_REFRESH_TOKEN_RETENTION_DAYS,
+        commandRetentionDays = config.dataRetention.commandRetentionDays,
+        refreshTokenRetentionDays = config.dataRetention.refreshTokenRetentionDays,
     } = {}
 ) {
     try {
@@ -46,11 +42,11 @@ export async function runDataRetentionCleanup(
 
 export function registerDataRetentionJob(fastify, options = {}) {
     const commandRetentionDays = options.commandRetentionDays
-        ?? parsePositiveIntEnv('COMMAND_RETENTION_DAYS', DEFAULT_COMMAND_RETENTION_DAYS);
+        ?? config.dataRetention.commandRetentionDays;
     const refreshTokenRetentionDays = options.refreshTokenRetentionDays
-        ?? parsePositiveIntEnv('REFRESH_TOKEN_RETENTION_DAYS', DEFAULT_REFRESH_TOKEN_RETENTION_DAYS);
+        ?? config.dataRetention.refreshTokenRetentionDays;
     const sweepIntervalMs = options.sweepIntervalMs
-        ?? parsePositiveIntEnv('DATA_RETENTION_SWEEP_INTERVAL_MS', DEFAULT_SWEEP_INTERVAL_MS);
+        ?? config.dataRetention.sweepIntervalMs;
 
     registerNonOverlappingIntervalJob(fastify, {
         intervalMs: sweepIntervalMs,

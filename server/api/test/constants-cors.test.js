@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const constantsUrl = new URL('../src/constants.js', import.meta.url);
+const configUrl = new URL('../src/config.js', import.meta.url);
 
-async function importConstants(tag) {
-    return import(`${constantsUrl.href}?case=${tag}`);
+async function importConfig(tag) {
+    return import(`${configUrl.href}?case=${tag}`);
 }
 
 test('production rejects wildcard CORS origins', async () => {
@@ -15,8 +15,9 @@ test('production rejects wildcard CORS origins', async () => {
     process.env.CORS_ORIGINS = '*';
 
     try {
-        await assert.rejects(
-            importConstants('wildcard-prod'),
+        const { config } = await importConfig('wildcard-prod');
+        assert.throws(
+            () => config.corsOrigins,
             /CORS_ORIGINS must contain explicit HTTPS origins in production/
         );
     } finally {
@@ -35,8 +36,8 @@ test('production accepts explicit HTTPS CORS origins', async () => {
     process.env.CORS_ORIGINS = 'https://minhnhat05.xyz, https://app.smart-air.local';
 
     try {
-        const { ALLOWED_ORIGINS } = await importConstants('https-prod');
-        assert.deepEqual(ALLOWED_ORIGINS, ['https://minhnhat05.xyz', 'https://app.smart-air.local']);
+        const { config } = await importConfig('https-prod');
+        assert.deepEqual(config.corsOrigins, ['https://minhnhat05.xyz', 'https://app.smart-air.local']);
     } finally {
         if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
         else process.env.NODE_ENV = previousNodeEnv;
