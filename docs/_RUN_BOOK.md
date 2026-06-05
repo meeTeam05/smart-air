@@ -9,6 +9,7 @@ This file covers manual start and stop, health verification, common operator act
 - Stack location: `server/`
 - Compose file: `server/docker-compose.yml`
 - Main verification script: `scripts/check-server-connections.sh`
+- Public operator entrypoint: root `Makefile`
 - Architecture and contracts live elsewhere:
   - `docs/ARCHITECTURE.md`
   - `docs/API_REFERENCE.md`
@@ -45,6 +46,18 @@ Notes:
 
 Before startup, ensure `server/.env` exists and required secrets are populated.
 
+Create the local env file when missing:
+
+```bash
+make server-env-init
+```
+
+Then fill in the generated `server/.env` values and check required keys:
+
+```bash
+make server-env-check
+```
+
 Required at runtime for `server/api`:
 
 - `JWT_SECRET`
@@ -79,8 +92,13 @@ sudo systemctl start docker
 Start the full local stack, including admin services:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose --profile admin up -d
+make server-up-admin
+```
+
+If optional admin containers fail to start because they reference a missing Docker network, recreate only those admin containers:
+
+```bash
+make server-admin-recreate
 ```
 
 This is the default local-ops startup path when you want the full environment:
@@ -92,16 +110,16 @@ This is the default local-ops startup path when you want the full environment:
 Start the core stack only:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose up -d
+make server-up
 ```
 
 Stop the stack:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose down --remove-orphans
+make server-down
 ```
+
+This stops core services and optional admin services when they exist.
 
 Stop Docker after the stack is down:
 
@@ -120,15 +138,13 @@ sudo systemctl disable --now docker.service docker.socket containerd.service
 Quick status:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose ps
+make server-ps
 ```
 
 Read-only runtime verification:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air
-./scripts/check-server-connections.sh
+make server-check
 ```
 
 What the verification script checks:
@@ -155,43 +171,43 @@ Healthy API readiness must report:
 View stack logs:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose logs --tail=200
+make server-logs
 ```
 
 View logs for one service:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose logs --tail=200 api
+make server-log SERVICE=api
 ```
 
 Restart one service:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose restart api
+make server-restart SERVICE=api
 ```
 
 Rebuild and start the API:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose up -d --build api
+make server-rebuild-api
 ```
 
 Run database migrations:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server/api
-rtk npm run migrate
+make server-migrate
 ```
 
 Render the final compose config:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk docker compose config
+make server-config
+```
+
+Render EMQX API bootstrap credentials from `server/.env`:
+
+```bash
+make server-render-emqx-key
 ```
 
 ## First-Response Troubleshooting
@@ -206,10 +222,8 @@ Likely meaning:
 Check:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air
-./scripts/check-server-connections.sh
-cd server
-rtk proxy docker compose logs --tail=200 api
+make server-check
+make server-log SERVICE=api
 ```
 
 Focus on:
@@ -229,9 +243,8 @@ Likely meaning:
 Check:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose logs --tail=200 api
-rtk proxy docker compose logs --tail=200 emqx
+make server-log SERVICE=api
+make server-log SERVICE=emqx
 ```
 
 Focus on:
@@ -247,11 +260,8 @@ Likely meaning:
 Do this in order:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server/api
-rtk npm run migrate
-
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose up -d --build api
+make server-migrate
+make server-rebuild-api
 ```
 
 Then verify:
@@ -286,9 +296,8 @@ Likely meaning:
 Check:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose logs --tail=200 nginx
-rtk proxy docker compose logs --tail=200 api
+make server-log SERVICE=nginx
+make server-log SERVICE=api
 ```
 
 ### Cloudflared is not running or public ingress is down
@@ -302,12 +311,27 @@ Likely meaning:
 Check:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server
-rtk proxy docker compose logs --tail=200 cloudflared
-rtk proxy docker compose ps
+make server-log SERVICE=cloudflared
+make server-ps
 ```
 
 Focus on confirmed tunnel-registration success, not just container uptime.
+
+### Admin containers fail with `network ... not found`
+
+Likely meaning:
+
+- `pgadmin` or `portainer` is an old stopped container
+- Docker recreated `smart-air_sa-net`
+- the old container metadata still points to the deleted network ID
+
+Fix:
+
+```bash
+make server-admin-recreate
+```
+
+This removes only the `pgadmin` and `portainer` containers, then starts the admin profile again. It does not delete `server/pgadmin/data` or `server/portainer/data`.
 
 ### Postgres is healthy but API still fails
 
@@ -320,10 +344,8 @@ Likely meaning:
 Check:
 
 ```bash
-cd /home/nhat/Working_Space/my-project/smart-air/server/api
-rtk npm run migrate
-cd ../
-rtk proxy docker compose logs --tail=200 api
+make server-migrate
+make server-log SERVICE=api
 ```
 
 ## Safety Notes
@@ -341,6 +363,7 @@ rtk proxy docker compose logs --tail=200 api
 
 - `server/docker-compose.yml`
 - `server/.env.example`
+- `Makefile`
 - `scripts/check-server-connections.sh`
 - `docs/ARCHITECTURE.md`
 - `docs/API_REFERENCE.md`
