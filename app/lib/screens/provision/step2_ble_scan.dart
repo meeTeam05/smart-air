@@ -32,12 +32,7 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
   bool _scanning = false;
   bool _connecting = false;
   String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _startScan();
-  }
+  BlePreflightStatus? _preflightStatus;
 
   @override
   void dispose() {
@@ -55,20 +50,22 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
     setState(() {
       _devices.clear();
       _error = null;
+      _preflightStatus = null;
       _connecting = false;
-      _scanning = true;
+      _scanning = false;
     });
 
-    final granted = await _ble.ensurePermissions();
+    final preflight = await _ble.checkPreflight();
     if (!mounted) return;
-    if (!granted) {
+    if (preflight != BlePreflightStatus.ready) {
       setState(() {
-        _scanning = false;
-        _error =
-            'Bluetooth permission required. Enable Bluetooth and location access, then retry.';
+        _preflightStatus = preflight;
+        _error = _preflightMessage(preflight);
       });
       return;
     }
+
+    setState(() => _scanning = true);
 
     _scanSub = _ble.scan(timeout: const Duration(seconds: 12)).listen(
       (device) {
@@ -98,6 +95,50 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
       if (!mounted) return;
       setState(() => _scanning = false);
     });
+  }
+
+  String _preflightTitle(BlePreflightStatus status) {
+    return switch (status) {
+      BlePreflightStatus.unsupported => 'Bluetooth unavailable',
+      BlePreflightStatus.bluetoothOff => 'Bluetooth is off',
+      BlePreflightStatus.permissionDenied => 'Bluetooth permission required',
+      BlePreflightStatus.permissionPermanentlyDenied =>
+        'Bluetooth permission blocked',
+      BlePreflightStatus.locationOff => 'Location is off',
+      BlePreflightStatus.ready => 'Ready to scan',
+    };
+  }
+
+  String _preflightMessage(BlePreflightStatus status) {
+    return switch (status) {
+      BlePreflightStatus.unsupported =>
+        'This phone does not support Bluetooth Low Energy scanning.',
+      BlePreflightStatus.bluetoothOff => 'Turn on Bluetooth, then check again.',
+      BlePreflightStatus.permissionDenied =>
+        'Allow Bluetooth access, then check again.',
+      BlePreflightStatus.permissionPermanentlyDenied =>
+        'Open app settings and allow Bluetooth access, then check again.',
+      BlePreflightStatus.locationOff =>
+        'Turn on Location services, then check again.',
+      BlePreflightStatus.ready => 'Ready to scan.',
+    };
+  }
+
+  bool _canOpenSettings(BlePreflightStatus? status) {
+    return status == BlePreflightStatus.bluetoothOff ||
+        status == BlePreflightStatus.permissionPermanentlyDenied ||
+        status == BlePreflightStatus.locationOff;
+  }
+
+  Future<void> _openSettings() async {
+    final status = _preflightStatus;
+    if (status == BlePreflightStatus.bluetoothOff) {
+      await _ble.openBluetoothSettings();
+    } else if (status == BlePreflightStatus.permissionPermanentlyDenied) {
+      await _ble.openPermissionSettings();
+    } else if (status == BlePreflightStatus.locationOff) {
+      await _ble.openLocationSettings();
+    }
   }
 
   Future<void> _selectDevice(BleDeviceInfo device) async {
@@ -162,14 +203,22 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
                 ] else if (_error != null) ...[
                   EmptyState(
                     icon: AppIcons.warn,
-                    title: 'Scan failed',
+                    title: _preflightStatus == null
+                        ? 'Scan failed'
+                        : _preflightTitle(_preflightStatus!),
                     body: _error!,
+                    secondaryAction: _canOpenSettings(_preflightStatus)
+                        ? 'Open Settings'
+                        : null,
+                    onSecondaryAction: _canOpenSettings(_preflightStatus)
+                        ? _openSettings
+                        : null,
                   ),
                 ] else if (!hasDevices) ...[
                   const EmptyState(
                     icon: AppIcons.bluetooth,
-                    title: 'No devices found',
-                    body: 'Keep the device in pairing mode and try again.',
+                    title: 'Ready to scan',
+                    body: 'Keep the device in pairing mode, then scan.',
                   ),
                 ] else ...[
                   for (final device in _devices) ...[
@@ -186,7 +235,11 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
           ),
         ],
       ),
-      primaryLabel: _scanning ? 'Scanning…' : 'Scan again',
+      primaryLabel: _scanning
+          ? 'Scanning...'
+          : _error != null
+              ? 'Check again'
+              : 'Scan',
       primaryEnabled: !_scanning && !_connecting,
       onPrimary: _startScan,
       secondaryLabel: 'Back',

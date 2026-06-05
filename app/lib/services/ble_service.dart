@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../core/app_config.dart';
@@ -26,27 +28,84 @@ class BleService {
   // Allow constructing non-singleton instances for screens that manage lifecycle
   factory BleService() => instance;
 
+  static const MethodChannel _settingsChannel = MethodChannel(
+    'mt_home/settings',
+  );
+
   BluetoothDevice? _device;
   StreamSubscription<List<int>>? _notifySub;
 
   // ── Permission ─────────────────────────────────────────────────────────────
 
-  /// Returns true if all required BLE permissions are granted.
-  ///
-  /// Note: [Permission.bluetooth] (legacy, Android ≤ 11) is intentionally
-  /// excluded — on Android 12+ it is not a runtime permission and
-  /// [permission_handler] returns [PermissionStatus.denied] for it even when
-  /// BLUETOOTH_SCAN / BLUETOOTH_CONNECT are fully granted.
-  Future<bool> ensurePermissions() async {
-    final statuses = await [
+  Future<int> _androidSdkInt() async {
+    if (!Platform.isAndroid) return 0;
+    final sdk = await _settingsChannel.invokeMethod<int>('getAndroidSdkInt');
+    return sdk ?? 0;
+  }
+
+  List<Permission> _requiredBlePermissions(int androidSdkInt) {
+    if (Platform.isAndroid && androidSdkInt < 31) {
+      return [Permission.locationWhenInUse];
+    }
+    return [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-    ].request();
+    ];
+  }
 
-    return statuses.values.every(
-      (s) => s == PermissionStatus.granted || s == PermissionStatus.limited,
-    );
+  bool _permissionGranted(PermissionStatus status) {
+    return status == PermissionStatus.granted ||
+        status == PermissionStatus.limited;
+  }
+
+  /// Returns the first blocker that must be fixed before BLE scanning.
+  Future<BlePreflightStatus> checkPreflight() async {
+    final supported = await FlutterBluePlus.isSupported;
+    if (!supported) {
+      return BlePreflightStatus.unsupported;
+    }
+
+    final androidSdkInt = await _androidSdkInt();
+    final permissions = _requiredBlePermissions(androidSdkInt);
+    final statuses = await permissions.request();
+    final permissionStatuses = statuses.values;
+    if (permissionStatuses.any((status) => status.isPermanentlyDenied)) {
+      return BlePreflightStatus.permissionPermanentlyDenied;
+    }
+    if (permissionStatuses.any((status) => !_permissionGranted(status))) {
+      return BlePreflightStatus.permissionDenied;
+    }
+
+    final state = await adapterState;
+    if (state != BluetoothAdapterState.on) {
+      return BlePreflightStatus.bluetoothOff;
+    }
+
+    if (Platform.isAndroid && androidSdkInt > 0 && androidSdkInt < 31) {
+      final locationStatus = await Permission.locationWhenInUse.serviceStatus;
+      if (locationStatus != ServiceStatus.enabled) {
+        return BlePreflightStatus.locationOff;
+      }
+    }
+
+    return BlePreflightStatus.ready;
+  }
+
+  /// Returns true if all BLE scan preflight checks pass.
+  Future<bool> ensurePermissions() async {
+    return await checkPreflight() == BlePreflightStatus.ready;
+  }
+
+  Future<void> openBluetoothSettings() async {
+    await _settingsChannel.invokeMethod<void>('openBluetoothSettings');
+  }
+
+  Future<void> openLocationSettings() async {
+    await _settingsChannel.invokeMethod<void>('openLocationSettings');
+  }
+
+  Future<void> openPermissionSettings() async {
+    await openAppSettings();
   }
 
   // ── Adapter state ──────────────────────────────────────────────────────────
