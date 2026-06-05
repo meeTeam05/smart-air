@@ -9,6 +9,7 @@ idf_component_register(
         adc_bus
         ble_prov
         buzzer
+        display_service
         device_mode
         ds3231
         esp_event

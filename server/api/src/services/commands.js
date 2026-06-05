@@ -1,6 +1,5 @@
 import { createRealtimeEvent } from './realtime-events.js';
-
-const DEFAULT_PENDING_TIMEOUT_SECONDS = 1800;
+import { config } from '../config.js';
 
 export async function sendCommand(fastify, deviceId, payload, userId) {
     const { rows } = await fastify.db.query(
@@ -30,8 +29,7 @@ export async function sendCommand(fastify, deviceId, payload, userId) {
 }
 
 function pendingTimeoutSeconds() {
-    const value = Number.parseInt(process.env.COMMAND_PENDING_TIMEOUT_SECONDS || '', 10);
-    return Number.isInteger(value) && value > 0 ? value : DEFAULT_PENDING_TIMEOUT_SECONDS;
+    return config.commands.pendingTimeoutSeconds;
 }
 
 function advisoryLockKey(deviceId) {

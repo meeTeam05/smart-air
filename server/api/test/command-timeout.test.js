@@ -121,3 +121,48 @@ test('command timeout sweep emits command.updated events for timed-out commands'
         globalThis.clearInterval = originalClearInterval;
     }
 });
+
+test('command timeout sweep defaults sent timeout to seven minutes', async () => {
+    const originalSetInterval = globalThis.setInterval;
+    const originalClearInterval = globalThis.clearInterval;
+
+    globalThis.setInterval = () => 'interval-1';
+    globalThis.clearInterval = () => {};
+
+    try {
+        const queryLog = [];
+        const client = {
+            async query(sql, params = []) {
+                queryLog.push({ sql, params });
+                if (sql.includes('UPDATE commands')) {
+                    return { rowCount: 0, rows: [] };
+                }
+                return { rows: [], rowCount: 0 };
+            },
+            release() {},
+        };
+        const hooks = {};
+        const fastify = {
+            log: createLogger(),
+            db: {
+                async connect() {
+                    return client;
+                },
+            },
+            addHook(name, callback) {
+                hooks[name] = callback;
+            },
+        };
+
+        registerCommandTimeoutJob(fastify, { sweepIntervalMs: 10 });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        const timeoutUpdate = queryLog.find((call) => call.sql.includes('UPDATE commands'));
+        assert.deepEqual(timeoutUpdate.params, [420, 1800]);
+
+        await hooks.onClose();
+    } finally {
+        globalThis.setInterval = originalSetInterval;
+        globalThis.clearInterval = originalClearInterval;
+    }
+});

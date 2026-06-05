@@ -185,6 +185,7 @@ App tách state theo từng `deviceId` bằng `family` providers:
 
 - `shadowProvider(deviceId)`
 - `commandsProvider(deviceId)`
+- `otaCatalogProvider(deviceId)`
 - `telemetryProvider(params)`
 - `telemetryLiveProvider(deviceId)`
 - `telemetryHistoryProvider(params)`
@@ -228,7 +229,7 @@ Các adapter chính hiện tại:
 
 - `AuthService` cho auth
 - `HomeService` cho `/homes`, `/rooms`, và invite member
-- `DeviceService` cho `/devices`, `/shadow`, `/command`, telemetry, provisioning cloud handoff, và announce polling
+- `DeviceService` cho `/devices`, `/shadow`, `/command`, `/devices/:id/ota*`, telemetry, provisioning cloud handoff, và announce polling
 - `NotificationService` cho `/notifications`
 
 App hiện không có service nào mở MQTT socket trực tiếp.

@@ -143,3 +143,12 @@ enum BleState {
   bluetoothOff,
   permissionDenied,
 }
+
+enum BlePreflightStatus {
+  ready,
+  unsupported,
+  bluetoothOff,
+  permissionDenied,
+  permissionPermanentlyDenied,
+  locationOff,
+}

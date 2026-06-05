@@ -13,6 +13,7 @@ import 'package:smart_air/models/home.dart';
 import 'package:smart_air/models/realtime_event.dart';
 import 'package:smart_air/models/telemetry.dart';
 import 'package:smart_air/providers/auth_provider.dart';
+import 'package:smart_air/providers/devices_provider.dart';
 import 'package:smart_air/screens/home_screen.dart';
 import 'package:smart_air/screens/devices/device_dashboard_screen.dart';
 import 'package:smart_air/services/auth_service.dart';
@@ -312,6 +313,82 @@ void main() {
     expect(find.text('Welcome back'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('app resume refreshes device summaries from the latest snapshot',
+      (WidgetTester tester) async {
+    final fakeService = _FakeDeviceService(
+      deviceSnapshots: [
+        const [
+          Device(
+            id: 'device-1',
+            name: 'Living Room',
+            homeId: 'home-1',
+            roomId: 'room-1',
+            online: true,
+          ),
+        ],
+        const [
+          Device(
+            id: 'device-1',
+            name: 'Living Room',
+            homeId: 'home-1',
+            roomId: 'room-1',
+            online: false,
+          ),
+        ],
+      ],
+      shadows: const {
+        'device-1': DeviceShadow(
+          reported: {
+            'mode': 'on',
+          },
+        ),
+      },
+      telemetry: const {
+        'device-1': [],
+      },
+    );
+    final container = ProviderContainer(
+      overrides: [
+        authServiceProvider.overrideWithValue(_FakeAuthService()),
+        secureStorageProvider.overrideWithValue(_FakeSecureStorage()),
+        homeServiceProvider.overrideWithValue(_FakeHomeService()),
+        deviceServiceProvider.overrideWithValue(fakeService),
+        realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const SmartAirApp(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+
+    expect(fakeService.getDevicesCallCount, 1);
+    expect(
+      container.read(devicesProvider).valueOrNull?.single.online,
+      isTrue,
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+
+    expect(fakeService.getDevicesCallCount, 2);
+    expect(
+      container.read(devicesProvider).valueOrNull?.single.online,
+      isFalse,
+    );
+  });
 }
 
 class _FakeAuthService extends AuthService {
@@ -344,17 +421,26 @@ class _FakeSecureStorage extends SecureStorage {
 
 class _FakeDeviceService extends DeviceService {
   _FakeDeviceService({
-    required this.devices,
+    List<Device> devices = const [],
+    List<List<Device>>? deviceSnapshots,
     required this.shadows,
     required this.telemetry,
-  }) : super(Dio());
+  })  : _deviceSnapshots = deviceSnapshots ?? [devices],
+        super(Dio());
 
-  final List<Device> devices;
+  final List<List<Device>> _deviceSnapshots;
   final Map<String, DeviceShadow> shadows;
   final Map<String, List<TelemetryPoint>> telemetry;
+  int getDevicesCallCount = 0;
 
   @override
-  Future<List<Device>> getDevices() async => devices;
+  Future<List<Device>> getDevices() async {
+    final index = getDevicesCallCount < _deviceSnapshots.length
+        ? getDevicesCallCount
+        : _deviceSnapshots.length - 1;
+    getDevicesCallCount += 1;
+    return _deviceSnapshots[index];
+  }
 
   @override
   Future<DeviceShadow> getShadow(String deviceId) async {

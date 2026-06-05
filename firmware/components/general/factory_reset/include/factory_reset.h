@@ -11,7 +11,7 @@
  *   LED → red static (ERROR)
  *   wifi_sta_deinit()  — clean WiFi shutdown
  *   mqtt_stop()        — destroy MQTT client
- *   erase default NVS partition
+ *   erase default NVS partition while preserving calibration NVS partition
  *   esp_restart()
  *
  * After reboot the device enters BLE provisioning mode.
@@ -27,9 +27,9 @@
 /**
  * @brief Run the shared full factory reset sequence.
  *
- * Stops Wi-Fi and MQTT, erases the default NVS partition, and reboots on
- * success. The same routine is used by both the physical reset button and
- * boot-time recovery paths.
+ * Stops Wi-Fi and MQTT, erases the default NVS partition, preserves
+ * sensor-owned gas calibration, and reboots on success. The same routine is
+ * used by both the physical reset button and boot-time recovery paths.
  *
  * @return ESP_OK if the reset was initiated successfully, or an ESP error.
  */

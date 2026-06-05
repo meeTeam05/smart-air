@@ -1,15 +1,11 @@
 import { createRealtimeEvent } from '../services/realtime-events.js';
-import { parsePositiveIntEnv } from '../utils/parse.js';
 import { registerNonOverlappingIntervalJob } from './scheduler.js';
-
-const DEFAULT_TIMEOUT_SECONDS = 60;
-const DEFAULT_PENDING_TIMEOUT_SECONDS = 1800; // 30 min
-const DEFAULT_SWEEP_INTERVAL_MS = 30_000;
+import { config } from '../config.js';
 
 export function registerCommandTimeoutJob(fastify, options = {}) {
-    const timeoutSeconds = options.timeoutSeconds ?? parsePositiveIntEnv('COMMAND_SENT_TIMEOUT_SECONDS', DEFAULT_TIMEOUT_SECONDS);
-    const pendingTimeoutSeconds = options.pendingTimeoutSeconds ?? parsePositiveIntEnv('COMMAND_PENDING_TIMEOUT_SECONDS', DEFAULT_PENDING_TIMEOUT_SECONDS);
-    const sweepIntervalMs = options.sweepIntervalMs ?? parsePositiveIntEnv('COMMAND_TIMEOUT_SWEEP_INTERVAL_MS', DEFAULT_SWEEP_INTERVAL_MS);
+    const timeoutSeconds = options.timeoutSeconds ?? config.commands.sentTimeoutSeconds;
+    const pendingTimeoutSeconds = options.pendingTimeoutSeconds ?? config.commands.pendingTimeoutSeconds;
+    const sweepIntervalMs = options.sweepIntervalMs ?? config.commands.timeoutSweepIntervalMs;
 
     const runSweep = async () => {
         let client;

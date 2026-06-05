@@ -234,14 +234,9 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
                         device.firmwareVer ?? 'Unknown',
                         style: AtmosphereTextStyles.mono(c.ink),
                       ),
-                      trailing: TextButton(
-                        onPressed: () =>
-                            context.push('/devices/${widget.deviceId}/ota'),
-                        child: Text(
-                          'Check update',
-                          style: AtmosphereTextStyles.body(c.brand),
-                        ),
-                      ),
+                      trailing: Icon(AppIcons.chev, color: c.ink3),
+                      onTap: () =>
+                          context.push('/devices/${widget.deviceId}/ota'),
                     ),
                   ],
                 ),
@@ -264,7 +259,7 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
                         style: AtmosphereTextStyles.body(c.ink),
                       ),
                       subtitle: Text(
-                        'Last calibrated 14d ago',
+                        'Calibration recommended',
                         style: AtmosphereTextStyles.caption(c.ink3),
                       ),
                       trailing: Icon(AppIcons.chev, color: c.ink3),
@@ -273,18 +268,9 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
                     ),
                     Divider(height: 1, color: c.line),
                     ListTile(
-                      title: Row(
-                        children: [
-                          Text(
-                            'NO₂ sensor',
-                            style: AtmosphereTextStyles.body(c.ink),
-                          ),
-                          const SizedBox(width: AtmosphereTokens.space8),
-                          const AtmospherePill(
-                            label: 'Never calibrated',
-                            tone: PillTone.warn,
-                          ),
-                        ],
+                      title: Text(
+                        'NO₂ sensor',
+                        style: AtmosphereTextStyles.body(c.ink),
                       ),
                       subtitle: Text(
                         'Calibration recommended',

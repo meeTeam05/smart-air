@@ -12,9 +12,9 @@ Boundary server của `smart-air` là control plane trung tâm cho toàn hệ th
 - bridge MQTT giữa thiết bị và lớp dữ liệu ứng dụng
 - canonical persistence cho user, home, device, command, shadow, telemetry, realtime event, notification event
 - app-facing realtime dưới dạng authenticated SSE
-- dashboards và các bề mặt operator nội bộ
+- các bề mặt operator nội bộ
 
-Server không phải chỉ là một REST API đơn lẻ. Nó là tập hợp của nhiều runtime services có wiring cố định trong `server/docker-compose.yml`, trong đó `server/api/` là business backend còn Nginx, EMQX, PostgreSQL/TimescaleDB, Redis, Grafana, và Cloudflare Tunnel là các service hạ tầng đi kèm.
+Server không phải chỉ là một REST API đơn lẻ. Nó là tập hợp của nhiều runtime services có wiring cố định trong `server/docker-compose.yml`, trong đó `server/api/` là business backend còn Nginx, EMQX, PostgreSQL/TimescaleDB, Redis, và Cloudflare Tunnel là các service hạ tầng đi kèm.
 
 ## 2. Topology tổng quát
 
@@ -25,7 +25,6 @@ Internet
        -> /api/*          -> Fastify API
        -> /api/realtime   -> Fastify SSE stream
        -> /mqtt           -> EMQX WebSocket listener
-       -> /grafana/       -> Grafana
        -> /ota/           -> static OTA binaries
 
 Fastify API
@@ -53,13 +52,11 @@ flowchart LR
         EMQX["EMQX"]
         DB["PostgreSQL / TimescaleDB"]
         Redis["Redis"]
-        Grafana["Grafana"]
         OTA["server/ota-files"]
     end
 
     Nginx -->|/api + /api/realtime| API
     Nginx -->|/mqtt| EMQX
-    Nginx -->|/grafana| Grafana
     Nginx -->|/ota| OTA
 
     API -->|SQL| DB
@@ -79,7 +76,6 @@ flowchart LR
 | `emqx` | MQTT broker | giữ built-in auth/ACL database và dashboard local |
 | `postgres` | PostgreSQL + TimescaleDB | canonical store cho dữ liệu ứng dụng và telemetry |
 | `redis` | cache + coordination | không phải source of truth |
-| `grafana` | dashboard telemetry | được publish dưới `/grafana/` qua Nginx |
 | `pgadmin` | admin DB UI | profile `admin`, chỉ bind localhost |
 | `portainer` | admin Docker UI | profile `admin`, chỉ bind localhost |
 
@@ -93,7 +89,6 @@ Các core service cùng nằm trên Docker bridge network `sa-net`. API gọi EM
 - `/api/*` reverse-proxy sang Fastify
 - `/api/realtime` giữ SSE connection dài hạn, tắt buffering
 - `/mqtt` proxy WebSocket sang EMQX `8083`
-- `/grafana/` proxy sang Grafana
 - `/ota/` phục vụ file firmware từ `server/ota-files`
 
 Bề mặt operator chỉ bind local host:
@@ -153,9 +148,7 @@ Redis là transient layer, không phải canonical store. Các trách nhiệm đ
 
 Nếu Redis read/write lỗi, code luôn fallback về DB hoặc tiếp tục flow chính. Điều này giữ PostgreSQL là source of truth.
 
-### 3.5 Grafana và surfaces phụ trợ
-
-Grafana là dashboard runtime cho telemetry và được publish qua `/grafana/`. Nó không tham gia control flow của app/device.
+### 3.5 Surfaces phụ trợ
 
 `pgadmin` và `portainer` chỉ là admin surfaces, tách bằng Docker profile `admin` và bind localhost để không trở thành một phần của public runtime path.
 

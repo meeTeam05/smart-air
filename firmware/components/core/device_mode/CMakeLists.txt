@@ -5,6 +5,7 @@ idf_component_register(
         "include"
     PRIV_REQUIRES
         config
+        display_service
         json
         nvs_flash
         relay

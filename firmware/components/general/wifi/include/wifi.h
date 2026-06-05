@@ -39,6 +39,25 @@ esp_err_t wifi_sta_connect(const char *ssid, const char *password, uint32_t time
 bool wifi_sta_is_connected(void);
 
 /**
+ * @brief Copy the current connected SSID into buf.
+ *
+ * @param buf Buffer to store the SSID string.
+ * @param len Length of the buffer.
+ *
+ * @return ESP_OK when connected and SSID is available, or an error code otherwise.
+ */
+esp_err_t wifi_sta_get_ssid(char *buf, size_t len);
+
+/**
+ * @brief Read the current RSSI from the connected access point.
+ *
+ * @param rssi_dbm Output RSSI in dBm.
+ *
+ * @return ESP_OK when connected and RSSI is available, or an error code otherwise.
+ */
+esp_err_t wifi_sta_get_rssi(int *rssi_dbm);
+
+/**
  * @brief Copy the current IP address string into buf.
  * 
  * @param buf Buffer to store the IP address string

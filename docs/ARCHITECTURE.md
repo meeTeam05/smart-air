@@ -121,7 +121,7 @@ Public ingress hiện tại đi theo đường:
 Internet
   -> Cloudflare Tunnel
   -> Nginx
-  -> /api, /api/realtime, /mqtt, /grafana, /ota
+  -> /api, /api/realtime, /mqtt, /ota
 ```
 
 Các public path chính:
@@ -129,7 +129,6 @@ Các public path chính:
 - `/api/*` -> Fastify API
 - `/api/realtime` -> SSE stream từ Fastify
 - `/mqtt` -> MQTT over WebSocket proxy vào EMQX `8083`
-- `/grafana/` -> Grafana qua Nginx
 - `/ota/` -> firmware artifact từ `server/ota-files`
 
 Expose host trực tiếp hiện bị giới hạn:
@@ -150,7 +149,6 @@ Expose host trực tiếp hiện bị giới hạn:
 - `api`: Fastify application
 - `postgres`: TimescaleDB / PostgreSQL
 - `redis`: cache và transient coordination
-- `grafana`: dashboard
 - `cloudflared`: public ingress tunnel
 
 Service tùy chọn theo profile `admin`:
@@ -362,7 +360,7 @@ Các subsystem nghiệp vụ chính của firmware hiện phân chia như sau:
 - `relay`: quản lý ba relay thật trên GPIO, persist state, chỉ cho đổi khi device mode đang `on`.
 - `sensor_task`: publish telemetry và shadow/report theo chu kỳ `CONFIG_SA_SENSOR_POLLING_INTERVAL`.
 - `ota`: nhận trigger từ `device/{id}/ota/update`, tải artifact qua HTTPS, verify SHA-256, publish progress, reboot, rồi commit image sau boot thành công.
-- `factory_reset`: xóa default NVS partition và đưa thiết bị về provisioning state.
+- `factory_reset`: xóa default NVS partition và đưa thiết bị về provisioning state; gas calibration R0 nằm trong NVS partition `calib` nên vẫn thuộc sensor vật lý sau reset.
 
 Telemetry contract từ firmware hiện dùng các field:
 

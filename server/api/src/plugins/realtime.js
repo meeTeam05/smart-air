@@ -9,13 +9,7 @@ import {
     parseLastEventId,
     userCanReplayFromEventId,
 } from '../services/realtime-events.js';
-import { parsePositiveIntEnv } from '../utils/parse.js';
-
-const DEFAULT_HEARTBEAT_MS = 25_000;
-const DEFAULT_MAX_CLIENTS = 1_000;
-const DEFAULT_MAX_CLIENTS_PER_IP = 10;
-const DEFAULT_RECONNECT_DELAY_MS = 1_000;
-const MAX_RECONNECT_DELAY_MS = 30_000;
+import { config } from '../config.js';
 
 function eventIsNewer(eventId, lastSentEventId) {
     return BigInt(eventId) > BigInt(lastSentEventId || '0');
@@ -38,12 +32,12 @@ export async function sendRealtimeEventToClient(fastify, client, event) {
 
 async function realtimePlugin(fastify) {
     const clients = new Set();
-    const heartbeatMs = parsePositiveIntEnv('REALTIME_HEARTBEAT_MS', DEFAULT_HEARTBEAT_MS);
-    const maxClients = parsePositiveIntEnv('REALTIME_MAX_CLIENTS', DEFAULT_MAX_CLIENTS);
-    const maxClientsPerIp = parsePositiveIntEnv('REALTIME_MAX_CLIENTS_PER_IP', DEFAULT_MAX_CLIENTS_PER_IP);
-    const replayLimit = parsePositiveIntEnv('REALTIME_REPLAY_LIMIT', 1000);
+    const heartbeatMs = config.realtime.heartbeatMs;
+    const maxClients = config.realtime.maxClients;
+    const maxClientsPerIp = config.realtime.maxClientsPerIp;
+    const replayLimit = config.realtime.replayLimit;
     let listener = null;
-    let reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS;
+    let reconnectDelayMs = config.realtime.reconnectInitialDelayMs;
     let reconnectTimer = null;
     let closing = false;
     fastify.decorate('realtimeReadyAt', null);
@@ -169,7 +163,7 @@ async function realtimePlugin(fastify) {
         if (closing || reconnectTimer) return;
 
         const delayMs = reconnectDelayMs;
-        reconnectDelayMs = Math.min(MAX_RECONNECT_DELAY_MS, delayMs * 2);
+        reconnectDelayMs = Math.min(config.realtime.reconnectMaxDelayMs, delayMs * 2);
         reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
             connectListener().catch((err) => {
@@ -212,7 +206,7 @@ async function realtimePlugin(fastify) {
         }
 
         listener = currentListener;
-        reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS;
+        reconnectDelayMs = config.realtime.reconnectInitialDelayMs;
         fastify.realtimeReadyAt = Date.now();
     }
 

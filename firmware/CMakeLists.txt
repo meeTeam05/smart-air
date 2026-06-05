@@ -4,6 +4,7 @@ set(IDF_TARGET esp32s3)
 
 set(EXTRA_COMPONENT_DIRS
     components/config
+    components/core/display_service
     components/core/device_mode
     components/core/sensor_task
     components/core/sysload

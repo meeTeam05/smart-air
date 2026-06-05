@@ -1,10 +1,7 @@
-import { parsePositiveIntEnv } from '../utils/parse.js';
 import { registerNonOverlappingIntervalJob } from './scheduler.js';
+import { config } from '../config.js';
 
-const DEFAULT_RETENTION_HOURS = 24;
-const DEFAULT_SWEEP_INTERVAL_MS = 3_600_000;
-
-export async function runRealtimeEventRetention(fastify, retentionHours = DEFAULT_RETENTION_HOURS) {
+export async function runRealtimeEventRetention(fastify, retentionHours = config.realtime.eventRetentionHours) {
     try {
         const result = await fastify.db.query(
             `DELETE FROM realtime_events
@@ -24,9 +21,9 @@ export async function runRealtimeEventRetention(fastify, retentionHours = DEFAUL
 
 export function registerRealtimeEventRetentionJob(fastify, options = {}) {
     const retentionHours = options.retentionHours
-        ?? parsePositiveIntEnv('REALTIME_EVENT_RETENTION_HOURS', DEFAULT_RETENTION_HOURS);
+        ?? config.realtime.eventRetentionHours;
     const sweepIntervalMs = options.sweepIntervalMs
-        ?? parsePositiveIntEnv('REALTIME_EVENT_RETENTION_SWEEP_INTERVAL_MS', DEFAULT_SWEEP_INTERVAL_MS);
+        ?? config.realtime.eventRetentionSweepIntervalMs;
 
     registerNonOverlappingIntervalJob(fastify, {
         intervalMs: sweepIntervalMs,

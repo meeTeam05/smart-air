@@ -1,14 +1,7 @@
-import { parsePositiveIntEnv } from '../utils/parse.js';
-
-const EMQX_API_URL = process.env.EMQX_API_URL || 'http://emqx:18083';
-const DEFAULT_EMQX_API_TIMEOUT_MS = 5_000;
-
-const EMQX_API_TIMEOUT_MS = parsePositiveIntEnv('EMQX_API_TIMEOUT_MS', DEFAULT_EMQX_API_TIMEOUT_MS);
+import { config } from '../config.js';
 
 function authHeader() {
-    const key = process.env.EMQX_API_KEY || '';
-    const secret = process.env.EMQX_API_SECRET || '';
-    return 'Basic ' + Buffer.from(`${key}:${secret}`).toString('base64');
+    return 'Basic ' + Buffer.from(`${config.emqx.apiKey}:${config.emqx.apiSecret}`).toString('base64');
 }
 
 function buildHeaders(requestId) {
@@ -23,10 +16,10 @@ function buildHeaders(requestId) {
 }
 
 async function emqxFetch(path, method, body, options = {}) {
-    const timeout = AbortSignal.timeout(EMQX_API_TIMEOUT_MS);
+    const timeout = AbortSignal.timeout(config.emqx.apiTimeoutMs);
     let res;
     try {
-        res = await fetch(`${EMQX_API_URL}${path}`, {
+        res = await fetch(`${config.emqx.apiUrl}${path}`, {
             method,
             headers: buildHeaders(options.requestId),
             body: body ? JSON.stringify(body) : undefined,
@@ -34,7 +27,7 @@ async function emqxFetch(path, method, body, options = {}) {
         });
     } catch (err) {
         if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
-            throw new Error(`EMQX API ${method} ${path} timed out after ${EMQX_API_TIMEOUT_MS}ms`, { cause: err });
+            throw new Error(`EMQX API ${method} ${path} timed out after ${config.emqx.apiTimeoutMs}ms`, { cause: err });
         }
         throw err;
     }
@@ -110,12 +103,13 @@ function bridgeRules() {
         { topic: 'device/+/ota/progress', action: 'subscribe', permission: 'allow' },
         { topic: 'device/+/command', action: 'publish', permission: 'allow' },
         { topic: 'device/+/shadow/get_response', action: 'publish', permission: 'allow' },
+        { topic: 'device/+/ota/update', action: 'publish', permission: 'allow' },
     ];
 }
 
 export async function ensureBridgeUser() {
-    const username = process.env.EMQX_MQTT_USER || 'sa-server';
-    const password = process.env.EMQX_MQTT_PASSWORD || '';
+    const username = config.emqx.mqttUser;
+    const password = config.emqx.mqttPassword;
     if (!password) throw new Error('EMQX_MQTT_PASSWORD is required to provision bridge user');
     const userRes = await createAuthUser(username, password);
     if (userRes.status === 409) {

@@ -14,6 +14,13 @@ firmware/managed_components/
 hardware/**/fp-info-cache
 hardware/**/*.kicad_prl
 hardware/**/*-backups/
+hardware/**/*.kicad_sch-bak
+hardware/**/*.kicad_pcb-bak
+hardware/**/~*.lck
+hardware/**/_autosave-*
+hardware/**/#auto_saved_files#
+hardware/**/*.tmp
+hardware/**/.history/
 
 # Codex local runtime files
 .codex/log/
@@ -57,10 +64,13 @@ server/api/node_modules/
 *.db
 .beads-credential-key
 
+# Claude
+.claude/
+CLAUDE.md
+
 # Others
 scripts/ddns-cloudflare.sh
+.understand-anything/
 .sisyphus/
 .beads/
 .mnhat/
-.claude/
-CLAUDE.md

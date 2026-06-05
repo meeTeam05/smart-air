@@ -34,9 +34,10 @@ static volatile bool s_factory_reset_in_progress = false;
 #define KEY_SECRET_KEY "secret_key" /* 10 chars */
 #define KEY_BROKER_URI "broker_uri" /* 10 chars */
 
-/* Gas sensor R0 NVS keys (namespace NS_DEVICE) */
-#define KEY_R0_CO  "r0_co"
-#define KEY_R0_NO2 "r0_no2"
+/* Gas sensor R0 NVS keys (partition SA_NVS_CALIB_PARTITION, namespace NS_GAS_CALIB) */
+#define NS_GAS_CALIB "gas_calib"
+#define KEY_R0_CO    "r0_co"
+#define KEY_R0_NO2   "r0_no2"
 
 static bool is_mac_format(const char *input);
 static bool copy_lowercase_mac(const char *input, char *out, size_t out_len);
@@ -159,10 +160,7 @@ void config_factory_reset_end(void)
     }
 }
 
-esp_err_t config_get_mqtt_creds(char *broker_uri_buf,
-                                size_t broker_uri_len,
-                                char *secret_key_buf,
-                                size_t secret_key_len)
+esp_err_t config_get_mqtt_creds(char *broker_uri_buf, size_t broker_uri_len, char *secret_key_buf, size_t secret_key_len)
 {
     esp_err_t guard_err = config_nvs_read_begin();
     if (guard_err != ESP_OK) {
@@ -227,12 +225,10 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
 {
     char actual_device_id[18] = {0};
     char normalized_device_id[18] = {0};
-    if (!is_mac_format(device_id)
-        || !copy_lowercase_mac(device_id, normalized_device_id, sizeof(normalized_device_id))
-        || copy_device_mac(actual_device_id, sizeof(actual_device_id)) != ESP_OK
-        || strcmp(normalized_device_id, actual_device_id) != 0
-        || secret_key == NULL
-        || secret_key[0] == '\0') {
+    if (!is_mac_format(device_id) ||
+        !copy_lowercase_mac(device_id, normalized_device_id, sizeof(normalized_device_id)) ||
+        copy_device_mac(actual_device_id, sizeof(actual_device_id)) != ESP_OK ||
+        strcmp(normalized_device_id, actual_device_id) != 0 || secret_key == NULL || secret_key[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
     if (!is_supported_broker_uri(broker_uri)) {
@@ -374,13 +370,17 @@ esp_err_t config_load_gas_r0(const char *sensor_name, float *r0, bool *calibrate
     }
 
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NS_DEVICE, NVS_READONLY, &h);
+    esp_err_t err = nvs_open_from_partition(SA_NVS_CALIB_PARTITION, NS_GAS_CALIB, NVS_READONLY, &h);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         config_nvs_read_end();
         return ESP_OK; /* namespace not yet created — not calibrated */
     }
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "load_gas_r0(%s): nvs_open failed: %s", sensor_name, esp_err_to_name(err));
+        ESP_LOGE(TAG,
+                 "load_gas_r0(%s): nvs_open_from_partition(%s) failed: %s",
+                 sensor_name,
+                 SA_NVS_CALIB_PARTITION,
+                 esp_err_to_name(err));
         config_nvs_read_end();
         return err;
     }
@@ -413,9 +413,13 @@ esp_err_t config_save_gas_r0(const char *sensor_name, float r0)
     }
 
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NS_DEVICE, NVS_READWRITE, &h);
+    esp_err_t err = nvs_open_from_partition(SA_NVS_CALIB_PARTITION, NS_GAS_CALIB, NVS_READWRITE, &h);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "save_gas_r0(%s): nvs_open failed: %s", sensor_name, esp_err_to_name(err));
+        ESP_LOGE(TAG,
+                 "save_gas_r0(%s): nvs_open_from_partition(%s) failed: %s",
+                 sensor_name,
+                 SA_NVS_CALIB_PARTITION,
+                 esp_err_to_name(err));
         config_nvs_write_end();
         return err;
     }

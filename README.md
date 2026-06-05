@@ -22,56 +22,57 @@ The device uses BLE for Wi-Fi provisioning, then publishes telemetry and shadow 
 - Realtime app updates over SSE, with REST kept as the canonical path for snapshots, history, replay, and fallback.
 - Flutter app with Riverpod state management, auth flow, provisioning flow, device dashboards, and telemetry/history views.
 
-## Prerequisites
+## Hardware
 
-- Flutter `>=3.10.0`
-- Dart SDK `>=3.0.0 <4.0.0`
-- Node.js `20` for the API image and local Node-based tooling
-- Docker Engine with `docker compose` support for the server stack
-- ESP-IDF `v5.4.2`
-- Hardware:
-  - ESP32-S3 board
-  - SHT3x temperature/humidity sensor
-  - DS3231 RTC
-  - ILI9225 display on `SPI2_HOST`
-  - SD card on `SPI3_HOST`
-  - CO and NO2 analog sensors on `ADC1`
-  - Android or iOS phone with BLE for provisioning
+### Schematic
 
-## Quick start
+![Schematic](assets/hardware/schematic.jpg)
 
-1. Start server stack.
+### PCB Layout
 
-```bash
-cd server
-cp .env.example .env
-# fill in required secrets, passwords, and tunnel token in server/.env
-docker compose up -d --build
-```
+<p align="center">
+  <img src="assets/hardware/pcb-f.jpg" alt="PCB Front" width="48%">
+  <img src="assets/hardware/pcb-b.jpg" alt="PCB Back" width="48%">
+</p>
 
-2. Run mobile app.
+### 3D Model
 
-```bash
-cd app
-flutter pub get
-flutter run
-```
+<p align="center">
+  <img src="assets/hardware/3d-f.jpg" alt="PCB Front" width="48%">
+  <img src="assets/hardware/3d-b.jpg" alt="PCB Back" width="48%">
+</p>
 
-If you are not using the default public endpoint, pass a custom API URL:
+### Assembly
 
-```bash
-flutter run --dart-define=API_BASE_URL=https://<your-host>/api
-```
+<p align="center">
+  <img src="assets/hardware/real-a.jpg" alt="Assembly View A" width="31%">
+  <img src="assets/hardware/real-b.jpg" alt="Assembly View B" width="31%">
+  <img src="assets/hardware/real-c.jpg" alt="Assembly View C" width="31%">
+</p>
 
-3. Build and flash firmware.
+## Firmware
 
-```bash
-cd firmware
-. $HOME/.espressif/v5.4.2/esp-idf/export.sh
-idf.py build flash monitor
-```
+### Config and build
 
-4. Open the app, complete BLE Wi-Fi provisioning, register the device, and wait for live updates through `/api/realtime`.
+<p align="center">
+  <img src="assets/firmware/config.gif" alt="PCB Front" width="48%">
+  <img src="assets/firmware/build.gif" alt="PCB Back" width="48%">
+</p>
+
+### Runtime
+
+![Runtime](assets/firmware/run-time.gif)
+
+## App
+
+### Demo
+
+<p align="center">
+  <img src="assets/app/app-1.gif" alt="App Demo 1" width="23%">
+  <img src="assets/app/app-2.gif" alt="App Demo 2" width="23%">
+  <img src="assets/app/app-3.gif" alt="App Demo 3" width="23%">
+  <img src="assets/app/app-4.gif" alt="App Demo 4" width="23%">
+</p>
 
 ## Contributing
 

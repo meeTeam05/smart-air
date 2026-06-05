@@ -215,6 +215,90 @@ void main() {
     expect(find.text('0.30'), findsOneWidget);
   });
 
+  testWidgets('online presence renders without relative time', (
+    WidgetTester tester,
+  ) async {
+    final fakeService = _FakeDeviceService(
+      devices: [
+        Device(
+          id: 'device-1',
+          name: 'Living Room',
+          homeId: 'home-1',
+          online: true,
+          lastSeen: DateTime(2026, 5, 12, 8),
+        ),
+      ],
+      shadows: const {
+        'device-1': DeviceShadow(
+          reported: {'mode': 'on'},
+        ),
+      },
+      telemetry: const {
+        'device-1': [],
+      },
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceServiceProvider.overrideWithValue(fakeService),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
+        ],
+        child: const MaterialApp(
+          home: DeviceDashboardScreen(deviceId: 'device-1'),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('● Online'), findsOneWidget);
+    expect(find.textContaining('● Online ·'), findsNothing);
+  });
+
+  testWidgets('offline presence renders relative time instead of standby', (
+    WidgetTester tester,
+  ) async {
+    final fakeService = _FakeDeviceService(
+      devices: [
+        Device(
+          id: 'device-1',
+          name: 'Living Room',
+          homeId: 'home-1',
+          online: false,
+          lastSeen: DateTime.now().subtract(const Duration(minutes: 5)),
+        ),
+      ],
+      shadows: const {
+        'device-1': DeviceShadow(
+          reported: {'mode': 'off'},
+        ),
+      },
+      telemetry: const {
+        'device-1': [],
+      },
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceServiceProvider.overrideWithValue(fakeService),
+          realtimeEventsProvider.overrideWith((ref) => const Stream.empty()),
+        ],
+        child: const MaterialApp(
+          home: DeviceDashboardScreen(deviceId: 'device-1'),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('● Offline ·'), findsOneWidget);
+    expect(find.textContaining('STANDBY'), findsNothing);
+  });
+
   testWidgets('settings action opens device settings directly', (
     WidgetTester tester,
   ) async {

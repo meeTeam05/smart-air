@@ -74,13 +74,88 @@ void main() {
     expect(live.single.relay1, isTrue);
     expect(live.single.relay2, isFalse);
   });
+
+  test('devicesProvider refetches device summaries after replay.reset',
+      () async {
+    final events = StreamController<RealtimeEvent>.broadcast();
+    final fakeService = _FakeDeviceService(
+      deviceSnapshots: [
+        const [
+          Device(
+            id: 'device-1',
+            name: 'Living Room',
+            homeId: 'home-1',
+            online: true,
+          ),
+        ],
+        [
+          Device(
+            id: 'device-1',
+            name: 'Living Room',
+            homeId: 'home-1',
+            online: false,
+            lastSeen: DateTime(2026, 5, 15, 8, 30),
+          ),
+        ],
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        deviceServiceProvider.overrideWithValue(fakeService),
+        realtimeEventsProvider.overrideWith((ref) => events.stream),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await events.close();
+    });
+
+    final subscription = container.listen(
+      devicesProvider,
+      (_, __) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+
+    final initial = await container.read(devicesProvider.future);
+    expect(initial.single.online, isTrue);
+    expect(fakeService.getDevicesCallCount, 1);
+
+    events.add(
+      RealtimeEvent(
+        id: 'reset-1',
+        type: 'replay.reset',
+        deviceId: '',
+        occurredAt: DateTime(2026, 5, 15, 8, 31),
+        payload: const {'reason': 'replay_unavailable'},
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    final refreshed = container.read(devicesProvider).value!;
+    expect(fakeService.getDevicesCallCount, 2);
+    expect(refreshed.single.online, isFalse);
+    expect(refreshed.single.lastSeen, DateTime(2026, 5, 15, 8, 30));
+  });
 }
 
 class _FakeDeviceService extends DeviceService {
-  _FakeDeviceService({required this.devices}) : super(Dio());
+  _FakeDeviceService({
+    List<Device> devices = const [],
+    List<List<Device>>? deviceSnapshots,
+  })  : _deviceSnapshots = deviceSnapshots ?? [devices],
+        super(Dio());
 
-  final List<Device> devices;
+  final List<List<Device>> _deviceSnapshots;
+  int getDevicesCallCount = 0;
 
   @override
-  Future<List<Device>> getDevices() async => devices;
+  Future<List<Device>> getDevices() async {
+    final index = getDevicesCallCount < _deviceSnapshots.length
+        ? getDevicesCallCount
+        : _deviceSnapshots.length - 1;
+    getDevicesCallCount += 1;
+    return _deviceSnapshots[index];
+  }
 }

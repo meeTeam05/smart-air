@@ -4,6 +4,7 @@ idf_component_register(
     INCLUDE_DIRS 
         "include"
     REQUIRES 
+        display_service
         driver 
         freertos 
         log 

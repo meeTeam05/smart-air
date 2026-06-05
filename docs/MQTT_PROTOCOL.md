@@ -50,7 +50,7 @@ Direction:
 | `device/{deviceId}/ota/progress` | `device -> broker` | 1 | `false` | firmware -> bridge | OTA progress snapshot |
 | `device/{deviceId}/command` | `broker -> device` | 1 | `false` | API bridge -> firmware | imperative command |
 | `device/{deviceId}/shadow/get_response` | `broker -> device` | 1 | `false` | API bridge -> firmware | desired + delta |
-| `device/{deviceId}/ota/update` | `broker -> device` | 1 | `false` | manual broker/admin publish -> firmware | OTA trigger |
+| `device/{deviceId}/ota/update` | `broker -> device` | 1 | `false` | server/api OTA route or manual admin publish -> firmware | OTA trigger |
 
 ACL device hiện tại cho phép đúng 9 topic ở trên, scoped theo device của chính nó.
 
@@ -389,8 +389,10 @@ Behavior:
 Behavior:
 
 - Command được enqueue vào calibration worker queue.
-- Worker publish ack sau khi calibration + config persist hoàn tất.
+- Worker lấy baseline R0 trong khoảng 3 phút, bỏ outlier, reject nếu mẫu không ổn định, rồi publish ack sau khi persist hoàn tất.
 - Nếu queue đầy hoặc không khởi tạo, command kết thúc bằng `error`.
+- Nếu không có khí chuẩn / thiết bị tham chiếu, R0 calibration chỉ hỗ trợ đo tương đối, xu hướng, và cảnh báo; không biến `co_ppm` / `no2_ppm` thành phép đo chuẩn tuyệt đối.
+- Gas calibration thuộc sensor vật lý và được lưu trong NVS partition `calib`, nên physical factory reset không xóa `r0_co` / `r0_no2`; người dùng có thể chạy lại `calibrate_*` từ app để overwrite baseline.
 
 ### 4.2 `device/{id}/shadow/get_response`
 
@@ -437,8 +439,7 @@ Firmware apply rules:
 
 ### 4.3 `device/{id}/ota/update`
 
-OTA trigger hiện không do API bridge publish; bridge ACL cũng không có quyền publish topic này.
-Flow hiện tại là manual broker/admin publish, ví dụ qua EMQX dashboard.
+OTA trigger hiện có thể do API bridge publish khi app gọi `POST /api/devices/:id/ota`; manual broker/admin publish vẫn là fallback operator path.
 
 Minimum payload firmware chấp nhận:
 
@@ -452,6 +453,9 @@ Minimum payload firmware chấp nhận:
 Constraints:
 
 - `url` và `sha256` phải là string.
+- `sha256` phải cùng loại digest mà firmware verify:
+  - với ESP-IDF app image có `hash_appended=1`, giá trị này là `app image digest` được append trong image, không phải `sha256sum` của cả file `.bin`
+  - nếu artifact không có appended hash thì mới fallback sang SHA-256 của toàn bộ file
 - `url` phải bắt đầu bằng `https://`.
 - Firmware drop inbound OTA payload nếu > `512` bytes.
 - `url` phải fit buffer OTA nội bộ `256` bytes cả null terminator.

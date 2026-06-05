@@ -201,9 +201,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
         .map((p) => p.no2Ppm!)
         .toList());
 
-    final statusText = device?.online == true
-        ? '● ONLINE · ${_relativeTime(device!.lastSeen ?? DateTime.now())}'
-        : '● STANDBY · ${_relativeTime(device?.lastSeen ?? DateTime.now())}';
+    final statusText = _presenceText(device);
 
     return BackNavigationScope(
       fallbackRoute: '/home',
@@ -783,6 +781,13 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+
+  String _presenceText(Device? device) {
+    if (device?.online == true) return '● Online';
+    final lastSeen = device?.lastSeen;
+    if (lastSeen == null) return '● Offline';
+    return '● Offline · ${_relativeTime(lastSeen)}';
   }
 
   String? _blockingErrorMessage({
