@@ -54,6 +54,15 @@ The device uses BLE for Wi-Fi provisioning, then publishes telemetry and shadow 
 
 ### Config and build
 
+<p align="center">
+  <img src="assets/firmware/config.gif" alt="PCB Front" width="48%">
+  <img src="assets/firmware/build.gif" alt="PCB Back" width="48%">
+</p>
+
+### Runtime
+
+![Runtime](assets/firmware/run-time.gif)
+
 ## Contributing
 
 - Read [AGENTS.md](AGENTS.md) before making changes.
