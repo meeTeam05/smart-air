@@ -10,17 +10,16 @@
 
 ## Introduction
 
-`smart-air` is an ESP32-S3 indoor air quality monitor and smart home controller. It combines ESP-IDF firmware, a Fastify + EMQX + PostgreSQL/TimescaleDB server stack, and a Flutter mobile app to solve device onboarding, telemetry ingestion, remote control, and live state sync in one system.
+`smart-air` is an ESP32-S3 indoor air quality monitor and smart home controller. It combines ESP-IDF firmware, a Fastify + EMQX + TimescaleDB server stack, and a Flutter mobile app to solve device onboarding, telemetry ingestion, remote control, and live state sync in one system.
 
-The device uses BLE for Wi-Fi provisioning, then publishes telemetry and shadow updates over MQTT. The app uses REST for snapshots, history, commands, and provisioning steps, and receives live updates from the API over Server-Sent Events at `GET /api/realtime`.
+Devices ship with BLE-based Wi-Fi provisioning and finish setup through a local HTTPS config server, then publish telemetry and shadow updates over MQTT (TLS/WSS). The app uses REST as the canonical API for auth, snapshots, history, commands, shadow, multi-home, and OTA, and receives live updates over Server-Sent Events at `GET /api/realtime`. Public traffic is terminated at Cloudflare Tunnel and proxied by Nginx to the broker, API, and OTA artifacts.
 
 ## Features
 
-- ESP32-S3 firmware on ESP-IDF with BLE provisioning, Wi-Fi, MQTT, OTA hooks, sensor polling, display control, LGVL and relay control.
-- Fastify API with PostgreSQL/TimescaleDB, Redis, and EMQX in Docker Compose.
-- Device registration flow that provisions per-device MQTT credentials through the API.
-- Realtime app updates over SSE, with REST kept as the canonical path for snapshots, history, replay, and fallback.
-- Flutter app with Riverpod state management, auth flow, provisioning flow, device dashboards, and telemetry/history views.
+- **Firmware** (ESP-IDF v5.4.2): BLE provisioning, Wi-Fi, MQTT over TLS/WSS, HTTPS OTA with rollback/validation, SHT3x (temperature/humidity), GM702B (CO) and GM102B (NO₂) gas sensors, DS3231 RTC with SNTP sync, LVGL on ILI9225 display, 3 relay channels (Fan/Lamp/Filter) with NVS persistence, WS2812 status LED, buzzer, and factory-reset button.
+- **Server**: Fastify API with PostgreSQL/TimescaleDB, Redis, and EMQX in Docker Compose; Nginx + Cloudflare Tunnel for public ingress; per-device MQTT credentials provisioned through the API; OTA artifact hosting.
+- **Realtime**: Live device status, shadow, telemetry, OTA progress, and command updates over Server-Sent Events; REST remains canonical for snapshots, history, replay, and command authorization.
+- **App** (Flutter + Riverpod): JWT auth with refresh-token rotation in secure storage, 5-step BLE provisioning, multi-home/room management with member invites, device dashboard with relay and device-mode controls, real-time sparkline charts, command history, sensor calibration wizard, OTA screen, in-app notifications, and adaptive light/dark theme.
 
 ## Hardware
 
