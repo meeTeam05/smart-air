@@ -56,6 +56,7 @@
 
 /** Sensor polling interval (in seconds) */
 #define SA_SENSOR_POLLING_INTERVAL CONFIG_SA_SENSOR_POLLING_INTERVAL * 1000 /* convert to ms */
+#define SA_TIMEZONE                CONFIG_SA_TIMEZONE
 
 /** I2C configuration */
 #define SA_I2C_SDA_PIN    CONFIG_SA_I2C_SDA_PIN

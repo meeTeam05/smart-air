@@ -155,13 +155,13 @@ static void sync_system_clock(uint32_t ts, const char *reason)
 
 static void configure_local_timezone(void)
 {
-    if (setenv("TZ", CONFIG_SA_TIMEZONE, 1) != 0) {
+    if (setenv("TZ", SA_TIMEZONE, 1) != 0) {
         ESP_LOGW(TAG, "setenv(TZ) failed (errno=%d)", errno);
         return;
     }
 
     tzset();
-    ESP_LOGI(TAG, "Local timezone configured: %s", CONFIG_SA_TIMEZONE);
+    ESP_LOGI(TAG, "Local timezone configured: %s", SA_TIMEZONE);
 }
 
 static void ensure_system_clock_seeded(bool rtc_ready)
