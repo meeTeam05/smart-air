@@ -75,7 +75,6 @@ Devices ship with BLE-based Wi-Fi provisioning and finish setup through a local 
 
 ## Contributing
 
-- Read [AGENTS.md](AGENTS.md) before making changes.
 - For structural work, also read `docs/ARCHITECTURE.md`, `docs/MQTT_PROTOCOL.md`, and `docs/API_REFERENCE.md`.
 - Keep changes narrow, update matching docs when contracts change, and run the narrowest verification for the area you touched.
 
