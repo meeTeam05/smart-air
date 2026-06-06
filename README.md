@@ -6,13 +6,13 @@
 ![Node.js 20](https://img.shields.io/badge/Node.js-20-339933)
 ![License MIT](https://img.shields.io/badge/License-MIT-22C55E)
 
+> `smart-air` is an ESP32-S3 indoor air quality monitor and smart home controller. It combines ESP-IDF firmware, a Fastify + EMQX + TimescaleDB server stack, and a Flutter mobile app to solve device onboarding, telemetry ingestion, remote control, and live state sync in one system.
+
 ![Smart-Air](assets/hero.png)
 
 ## Introduction
 
-`smart-air` is an ESP32-S3 indoor air quality monitor and smart home controller. It combines ESP-IDF firmware, a Fastify + EMQX + TimescaleDB server stack, and a Flutter mobile app to solve device onboarding, telemetry ingestion, remote control, and live state sync in one system.
-
-Devices ship with BLE-based Wi-Fi provisioning and finish setup through a local HTTPS config server, then publish telemetry and shadow updates over MQTT (TLS/WSS). The app uses REST as the canonical API for auth, snapshots, history, commands, shadow, multi-home, and OTA, and receives live updates over Server-Sent Events at `GET /api/realtime`. Public traffic is terminated at Cloudflare Tunnel and proxied by Nginx to the broker, API, and OTA artifacts.
+Devices provision over BLE, publish telemetry/shadow over MQTT, and serve the app through a Cloudflare-fronted Fastify API. See **Features** below for the full breakdown. See the **Hardware** section for the board, sensors, and enclosure.
 
 ## Features
 
