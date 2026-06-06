@@ -64,13 +64,16 @@ server/api/node_modules/
 *.db
 .beads-credential-key
 
-# Claude
+# AI assistant files
+.agents/
 .claude/
+.codex/
+.sisyphus/
 CLAUDE.md
+AGENTS.md
 
 # Others
 scripts/ddns-cloudflare.sh
 .understand-anything/
-.sisyphus/
 .beads/
 .mnhat/
