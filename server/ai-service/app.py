@@ -29,29 +29,46 @@ app = FastAPI()
 
 model = joblib.load("smart_air_model_v3.pkl")
 
-# Baseline riêng cho từng device
 baselines = {}
-
-# Lưu timestamp cuối cùng đã xử lý theo từng device
 last_ts_by_device = {}
+
+_baselines_lock = threading.Lock()
+_state_lock = threading.Lock()
+_api_token: str | None = None
+_token_lock = threading.Lock()
+
+
+def get_token() -> str:
+    global _api_token
+    with _token_lock:
+        if _api_token is None:
+            _api_token = login()
+        return _api_token
+
+
+def clear_token():
+    global _api_token
+    with _token_lock:
+        _api_token = None
 
 
 def get_baseline(device_id):
-    if device_id in baselines:
-        return baselines[device_id]
+    with _baselines_lock:
+        if device_id in baselines:
+            return baselines[device_id]
 
     bm = BaselineManager(calibration_size=30)
-
     saved = load_baseline_from_db(device_id)
-
     if saved:
         bm.long_base = saved.copy()
         bm.short_base = saved.copy()
         bm.is_calibrated = True
         print(f"[{device_id}] Loaded baseline from DB: {saved}", flush=True)
 
-    baselines[device_id] = bm
-    return bm
+    with _baselines_lock:
+        if device_id not in baselines:
+            baselines[device_id] = bm
+        return baselines[device_id]
 
 
 def login():
@@ -86,7 +103,7 @@ def get_latest_telemetry(token, device_id):
     res.raise_for_status()
     data = res.json()
 
-    if not data:
+    if not isinstance(data, list) or not data:
         return None
 
     return data[0]
@@ -110,12 +127,15 @@ def run_prediction(device_id, sensor):
         if key not in sensor or sensor[key] is None:
             return {"error": f"missing field: {key}"}
 
-    clean_sensor = {
-        "temperature": float(sensor["temperature"]),
-        "humidity": float(sensor["humidity"]),
-        "co_ppm": float(sensor["co_ppm"]),
-        "no2_ppm": float(sensor["no2_ppm"]),
-    }
+    try:
+        clean_sensor = {
+            "temperature": float(sensor["temperature"]),
+            "humidity": float(sensor["humidity"]),
+            "co_ppm": float(sensor["co_ppm"]),
+            "no2_ppm": float(sensor["no2_ppm"]),
+        }
+    except (TypeError, ValueError) as e:
+        return {"error": f"invalid sensor value: {e}"}
 
     baseline = get_baseline(device_id)
 
@@ -137,7 +157,10 @@ def run_prediction(device_id, sensor):
     X = pd.DataFrame([features], columns=FEATURE_COLS)
 
     class_id = int(model.predict(X)[0])
-    result = decode_class(class_id)
+    try:
+        result = decode_class(class_id)
+    except (KeyError, ValueError):
+        return {"error": f"model predicted unknown class: {class_id}"}
 
     baseline.update_baseline(clean_sensor, class_id)
     save_baseline_to_db(device_id, baseline.long_base)
@@ -167,31 +190,32 @@ def apply_control(token, device_id, ai_result):
 
     class_id = ai_result.get("class_id", 0)
 
-    if class_id != 0:
-        warning_count_by_device[device_id] = \
-            warning_count_by_device.get(device_id, 0) + 1
-    else:
-        warning_count_by_device[device_id] = 0
+    with _state_lock:
+        if class_id != 0:
+            warning_count_by_device[device_id] = warning_count_by_device.get(device_id, 0) + 1
+        else:
+            warning_count_by_device[device_id] = 0
+        current_count = warning_count_by_device[device_id]
 
-    if class_id != 0 and \
-    warning_count_by_device[device_id] < CONFIRM_REQUIRED:
-
+    if class_id != 0 and current_count < CONFIRM_REQUIRED:
         print(
             f"[{device_id}] Warning detected but waiting confirm "
-            f"{warning_count_by_device[device_id]}/{CONFIRM_REQUIRED}",
+            f"{current_count}/{CONFIRM_REQUIRED}",
             flush=True
         )
         return
 
-    if last_control_by_device.get(device_id) == desired:
-        print(f"[{device_id}] Control unchanged, skip", flush=True)
-        return
-
-    last_control_by_device[device_id] = desired
+    with _state_lock:
+        if last_control_by_device.get(device_id) == desired:
+            print(f"[{device_id}] Control unchanged, skip", flush=True)
+            return
 
     r1 = set_relay(token, device_id, 1, desired["fan"])
     r2 = set_relay(token, device_id, 2, desired["light"])
     r3 = set_relay(token, device_id, 3, desired["buzzer"])
+
+    with _state_lock:
+        last_control_by_device[device_id] = desired
 
     print(f"[{device_id}] Control sent:", r1, r2, r3, flush=True)
 
@@ -269,14 +293,9 @@ def save_baseline_to_db(device_id, baseline_values):
     except Exception as e:
         print(f"[{device_id}] Save baseline DB error: {e}", flush=True)
 def telemetry_loop():
-    token = None
-
     while True:
         try:
-            if token is None:
-                token = login()
-                print("AI telemetry loop login OK", flush=True)
-
+            token = get_token()
             devices = get_devices(token)
 
             if not devices:
@@ -311,7 +330,7 @@ def telemetry_loop():
 
         except requests.exceptions.HTTPError as e:
             print("HTTP error:", e, flush=True)
-            token = None
+            clear_token()
 
         except Exception as e:
             print("Loop error:", e, flush=True)
@@ -338,8 +357,11 @@ def predict(sensor: dict):
 
     if "device_id" in sensor:
         try:
-            token = login()
+            token = get_token()
             apply_control(token, device_id, ai_result)
+        except requests.exceptions.HTTPError:
+            clear_token()
+            ai_result["control_error"] = "relay control failed (auth error)"
         except Exception as e:
             ai_result["control_error"] = str(e)
 

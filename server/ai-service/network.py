@@ -41,20 +41,7 @@ def build_random_forest():
 
 
 def decode_class(class_id):
-    return CLASS_MAPPING[int(class_id)]
-
-
-def make_feature_vector(
-    temperature, humidity, co_ppm, no2_ppm,
-    temp_base, hum_base, co_base, no2_base
-):
-    delta_temp = temperature - temp_base
-    delta_hum = humidity - hum_base
-    delta_co = co_ppm - co_base
-    delta_no2 = no2_ppm - no2_base
-
-    return [
-        temperature, humidity, co_ppm, no2_ppm,
-        temp_base, hum_base, co_base, no2_base,
-        delta_temp, delta_hum, delta_co, delta_no2,
-    ]
+    result = CLASS_MAPPING.get(int(class_id))
+    if result is None:
+        raise ValueError(f"unknown class_id: {class_id}")
+    return result
