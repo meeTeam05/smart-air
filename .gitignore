@@ -68,7 +68,7 @@ server/api/node_modules/
 .agents/
 .codex/
 .claude/
-AGENT.md
+AGENTS.md
 CLAUDE.md
 
 # Others
