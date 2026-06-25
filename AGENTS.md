@@ -172,7 +172,7 @@ npm run dev
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **smart-air** (3490 symbols, 5479 relationships, 196 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **smart-air-cps** (3543 symbols, 5590 relationships, 194 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -195,10 +195,10 @@ This project is indexed by GitNexus as **smart-air** (3490 symbols, 5479 relatio
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/smart-air/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/smart-air/clusters` | All functional areas |
-| `gitnexus://repo/smart-air/processes` | All execution flows |
-| `gitnexus://repo/smart-air/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/smart-air-cps/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/smart-air-cps/clusters` | All functional areas |
+| `gitnexus://repo/smart-air-cps/processes` | All execution flows |
+| `gitnexus://repo/smart-air-cps/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 
