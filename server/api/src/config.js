@@ -18,6 +18,11 @@ function env(name, fallback = '') {
     return typeof value === 'string' && value.trim() !== '' ? value : fallback;
 }
 
+function envOptional(name) {
+    const value = process.env[name];
+    return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
 function intEnv(name, fallback) {
     const value = Number.parseInt(process.env[name] || '', 10);
     return Number.isInteger(value) && value > 0 ? value : fallback;
@@ -96,6 +101,10 @@ export const config = Object.freeze({
         get provisionRetryMs() { return intEnv('MQTT_PROVISION_RETRY_MS', 5_000); },
         get reconnectPeriodMs() { return 2_000; },
         get connectTimeoutMs() { return 30_000; },
+    }),
+    ai: Object.freeze({
+        get mqttUser() { return envOptional('MQTT_USERNAME') ?? 'sa-ai'; },
+        get mqttPassword() { return envOptional('MQTT_PASSWORD'); },
     }),
     ota: Object.freeze({
         get filesDir() { return env('OTA_FILES_DIR', path.resolve(__dirname, '../../ota-files')); },
