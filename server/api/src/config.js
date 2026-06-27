@@ -112,8 +112,12 @@ export const config = Object.freeze({
     }),
     commands: Object.freeze({
         get sentTimeoutSeconds() { return intEnv('COMMAND_SENT_TIMEOUT_SECONDS', 420); },
-        get pendingTimeoutSeconds() { return intEnv('COMMAND_PENDING_TIMEOUT_SECONDS', 1_800); },
+        get pendingTimeoutSeconds() { return intEnv('COMMAND_PENDING_TIMEOUT_SECONDS', 90); },
         get timeoutSweepIntervalMs() { return intEnv('COMMAND_TIMEOUT_SWEEP_INTERVAL_MS', 30_000); },
+    }),
+    devices: Object.freeze({
+        get staleThresholdSeconds() { return intEnv('STALE_DEVICE_THRESHOLD_SECONDS', 180); },
+        get staleSweepIntervalMs()  { return intEnv('STALE_DEVICE_SWEEP_INTERVAL_MS', 120_000); },
     }),
     realtime: Object.freeze({
         get replayLimit() { return intEnv('REALTIME_REPLAY_LIMIT', 1_000); },
