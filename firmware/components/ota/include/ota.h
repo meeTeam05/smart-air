@@ -1,7 +1,8 @@
 /**
  * @file ota.h
  *
- * @brief HTTPS OTA firmware update — MQTT-triggered, progress reporting, rollback.
+ * @brief HTTPS OTA firmware update — MQTT-triggered, progress reporting,
+ *        local display status, rollback.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -26,10 +27,8 @@ esp_err_t ota_task_start(const char *device_id);
 /**
  * @brief Trigger an OTA download asynchronously.
  *
-
- *
  * @param url     HTTPS URL to the firmware binary.
- * @param sha256  Expected SHA-256 hex string of the binary (informational for now).
+ * @param sha256  Expected SHA-256 hex string of the binary.
  * 
  * @return ESP_OK if queued, ESP_ERR_INVALID_ARG if URL is not https://.
  * 

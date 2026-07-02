@@ -17,6 +17,7 @@
 #include "ota.h"
 
 #include "config.h"
+#include "display_service.h"
 #include "esp_crt_bundle.h"
 #include "esp_https_ota.h"
 #include "esp_log.h"
@@ -46,6 +47,17 @@ static char s_progress_topic[96]; /* device/{id}/ota/progress */
 static bool s_ota_started = false;
 
 /* ── Internal helpers ────────────────────────────────────────────────────── */
+
+static void report_ota_state(uint8_t percent, display_ota_stage_t stage, display_ota_error_t error)
+{
+    display_ota_state_t state = {
+        .active = true,
+        .percent = percent,
+        .stage = stage,
+        .error = error,
+    };
+    display_service_set_ota_state(&state);
+}
 
 static void publish_progress(int pct, const char *status)
 {
@@ -94,6 +106,7 @@ static void ota_task_fn(void *arg)
         xQueueReceive(s_ota_queue, &msg, portMAX_DELAY);
 
         ESP_LOGI(TAG, "OTA triggered: %s", msg.url);
+        report_ota_state(0, DISPLAY_OTA_STAGE_STARTING, DISPLAY_OTA_ERROR_NONE);
         publish_progress(0, "starting");
 
         /* Configure HTTPS OTA */
@@ -110,6 +123,7 @@ static void ota_task_fn(void *arg)
         esp_err_t err = esp_https_ota_begin(&ota_cfg, &ota_handle);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_https_ota_begin failed (%s)", esp_err_to_name(err));
+            report_ota_state(0, DISPLAY_OTA_STAGE_FAILED, DISPLAY_OTA_ERROR_GENERIC);
             publish_progress(0, "failed");
             continue;
         }
@@ -128,6 +142,7 @@ static void ota_task_fn(void *arg)
                 int pct = (read * 100) / total;
                 int bucket = (pct / 10) * 10;
                 if (bucket != last_bucket) {
+                    report_ota_state((uint8_t)bucket, DISPLAY_OTA_STAGE_DOWNLOADING, DISPLAY_OTA_ERROR_NONE);
                     publish_progress(bucket, NULL);
                     last_bucket = bucket;
                 }
@@ -137,9 +152,12 @@ static void ota_task_fn(void *arg)
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_https_ota_perform failed (%s)", esp_err_to_name(err));
             esp_https_ota_abort(ota_handle);
+            report_ota_state(0, DISPLAY_OTA_STAGE_FAILED, DISPLAY_OTA_ERROR_GENERIC);
             publish_progress(0, "failed");
             continue;
         }
+
+        report_ota_state(100, DISPLAY_OTA_STAGE_VERIFYING, DISPLAY_OTA_ERROR_NONE);
 
         /* Validate SHA256 BEFORE finish() — finish() changes the boot pointer,
          * so a mismatch detected after finish() would leave boot targeting a bad image.
@@ -150,6 +168,7 @@ static void ota_task_fn(void *arg)
             if (target == NULL || esp_partition_get_sha256(target, digest) != ESP_OK) {
                 ESP_LOGE(TAG, "SHA256 read failed — rejecting OTA image");
                 esp_https_ota_abort(ota_handle);
+                report_ota_state(100, DISPLAY_OTA_STAGE_FAILED, DISPLAY_OTA_ERROR_GENERIC);
                 publish_progress(0, "failed");
                 continue;
             }
@@ -158,12 +177,14 @@ static void ota_task_fn(void *arg)
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "SHA256 hex formatting failed (%s)", esp_err_to_name(err));
                 esp_https_ota_abort(ota_handle);
+                report_ota_state(100, DISPLAY_OTA_STAGE_FAILED, DISPLAY_OTA_ERROR_GENERIC);
                 publish_progress(0, "failed");
                 continue;
             }
             if (strcasecmp(actual_hex, msg.sha256) != 0) {
                 ESP_LOGE(TAG, "SHA256 mismatch — expected %s, got %s", msg.sha256, actual_hex);
                 esp_https_ota_abort(ota_handle);
+                report_ota_state(100, DISPLAY_OTA_STAGE_FAILED, DISPLAY_OTA_ERROR_SHA256_MISMATCH);
                 publish_progress(0, "sha256_mismatch");
                 continue;
             }
@@ -173,11 +194,13 @@ static void ota_task_fn(void *arg)
         err = esp_https_ota_finish(ota_handle);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_https_ota_finish failed (%s)", esp_err_to_name(err));
+            report_ota_state(100, DISPLAY_OTA_STAGE_FAILED, DISPLAY_OTA_ERROR_GENERIC);
             publish_progress(0, "failed");
             continue;
         }
 
         ESP_LOGI(TAG, "OTA download complete — rebooting");
+        report_ota_state(100, DISPLAY_OTA_STAGE_REBOOTING, DISPLAY_OTA_ERROR_NONE);
         publish_progress(100, "rebooting");
 
         /* Small delay to let the MQTT message flush */
@@ -245,6 +268,7 @@ esp_err_t ota_trigger(const char *url, const char *sha256)
     /* Non-blocking: drop trigger if a download is already queued */
     if (xQueueSend(s_ota_queue, &msg, 0) != pdTRUE) {
         ESP_LOGW(TAG, "OTA trigger dropped — queue full (download already pending)");
+        report_ota_state(0, DISPLAY_OTA_STAGE_STARTING, DISPLAY_OTA_ERROR_BUSY);
         publish_progress(0, "busy");
         return ESP_FAIL;
     }

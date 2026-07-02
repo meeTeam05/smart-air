@@ -5,6 +5,7 @@ idf_component_register(
         "include"
     REQUIRES
         config
+        display_service
         esp_https_ota
         app_update
         freertos
