@@ -344,6 +344,12 @@ static void build_screen(void)
     lv_img_set_src(s_boot_logo, &LOGO);
     lv_obj_align(s_boot_logo, LV_ALIGN_CENTER, 0, -10);
 
+    lv_obj_t *boot_version = lv_label_create(s_boot_view);
+    lv_label_set_text_fmt(boot_version, "%s", FIRMWARE_VERSION);
+    style_text(boot_version, DISPLAY_FONT_XS, DISPLAY_COLOR_MUTED);
+    lv_obj_set_style_text_align(boot_version, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(boot_version, LV_ALIGN_CENTER, 0, 50);
+
     s_boot_status = lv_label_create(s_boot_view);
     lv_obj_set_width(s_boot_status, DISPLAY_TEXT_W);
     style_text(s_boot_status, DISPLAY_FONT_SM, DISPLAY_COLOR_MUTED);
