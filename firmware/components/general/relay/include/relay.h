@@ -58,3 +58,11 @@ esp_err_t relay_get_all(bool states[RELAY_CHANNEL_COUNT]);
  *         or the first error code encountered.
  */
 esp_err_t relay_force_all_off(void);
+
+/**
+ * @brief Force all relay channels to turn off without buzzer feedback.
+ *
+ * @return ESP_OK if all channels were successfully turned off,
+ *         or the first error code encountered.
+ */
+esp_err_t relay_force_all_off_silent(void);
