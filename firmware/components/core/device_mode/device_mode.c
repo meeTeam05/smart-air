@@ -8,6 +8,7 @@
 
 #include "device_mode.h"
 
+#include "buzzer.h"
 #include "config.h"
 #include "display_service.h"
 #include "esp_log.h"
@@ -28,6 +29,8 @@
 
 #define DEVICE_MODE_NVS_NAMESPACE "device"
 #define DEVICE_MODE_NVS_KEY       "mode"
+#define DEVICE_MODE_BEEP_MS       50
+#define DEVICE_MODE_BEEP_GAP_MS   80
 
 static const char *TAG = "device_mode";
 
@@ -35,6 +38,19 @@ static volatile bool s_mode_on = true;
 static char s_tel_topic[96] = {0};
 static char s_shadow_topic[96] = {0};
 static char s_device_id[64] = {0};
+
+static void device_mode_beep_toggle_pattern(void)
+{
+    static const buzzer_pattern_step_t pattern[] = {
+        {.enabled = true, .duration_ms = DEVICE_MODE_BEEP_MS},
+        {.enabled = false, .duration_ms = DEVICE_MODE_BEEP_GAP_MS},
+        {.enabled = true, .duration_ms = DEVICE_MODE_BEEP_MS},
+        {.enabled = false, .duration_ms = DEVICE_MODE_BEEP_GAP_MS},
+        {.enabled = true, .duration_ms = DEVICE_MODE_BEEP_MS},
+    };
+
+    buzzer_beep_pattern(pattern, sizeof(pattern) / sizeof(pattern[0]));
+}
 
 static esp_err_t publish_json_topic(const char *topic, cJSON *root)
 {
@@ -223,9 +239,9 @@ esp_err_t device_mode_init(const char *device_id)
 
 #if SA_ENABLE_RELAYS
     if (!persisted_mode_on) {
-        err = relay_force_all_off();
+        err = relay_force_all_off_silent();
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "relay_force_all_off failed during OFF-mode init: %s", esp_err_to_name(err));
+            ESP_LOGE(TAG, "relay_force_all_off_silent failed during OFF-mode init: %s", esp_err_to_name(err));
             return err;
         }
     }
@@ -250,20 +266,17 @@ esp_err_t device_mode_set(bool on)
             first_err = err;
         }
 
-        bool relays_forced_off = true;
 #if SA_ENABLE_RELAYS
-        err = relay_force_all_off();
-        if (err != ESP_OK && first_err == ESP_OK) {
-            first_err = err;
-            relays_forced_off = false;
+        err = relay_force_all_off_silent();
+        if (err != ESP_OK) {
+            return err;
         }
 #endif
 
-        if (relays_forced_off) {
-            s_mode_on = false;
-            sensor_task_set_enabled(false);
-            display_service_set_mode(false);
-        }
+        s_mode_on = false;
+        sensor_task_set_enabled(false);
+        display_service_set_mode(false);
+        device_mode_beep_toggle_pattern();
 
         err = publish_mode_off_shadow();
         if (err != ESP_OK && first_err == ESP_OK) {
@@ -281,6 +294,7 @@ esp_err_t device_mode_set(bool on)
     s_mode_on = true;
     sensor_task_set_enabled(true);
     display_service_set_mode(true);
+    device_mode_beep_toggle_pattern();
 
     err = persist_mode(true);
     if (err != ESP_OK && first_err == ESP_OK) {
