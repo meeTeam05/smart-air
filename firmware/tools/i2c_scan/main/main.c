@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief I2C bus scanner — probes all 7-bit addresses and logs which respond.
+ * @brief I2C bus scanner that probes all 7-bit addresses and logs responders.
  *
  * Build & flash:
  *   cd firmware/tools/i2c_scan
@@ -32,7 +32,7 @@ void app_main(void)
     i2c_master_bus_handle_t bus;
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
 
-    ESP_LOGI(TAG, "Scanning I2C bus — SDA: GPIO%d  SCL: GPIO%d", SDA_PIN, SCL_PIN);
+    ESP_LOGI(TAG, "Scanning I2C bus; SDA: GPIO%d  SCL: GPIO%d", SDA_PIN, SCL_PIN);
 
     /* Release any stuck SDA before probing */
     i2c_master_bus_reset(bus);
@@ -66,7 +66,7 @@ void app_main(void)
     }
 
     if (found == 0) {
-        ESP_LOGW(TAG, "No devices found — check wiring and pull-ups");
+        ESP_LOGW(TAG, "No devices found; check wiring and pull-ups");
     } else {
         ESP_LOGI(TAG, "Scan complete: %d device(s) found", found);
     }

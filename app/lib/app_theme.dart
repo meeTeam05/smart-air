@@ -1,4 +1,4 @@
-// app/lib/app_theme.dart (modified — DO NOT delete this file)
+// app/lib/app_theme.dart (modified - do not delete this file)
 export 'design/tokens.dart';
 export 'design/palette.dart';
 export 'design/atmosphere_theme.dart';
@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'design/tokens.dart';
 import 'design/atmosphere_theme.dart';
 
-/// Brand colors — safe to reference directly per app.md CS-03.
+/// Brand colors safe to reference directly per app.md CS-03.
 /// Theme-adaptive colors (bg, surface, border, text*) MUST go through
 /// `context.colors` (see `design/palette.dart`).
 class AppColors {

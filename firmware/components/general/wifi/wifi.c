@@ -195,10 +195,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
 
         int attempt = wifi_reconnect_count_increment();
         if (attempt > 0) {
-            ESP_LOGW(TAG, "Disconnected — reconnect attempt %d/%d", attempt, WIFI_MAX_RECONNECT_ATTEMPTS);
+            ESP_LOGW(TAG, "Disconnected; reconnect attempt %d/%d", attempt, WIFI_MAX_RECONNECT_ATTEMPTS);
             esp_wifi_connect();
         } else {
-            ESP_LOGE(TAG, "Disconnected — max reconnect attempts reached, giving up");
+            ESP_LOGE(TAG, "Disconnected; max reconnect attempts reached, giving up");
             xEventGroupSetBits(wifi_eg, WIFI_FAIL_BIT);
         }
 

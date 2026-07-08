@@ -8,7 +8,9 @@ sealed class AppException implements Exception {
 
 /// No connectivity or request timed out.
 class NetworkException extends AppException {
-  const NetworkException([super.message = 'Network error — check your connection']);
+  const NetworkException([
+    super.message = 'Network error; check your connection',
+  ]);
 }
 
 /// API returned an error response (4xx / 5xx).
@@ -19,5 +21,5 @@ class ApiException extends AppException {
 
 /// 401 that could not be recovered by token refresh.
 class AuthException extends AppException {
-  const AuthException([super.message = 'Session expired — please log in again']);
+  const AuthException([super.message = 'Session expired; please log in again']);
 }

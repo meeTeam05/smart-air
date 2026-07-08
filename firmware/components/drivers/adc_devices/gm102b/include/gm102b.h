@@ -8,7 +8,7 @@
  * DFRobot SEN0574 breakout board. Heater circuit managed by board.
  * ESP32 reads analog output via ADC1 -> converts voltage to NO2 ppm.
  *
- * Detection range: 0.1–10 ppm NO2.
+ * Detection range: 0.1-10 ppm NO2.
  * Preheat required: ≥24h first use.
  */
 #pragma once

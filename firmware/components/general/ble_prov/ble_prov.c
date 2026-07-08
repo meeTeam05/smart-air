@@ -37,7 +37,7 @@ static const char *TAG = "ble_prov";
 #define PROV_DONE_BIT BIT0
 #define PROV_FAIL_BIT BIT1
 
-/* GATT 16-bit UUIDs (vendor range 0xFF00–0xFFFF) */
+/* GATT 16-bit UUIDs (vendor range 0xFF00-0xFFFF) */
 static const ble_uuid16_t PROV_SVC_UUID = BLE_UUID16_INIT(0xFFFE);
 static const ble_uuid16_t SSID_CHR_UUID = BLE_UUID16_INIT(0xFF01);
 static const ble_uuid16_t PASS_CHR_UUID = BLE_UUID16_INIT(0xFF02);
@@ -111,19 +111,19 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
         .characteristics =
             (struct ble_gatt_chr_def[]){
                 {
-                    /* 0xFF01 — SSID write */
+                    /* 0xFF01 - SSID write */
                     .uuid = &SSID_CHR_UUID.u,
                     .access_cb = prov_chr_access,
                     .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
                 },
                 {
-                    /* 0xFF02 — Password write */
+                    /* 0xFF02 - Password write */
                     .uuid = &PASS_CHR_UUID.u,
                     .access_cb = prov_chr_access,
                     .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
                 },
                 {
-                    /* 0xFF03 — Status notify */
+                    /* 0xFF03 - Status notify */
                     .uuid = &STAT_CHR_UUID.u,
                     .access_cb = prov_chr_access,
                     .flags = BLE_GATT_CHR_F_NOTIFY,
@@ -213,7 +213,7 @@ static void prov_task(void *arg)
     /* Block until GATT access_cb has both credentials */
     uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CONFIG_SA_PROV_TIMEOUT_MS));
     if (notified == 0) {
-        ESP_LOGW(TAG, "Provisioning timed out — no credentials received");
+        ESP_LOGW(TAG, "Provisioning timed out; no credentials received");
         EventGroupHandle_t prov_eg = prov_event_group_acquire();
         if (prov_eg != NULL) {
             xEventGroupSetBits(prov_eg, PROV_FAIL_BIT);
@@ -247,7 +247,7 @@ static void prov_task(void *arg)
             snprintf(json, sizeof(json), "{\"status\":\"fail\"}");
             ESP_LOGW(TAG, "Provisioning NVS save failed: %s", esp_err_to_name(save_err));
         } else {
-            ESP_LOGI(TAG, "Provisioning OK — IP: %s", ip);
+            ESP_LOGI(TAG, "Provisioning OK; IP: %s", ip);
         }
     } else {
         snprintf(json, sizeof(json), "{\"status\":\"fail\"}");
@@ -397,10 +397,10 @@ esp_err_t ble_prov_start(void)
     memset(s_ssid, 0, sizeof(s_ssid));
     memset(s_password, 0, sizeof(s_password));
 
-    /* Provisioning task — waits for credentials then connects WiFi */
+    /* Provisioning task waits for credentials, then connects WiFi. */
     BaseType_t rc = xTaskCreatePinnedToCore(prov_task, "ble_prov_t", 4096, NULL, 5, &s_prov_task_handle, APP_CPU_NUM);
     if (rc != pdPASS) {
-        ESP_LOGE(TAG, "prov_task create failed — insufficient heap");
+        ESP_LOGE(TAG, "prov_task create failed; insufficient heap");
         cleanup_start_failure();
         return ESP_ERR_NO_MEM;
     }

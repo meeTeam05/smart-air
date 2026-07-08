@@ -29,5 +29,5 @@ chmod 644 "$CERT_DIR/server.crt"
 
 echo ""
 echo "Done:"
-echo "  certs/server.crt — dev-only cert for local testing"
-echo "  certs/server.key — keep secret, never commit"
+echo "  certs/server.crt - dev-only cert for local testing"
+echo "  certs/server.key - keep secret, never commit"

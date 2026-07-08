@@ -1,7 +1,7 @@
 /**
  * @file sensor_task.c
  *
- * @brief Sensor polling task — SHT3x + DS3231 + GM-702B CO + GM-102B NO2.
+ * @brief Sensor polling task for SHT3x, DS3231, GM-702B CO, and GM-102B NO2.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -83,7 +83,7 @@ static bool publish_payload_now(const char *stream, const char *topic, const cha
     if (msg_id < 0) {
         (*counter)++;
         ESP_LOGW(TAG,
-                 "%s mqtt_publish failed (count=%lu) — MQTT not ready yet",
+                 "%s mqtt_publish failed (count=%lu); MQTT not ready yet",
                  stream,
                  (unsigned long)*counter);
         return false;
@@ -296,7 +296,7 @@ static void sensor_task_fn(void *arg)
         };
         display_service_set_sensor_snapshot(&display_snapshot);
 
-        /* Telemetry — always publish; null for unavailable sensor fields */
+        /* Telemetry: always publish null for unavailable sensor fields. */
         cJSON *root = cJSON_CreateObject();
         if (root != NULL) {
             cJSON_AddStringToObject(root, "device_id", ctx->device_id);
@@ -333,7 +333,7 @@ static void sensor_task_fn(void *arg)
             log_json_failure("telemetry", "allocation", &s_telemetry_json_failures);
         }
 
-        /* Shadow report — same shape as telemetry minus device_id */
+        /* Shadow report: same shape as telemetry without device_id. */
         cJSON *shadow = cJSON_CreateObject();
         if (shadow != NULL) {
             cJSON_AddStringToObject(shadow, "mode", "on");

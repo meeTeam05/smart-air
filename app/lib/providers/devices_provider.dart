@@ -59,13 +59,13 @@ List<TelemetryPoint> _normalizeTelemetryPoints(
 }
 
 String _telemetryIdentityKey(TelemetryPoint point) => [
-      point.ts.millisecondsSinceEpoch,
-      point.mode ?? '',
-      point.temperature,
-      point.humidity,
-      point.coPpm,
-      point.no2Ppm,
-    ].join('|');
+  point.ts.millisecondsSinceEpoch,
+  point.mode ?? '',
+  point.temperature,
+  point.humidity,
+  point.coPpm,
+  point.no2Ppm,
+].join('|');
 
 TelemetryPoint? _telemetryPointFromEvent(RealtimeEvent event) {
   final payload = event.payload;
@@ -82,8 +82,9 @@ TelemetryPoint? _telemetryPointFromEvent(RealtimeEvent event) {
   );
 }
 
-final devicesProvider =
-    AsyncNotifierProvider<DevicesNotifier, List<Device>>(DevicesNotifier.new);
+final devicesProvider = AsyncNotifierProvider<DevicesNotifier, List<Device>>(
+  DevicesNotifier.new,
+);
 
 class DevicesNotifier extends AsyncNotifier<List<Device>> {
   late DeviceService _service;
@@ -92,8 +93,10 @@ class DevicesNotifier extends AsyncNotifier<List<Device>> {
   @override
   Future<List<Device>> build() async {
     _service = ref.read(deviceServiceProvider);
-    ref.listen<AsyncValue<RealtimeEvent>>(realtimeEventsProvider,
-        (_, next) => next.whenData(_handleRealtimeEvent));
+    ref.listen<AsyncValue<RealtimeEvent>>(
+      realtimeEventsProvider,
+      (_, next) => next.whenData(_handleRealtimeEvent),
+    );
     return _service.getDevices();
   }
 
@@ -185,8 +188,10 @@ class ShadowNotifier
   @override
   Future<DeviceShadow> build(String deviceId) async {
     _service = ref.read(deviceServiceProvider);
-    ref.listen<AsyncValue<RealtimeEvent>>(realtimeEventsProvider,
-        (_, next) => next.whenData(_handleRealtimeEvent));
+    ref.listen<AsyncValue<RealtimeEvent>>(
+      realtimeEventsProvider,
+      (_, next) => next.whenData(_handleRealtimeEvent),
+    );
     return _service.getShadow(deviceId);
   }
 
@@ -199,18 +204,14 @@ class ShadowNotifier
     final patch = _asMap(event.payload['patch']);
     state = AsyncData(
       current.copyWith(
-        reported: {
-          ...current.reported,
-          ...patch,
-          ...reported,
-        },
+        reported: {...current.reported, ...patch, ...reported},
         updatedAt: event.occurredAt,
       ),
     );
   }
 
   Future<void> refresh() async {
-    // Do NOT set AsyncLoading — keeps previous data visible while fetching (no flicker).
+    // Do not set AsyncLoading; keep previous data visible while fetching.
     state = await AsyncValue.guard(() => _service.getShadow(arg));
   }
 }
@@ -225,8 +226,10 @@ class CommandsNotifier
   @override
   Future<List<Command>> build(String deviceId) async {
     _service = ref.read(deviceServiceProvider);
-    ref.listen<AsyncValue<RealtimeEvent>>(realtimeEventsProvider,
-        (_, next) => next.whenData(_handleRealtimeEvent));
+    ref.listen<AsyncValue<RealtimeEvent>>(
+      realtimeEventsProvider,
+      (_, next) => next.whenData(_handleRealtimeEvent),
+    );
     return _service.getCommands(deviceId);
   }
 
@@ -269,10 +272,12 @@ class CommandsNotifier
 
 final telemetryProvider = AsyncNotifierProvider.autoDispose
     .family<TelemetryNotifier, List<TelemetryPoint>, TelemetryParams>(
-        TelemetryNotifier.new);
+      TelemetryNotifier.new,
+    );
 
-class TelemetryNotifier extends AutoDisposeFamilyAsyncNotifier<
-    List<TelemetryPoint>, TelemetryParams> {
+class TelemetryNotifier
+    extends
+        AutoDisposeFamilyAsyncNotifier<List<TelemetryPoint>, TelemetryParams> {
   late DeviceService _service;
 
   @override
@@ -289,7 +294,8 @@ class TelemetryNotifier extends AutoDisposeFamilyAsyncNotifier<
 
 final telemetryLiveProvider = AsyncNotifierProvider.autoDispose
     .family<TelemetryLiveNotifier, TelemetrySeriesState, String>(
-        TelemetryLiveNotifier.new);
+      TelemetryLiveNotifier.new,
+    );
 
 class TelemetryLiveNotifier
     extends AutoDisposeFamilyAsyncNotifier<TelemetrySeriesState, String> {
@@ -301,8 +307,10 @@ class TelemetryLiveNotifier
     _disposed = false;
     ref.onDispose(() => _disposed = true);
     _service = ref.read(deviceServiceProvider);
-    ref.listen<AsyncValue<RealtimeEvent>>(realtimeEventsProvider,
-        (_, next) => next.whenData(_handleRealtimeEvent));
+    ref.listen<AsyncValue<RealtimeEvent>>(
+      realtimeEventsProvider,
+      (_, next) => next.whenData(_handleRealtimeEvent),
+    );
     ref.listen<RealtimeStatus>(
       realtimeConnectionStatusProvider,
       (_, next) => _setConnection(next),
@@ -329,8 +337,9 @@ class TelemetryLiveNotifier
     if (event.type == 'replay.reset') {
       final current = state.valueOrNull;
       if (current != null) {
-        state =
-            AsyncData(current.copyWith(connection: RealtimeStatus.degraded));
+        state = AsyncData(
+          current.copyWith(connection: RealtimeStatus.degraded),
+        );
       }
       unawaited(refreshSnapshot());
       return;
@@ -390,12 +399,7 @@ class TelemetryLiveNotifier
     } catch (err) {
       if (_disposed) return;
       if (current != null) {
-        state = AsyncData(
-          current.copyWith(
-            refreshing: false,
-            lastError: err,
-          ),
-        );
+        state = AsyncData(current.copyWith(refreshing: false, lastError: err));
         return;
       }
       rethrow;
@@ -443,13 +447,19 @@ class TelemetrySeriesState {
   }
 }
 
-final telemetryHistoryProvider = AsyncNotifierProvider.autoDispose.family<
-    TelemetryHistoryNotifier,
-    TelemetryHistoryState,
-    TelemetryHistoryParams>(TelemetryHistoryNotifier.new);
+final telemetryHistoryProvider = AsyncNotifierProvider.autoDispose
+    .family<
+      TelemetryHistoryNotifier,
+      TelemetryHistoryState,
+      TelemetryHistoryParams
+    >(TelemetryHistoryNotifier.new);
 
-class TelemetryHistoryNotifier extends AutoDisposeFamilyAsyncNotifier<
-    TelemetryHistoryState, TelemetryHistoryParams> {
+class TelemetryHistoryNotifier
+    extends
+        AutoDisposeFamilyAsyncNotifier<
+          TelemetryHistoryState,
+          TelemetryHistoryParams
+        > {
   late DeviceService _service;
   var _disposed = false;
 
@@ -543,35 +553,32 @@ enum TelemetryHistoryRange {
   d30;
 
   Duration get duration => switch (this) {
-        TelemetryHistoryRange.h1 => const Duration(hours: 1),
-        TelemetryHistoryRange.h6 => const Duration(hours: 6),
-        TelemetryHistoryRange.h24 => const Duration(hours: 24),
-        TelemetryHistoryRange.d7 => const Duration(days: 7),
-        TelemetryHistoryRange.d30 => const Duration(days: 30),
-      };
+    TelemetryHistoryRange.h1 => const Duration(hours: 1),
+    TelemetryHistoryRange.h6 => const Duration(hours: 6),
+    TelemetryHistoryRange.h24 => const Duration(hours: 24),
+    TelemetryHistoryRange.d7 => const Duration(days: 7),
+    TelemetryHistoryRange.d30 => const Duration(days: 30),
+  };
 
   String? get agg => switch (this) {
-        TelemetryHistoryRange.h1 => null,
-        TelemetryHistoryRange.h6 => '5m',
-        TelemetryHistoryRange.h24 => '15m',
-        TelemetryHistoryRange.d7 => '1h',
-        TelemetryHistoryRange.d30 => '6h',
-      };
+    TelemetryHistoryRange.h1 => null,
+    TelemetryHistoryRange.h6 => '5m',
+    TelemetryHistoryRange.h24 => '15m',
+    TelemetryHistoryRange.d7 => '1h',
+    TelemetryHistoryRange.d30 => '6h',
+  };
 
   double get xInterval => switch (this) {
-        TelemetryHistoryRange.h1 => 15 * 60 * 1000.0,
-        TelemetryHistoryRange.h6 => 60 * 60 * 1000.0,
-        TelemetryHistoryRange.h24 => 6 * 3600 * 1000.0,
-        TelemetryHistoryRange.d7 => 86400 * 1000.0,
-        TelemetryHistoryRange.d30 => 7 * 86400 * 1000.0,
-      };
+    TelemetryHistoryRange.h1 => 15 * 60 * 1000.0,
+    TelemetryHistoryRange.h6 => 60 * 60 * 1000.0,
+    TelemetryHistoryRange.h24 => 6 * 3600 * 1000.0,
+    TelemetryHistoryRange.d7 => 86400 * 1000.0,
+    TelemetryHistoryRange.d30 => 7 * 86400 * 1000.0,
+  };
 }
 
 class TelemetryHistoryParams {
-  const TelemetryHistoryParams({
-    required this.deviceId,
-    required this.range,
-  });
+  const TelemetryHistoryParams({required this.deviceId, required this.range});
 
   final String deviceId;
   final TelemetryHistoryRange range;
@@ -587,12 +594,7 @@ class TelemetryHistoryParams {
 }
 
 class TelemetryParams {
-  const TelemetryParams({
-    required this.deviceId,
-    this.from,
-    this.to,
-    this.agg,
-  });
+  const TelemetryParams({required this.deviceId, this.from, this.to, this.agg});
   final String deviceId;
   final DateTime? from;
   final DateTime? to;

@@ -5,8 +5,8 @@
  *
  * Architecture:
  *   - httpd_server_start() inits mDNS then starts the HTTP server.
- *   - GET /api/info — returns device_id, firmware version, current IP.
- *   - POST /api/config — stores first MQTT credential set from provisioning.
+ *   - GET /api/info returns device_id, firmware version, and current IP.
+ *   - POST /api/config stores the first MQTT credential set from provisioning.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -27,7 +27,7 @@ static const char *TAG = "httpd";
 #define MAX_CONFIG_BODY_LEN 512
 #define MAX_CONFIG_RECV_TIMEOUTS 3
 
-/* ── Handler context ─────────────────────────────────────────────────────── */
+/* Handler context */
 
 typedef struct {
     char device_id[64];
@@ -36,7 +36,7 @@ typedef struct {
 
 static httpd_ctx_t s_ctx;
 
-/* ── GET /api/info ───────────────────────────────────────────────────────── */
+/* GET /api/info */
 
 static esp_err_t info_get_handler(httpd_req_t *req)
 {
@@ -52,7 +52,7 @@ static esp_err_t info_get_handler(httpd_req_t *req)
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, resp);
-    ESP_LOGI(TAG, "GET /api/info → %s", resp);
+    ESP_LOGI(TAG, "GET /api/info -> %s", resp);
     return ESP_OK;
 }
 
@@ -72,7 +72,7 @@ static esp_err_t send_json_error(httpd_req_t *req, const char *status, const cha
     return httpd_resp_sendstr(req, resp);
 }
 
-/* ── POST /api/config ──────────────────────────────────────────────────────── */
+/* POST /api/config */
 
 static esp_err_t config_post_handler(httpd_req_t *req)
 {
@@ -177,7 +177,7 @@ static const httpd_uri_t uri_config = {
     .user_ctx = NULL,
 };
 
-/* ── Public API ──────────────────────────────────────────────────────────── */
+/* Public API */
 
 esp_err_t httpd_server_start(const char *device_id, const char *ip)
 {

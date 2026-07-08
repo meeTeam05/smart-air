@@ -33,7 +33,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final authState = ref.read(authProvider);
 
-      // While session is being restored — don't redirect (prevents /login flash)
+      // While session is being restored, do not redirect (prevents /login flash).
       if (authState.isLoading) return null;
 
       final loggedIn = authState.valueOrNull != null;
@@ -61,10 +61,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Home tab
           StatefulShellBranch(
             routes: [
-              GoRoute(
-                path: '/home',
-                builder: (_, __) => const HomeScreen(),
-              ),
+              GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
             ],
           ),
           // Notifications tab
@@ -91,7 +88,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Drill-down routes (outside shell, no bottom nav)
       GoRoute(path: '/homes', builder: (_, __) => const HomesScreen()),
       GoRoute(
-          path: '/homes/create', builder: (_, __) => const CreateHomeScreen()),
+        path: '/homes/create',
+        builder: (_, __) => const CreateHomeScreen(),
+      ),
       GoRoute(
         path: '/homes/:homeId',
         builder: (_, state) => HomeDetailScreen(
@@ -116,7 +115,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => Step3WifiScreen(
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
-          deviceId: state.uri.queryParameters['deviceId'] ??
+          deviceId:
+              state.uri.queryParameters['deviceId'] ??
               state.uri.queryParameters['mac'] ??
               '',
           ssid: state.uri.queryParameters['ssid'],
@@ -127,7 +127,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => Step4CloudScreen(
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
-          deviceId: state.uri.queryParameters['deviceId'] ??
+          deviceId:
+              state.uri.queryParameters['deviceId'] ??
               state.uri.queryParameters['mac'] ??
               '',
         ),
@@ -137,7 +138,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => Step5NameScreen(
           homeId: state.uri.queryParameters['homeId'] ?? '',
           mac: state.uri.queryParameters['mac'] ?? '',
-          deviceId: state.uri.queryParameters['deviceId'] ??
+          deviceId:
+              state.uri.queryParameters['deviceId'] ??
               state.uri.queryParameters['mac'] ??
               '',
         ),

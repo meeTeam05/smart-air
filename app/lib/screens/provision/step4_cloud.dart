@@ -188,8 +188,8 @@ class _Step4CloudScreenState extends ConsumerState<Step4CloudScreen> {
                   _error != null
                       ? 'Cloud check failed'
                       : _success
-                          ? 'Device connected'
-                          : 'Connecting to cloud…',
+                      ? 'Device connected'
+                      : 'Connecting to cloud...',
                   style: TextStyle(
                     color: c.ink,
                     fontSize: 18,
@@ -200,7 +200,7 @@ class _Step4CloudScreenState extends ConsumerState<Step4CloudScreen> {
                 Text(
                   _error != null
                       ? _error!
-                      : 'Elapsed ${_elapsedSeconds}s · checking every 2 seconds',
+                      : 'Elapsed ${_elapsedSeconds}s - checking every 2 seconds',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: c.ink2, fontSize: 13, height: 1.45),
                 ),
@@ -217,7 +217,7 @@ class _Step4CloudScreenState extends ConsumerState<Step4CloudScreen> {
           ),
         ],
       ),
-      primaryLabel: _error == null ? 'Waiting…' : 'Retry',
+      primaryLabel: _error == null ? 'Waiting...' : 'Retry',
       primaryEnabled: _error != null,
       onPrimary: _begin,
       secondaryLabel: 'Cancel',

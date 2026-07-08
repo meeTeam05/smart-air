@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration 001 — Initial schema
+-- Migration 001 - Initial schema
 -- smart-air: users, homes, devices, telemetry, commands, etc.
 -- Run against: sa-postgres (timescale/timescaledb:latest-pg16)
 -- ============================================================
@@ -7,9 +7,9 @@
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- USERS & AUTH
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 CREATE TABLE users (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -32,9 +32,9 @@ CREATE TABLE refresh_tokens (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- HOMES & ROOMS
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 CREATE TABLE homes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -59,9 +59,9 @@ CREATE TABLE rooms (
     icon            VARCHAR
 );
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- DEVICE TYPES
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 CREATE TABLE device_types (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -74,9 +74,9 @@ CREATE TABLE device_types (
     --                {"key":"humidity","type":"float","unit":"%"}]}
 );
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- DEVICES
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 CREATE TABLE devices (
     id              TEXT PRIMARY KEY,
@@ -92,9 +92,9 @@ CREATE TABLE devices (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- DEVICE SHADOW (Redis primary, PostgreSQL backup)
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 CREATE TABLE device_shadows (
     device_id       TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
@@ -104,23 +104,23 @@ CREATE TABLE device_shadows (
     -- delta = desired - reported (computed at query time, not stored)
 );
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- COMMANDS
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 CREATE TABLE commands (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     device_id       TEXT REFERENCES devices(id) ON DELETE CASCADE,
     user_id         UUID REFERENCES users(id),
     payload         JSONB NOT NULL,
-    status          VARCHAR DEFAULT 'pending', -- pending → sent → done | error | timeout
+    status          VARCHAR DEFAULT 'pending', -- pending -> sent -> done | error | timeout
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     executed_at     TIMESTAMPTZ
 );
 
--- ══════════════════════════════════════════════════════════════
--- TELEMETRY (TimescaleDB hypertable — partitioned by time)
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
+-- TELEMETRY (TimescaleDB hypertable - partitioned by time)
+-- ============================================================
 
 CREATE TABLE telemetry (
     device_id       TEXT NOT NULL,
@@ -135,9 +135,9 @@ SELECT create_hypertable('telemetry', 'ts', if_not_exists => TRUE);
 -- Auto-drop data older than 1 year
 SELECT add_retention_policy('telemetry', INTERVAL '1 year', if_not_exists => TRUE);
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- AUTOMATIONS
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 CREATE TABLE automations (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -155,9 +155,9 @@ CREATE TABLE automations (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- NOTIFICATIONS
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 CREATE TABLE notifications (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -178,9 +178,9 @@ CREATE TABLE fcm_tokens (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ══════════════════════════════════════════════════════════════
--- SEED DATA — device_types
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
+-- SEED DATA - device_types
+-- ============================================================
 
 INSERT INTO device_types (name, display_name, icon, spec) VALUES (
     'smart_air_v1',
@@ -198,9 +198,9 @@ INSERT INTO device_types (name, display_name, icon, spec) VALUES (
     }'
 );
 
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 -- INDEXES (performance for common queries)
--- ══════════════════════════════════════════════════════════════
+-- ============================================================
 
 -- Telemetry: query by device + time range (most common access pattern)
 CREATE INDEX ON telemetry (device_id, ts DESC);

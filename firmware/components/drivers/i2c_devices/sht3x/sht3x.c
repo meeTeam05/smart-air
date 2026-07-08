@@ -166,7 +166,7 @@ static inline bool is_measuring(sht3x_t *dev);
  */
 static esp_err_t get_raw_data_nolock(sht3x_t *dev, sht3x_raw_data_t raw_data);
 
-/* ── External functions ─────────────────────────────────────────────────── */
+/* External functions */
 
 /**
  * @brief Initialize SHT3x device descriptor
@@ -412,7 +412,7 @@ esp_err_t sht3x_get_results(sht3x_t *dev, float *temperature, float *humidity)
     return sht3x_compute_values(raw_data, temperature, humidity);
 }
 
-/* ── Private functions ──────────────────────────────────────────────────── */
+/* Private functions */
 
 static inline uint16_t shuffle(uint16_t val)
 {

@@ -138,9 +138,9 @@ void config_factory_reset_end(void);
 /**
  * @brief Read MQTT credentials from default NVS namespace "device".
  *
- * @param broker_uri_buf  Output buffer for broker URI — at least 128 bytes.
+ * @param broker_uri_buf  Output buffer for broker URI, at least 128 bytes.
  * @param broker_uri_len  Size of broker_uri_buf.
- * @param secret_key_buf  Output buffer for secret key — at least 64 bytes.
+ * @param secret_key_buf  Output buffer for secret key, at least 64 bytes.
  * @param secret_key_len  Size of secret_key_buf.
  *
  * @return ESP_OK on success, or an NVS error.
@@ -177,7 +177,7 @@ esp_err_t config_set_mqtt_config(const char *broker_uri, const char *device_id, 
 /**
  * @brief Load persisted gas sensor R0 baseline from the calibration NVS partition.
  *
- * @param sensor_name  "co" or "no2" — used as NVS key suffix.
+ * @param sensor_name  "co" or "no2", used as the NVS key suffix.
  * @param r0           Output: R0 value in ohm.
  * @param calibrated   Output: true if a persisted R0 was found.
  *

@@ -8,7 +8,7 @@ import '../services/ble_models.dart';
 import '../services/ble_service.dart';
 import 'provision/step3_wifi.dart';
 
-// ── Public result type ────────────────────────────────────────────────────────
+// Public result type
 
 /// Result returned to HomeScreen when a device is fully set up.
 class BleConnectResult {
@@ -22,7 +22,7 @@ class BleConnectResult {
   });
 }
 
-// ── Screen ────────────────────────────────────────────────────────────────────
+// Screen
 
 class BleDeviceScanScreen extends StatefulWidget {
   const BleDeviceScanScreen({super.key});
@@ -40,7 +40,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
   String _errorMessage = '';
   bool _isConnecting = false;
 
-  // Keep ordered — first device found is the "featured" one
+  // Keep devices ordered so the first match stays featured.
   final _orderedIds = <String>[];
   final _found = <String, BleDeviceInfo>{};
 
@@ -73,7 +73,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
     super.dispose();
   }
 
-  // ── Scan logic ──────────────────────────────────────────────────────────────
+  // Scan logic
 
   Future<void> _startScan() async {
     setState(() {
@@ -106,47 +106,49 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
         _isScanning = false;
         _hasError = true;
         _errorMessage =
-            'Bluetooth permission required.\nSettings → Apps → Smart Air → Permissions';
+            'Bluetooth permission required.\nSettings > Apps > Smart Air > Permissions';
       });
       return;
     }
 
-    _scanSub = _ble.scan(timeout: const Duration(seconds: 12)).listen(
-      (device) {
-        if (!mounted) return;
-        setState(() {
-          if (!_orderedIds.contains(device.remoteId)) {
-            _orderedIds.add(device.remoteId);
-            // Animate in the first device card
-            if (_orderedIds.length == 1) _fadeCtrl.forward();
-          }
-          _found[device.remoteId] = device;
-        });
-      },
-      onError: (e) {
-        if (!mounted) return;
-        setState(() {
-          _isScanning = false;
-          _hasError = true;
-          _errorMessage = e.toString();
-        });
-        _rippleCtrl.stop();
-      },
-      onDone: () {
-        if (!mounted) return;
-        setState(() => _isScanning = false);
-        _rippleCtrl.stop();
-      },
-    );
+    _scanSub = _ble
+        .scan(timeout: const Duration(seconds: 12))
+        .listen(
+          (device) {
+            if (!mounted) return;
+            setState(() {
+              if (!_orderedIds.contains(device.remoteId)) {
+                _orderedIds.add(device.remoteId);
+                // Animate in the first device card
+                if (_orderedIds.length == 1) _fadeCtrl.forward();
+              }
+              _found[device.remoteId] = device;
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() {
+              _isScanning = false;
+              _hasError = true;
+              _errorMessage = e.toString();
+            });
+            _rippleCtrl.stop();
+          },
+          onDone: () {
+            if (!mounted) return;
+            setState(() => _isScanning = false);
+            _rippleCtrl.stop();
+          },
+        );
   }
 
-  // ── Connect → immediately return to HomeScreen ─────────────────────────────
+  // Connect and return to HomeScreen
 
   Future<void> _connectDevice(BleDeviceInfo info) async {
     if (_isConnecting) return;
     setState(() => _isConnecting = true);
 
-    // BLE connect attempt — ok if it fails (firmware in provisioning mode).
+    // BLE connect attempt; it may fail if firmware is still in provisioning mode.
     SensorSnapshot? snap;
     try {
       snap = await _ble.connectAndRead(info);
@@ -154,7 +156,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
 
     if (!mounted) return;
 
-    // Device is in provisioning mode (no sensor service found) — collect WiFi creds.
+    // No sensor service means the device is still in provisioning mode.
     if (snap == null) {
       // Disconnect the failed connectAndRead attempt before the provisioning wizard reconnects.
       await _ble.disconnect();
@@ -169,19 +171,21 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
         ),
       );
       if (!mounted) return;
-      Navigator.of(context).pop(BleConnectResult(
-        device: info,
-        snapshot: null,
-        isProvisioned: provisioned == true,
-      ));
+      Navigator.of(context).pop(
+        BleConnectResult(
+          device: info,
+          snapshot: null,
+          isProvisioned: provisioned == true,
+        ),
+      );
       return;
     }
 
-    // Device already provisioned — return with sensor snapshot.
+    // Device is already provisioned; return the sensor snapshot.
     Navigator.of(context).pop(BleConnectResult(device: info, snapshot: snap));
   }
 
-  // ── Build ───────────────────────────────────────────────────────────────────
+  // Build
 
   @override
   Widget build(BuildContext context) {
@@ -204,8 +208,8 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
                   child: _hasError
                       ? _buildErrorBody(c)
                       : featured == null
-                          ? _buildScanningBody(c)
-                          : _buildFoundBody(c, featured, others),
+                      ? _buildScanningBody(c)
+                      : _buildFoundBody(c, featured, others),
                 ),
               ],
             ),
@@ -223,7 +227,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
     );
   }
 
-  // ── App bar ─────────────────────────────────────────────────────────────────
+  // App bar
 
   Widget _buildAppBar(AtmospherePalette c) {
     return Padding(
@@ -249,7 +253,9 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
               width: 20,
               height: 20,
               child: CircularProgressIndicator(
-                  strokeWidth: 2, color: AppColors.primary),
+                strokeWidth: 2,
+                color: AppColors.primary,
+              ),
             )
           else
             IconButton(
@@ -261,7 +267,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
     );
   }
 
-  // ── Scanning body ───────────────────────────────────────────────────────────
+  // Scanning body
 
   Widget _buildScanningBody(AtmospherePalette c) {
     return Center(
@@ -310,7 +316,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'Auto-detecting nearby devices…',
+            'Auto-detecting nearby devices...',
             style: TextStyle(fontSize: 13, color: c.textSecondary),
           ),
         ],
@@ -318,7 +324,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
     );
   }
 
-  // ── Found body ──────────────────────────────────────────────────────────────
+  // Found body
 
   Widget _buildFoundBody(
     AtmospherePalette c,
@@ -331,7 +337,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
         children: [
           const SizedBox(height: 16),
 
-          // ── Featured device card (tap to connect) ─────────────────────────
+          // Featured device card (tap to connect)
           FadeTransition(
             opacity: _fadeCtrl,
             child: Padding(
@@ -400,7 +406,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
             ),
           ),
 
-          // ── Other devices ─────────────────────────────────────────────────
+          // Other devices
           if (others.isNotEmpty) ...[
             const SizedBox(height: 28),
             Padding(
@@ -418,8 +424,10 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
             const SizedBox(height: 8),
             ...others.map(
               (d) => Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 child: _OtherDeviceTile(
                   device: d,
                   onTap: () => _connectDevice(d),
@@ -434,7 +442,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
     );
   }
 
-  // ── Error body ──────────────────────────────────────────────────────────────
+  // Error body
 
   Widget _buildErrorBody(AtmospherePalette c) {
     return Center(
@@ -443,14 +451,20 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.bluetooth_disabled,
-                size: 64, color: AtmosphereTokens.danger),
+            const Icon(
+              Icons.bluetooth_disabled,
+              size: 64,
+              color: AtmosphereTokens.danger,
+            ),
             const SizedBox(height: 16),
             Text(
               _errorMessage,
               textAlign: TextAlign.center,
-              style:
-                  TextStyle(fontSize: 13, color: c.textSecondary, height: 1.6),
+              style: TextStyle(
+                fontSize: 13,
+                color: c.textSecondary,
+                height: 1.6,
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -460,10 +474,13 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: AtmosphereTokens.paper,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ],
@@ -473,7 +490,7 @@ class _BleDeviceScanScreenState extends State<BleDeviceScanScreen>
   }
 }
 
-// ── Other device tile ─────────────────────────────────────────────────────────
+// Other device tile
 
 class _OtherDeviceTile extends StatelessWidget {
   final BleDeviceInfo device;
@@ -507,10 +524,8 @@ class _OtherDeviceTile extends StatelessWidget {
                 child: Image.asset(
                   'assets/images/device_placeholder.png',
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.air,
-                    color: AppColors.primary,
-                  ),
+                  errorBuilder: (_, __, ___) =>
+                      const Icon(Icons.air, color: AppColors.primary),
                 ),
               ),
               const SizedBox(width: 14),
@@ -518,17 +533,23 @@ class _OtherDeviceTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(device.name,
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: c.textPrimary)),
+                    Text(
+                      device.name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: c.textPrimary,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(device.remoteId,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: c.textSecondary,
-                            fontFamily: 'monospace')),
+                    Text(
+                      device.remoteId,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: c.textSecondary,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -541,7 +562,7 @@ class _OtherDeviceTile extends StatelessWidget {
   }
 }
 
-// ── RSSI pill ─────────────────────────────────────────────────────────────────
+// RSSI pill
 
 class _RssiPill extends StatelessWidget {
   final int rssi;
@@ -569,7 +590,10 @@ class _RssiPill extends StatelessWidget {
           Text(
             '$rssi dBm',
             style: TextStyle(
-                fontSize: 11, color: _color(), fontWeight: FontWeight.w500),
+              fontSize: 11,
+              color: _color(),
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

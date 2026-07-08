@@ -1,7 +1,7 @@
 /**
  * @file mqtt.h
  *
- * @brief MQTT client — TLS connection to EMQX, LWT, pub/sub API.
+ * @brief MQTT client for EMQX TLS connection, LWT, and pub/sub.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -55,10 +55,10 @@ void mqtt_register_shadow_sync_cb(mqtt_shadow_sync_cb_t cb);
  *
  * @param type         The "type" field value from the command JSON.
  * @param json_payload Full command JSON string (FW-04: already copied, valid for call duration).
- * @return ESP_OK on success → MQTT ack reports "done".
+ * @return ESP_OK on success; MQTT ack reports "done".
  *         ESP_ERR_NOT_FINISHED if the handler accepted the command and will
  *         publish the final ack asynchronously.
- *         Any other value → MQTT ack reports "error".
+ *         Any other value; MQTT ack reports "error".
  */
 typedef esp_err_t (*mqtt_command_cb_t)(const char *type, const char *json_payload);
 
@@ -66,7 +66,7 @@ typedef esp_err_t (*mqtt_command_cb_t)(const char *type, const char *json_payloa
  * @brief Register a handler for a specific command type.
  *
  * Up to 8 handlers may be registered. Call from sysload_init() before mqtt_start().
- * The handler is invoked synchronously inside the MQTT event callback — keep it short
+ * The handler is invoked synchronously inside the MQTT event callback, so keep it short
  * (write to queue or set a flag; do not block).
  * Command type names must fit within @c MQTT_MAX_COMMAND_TYPE_LEN characters.
  *
@@ -85,7 +85,7 @@ esp_err_t mqtt_register_command_handler(const char *type, mqtt_command_cb_t cb);
  * callback.
  *
  * @param command_id Original command_id from device/{id}/command.
- * @param success    true → "done", false → "error".
+ * @param success    true -> "done", false -> "error".
  *
  * @return ESP_OK if publish was queued, error otherwise.
  */

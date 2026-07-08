@@ -60,7 +60,7 @@ static const char *const SHADOW_SYNC_RELAY_KEYS[] = {"relay_1", "relay_2", "rela
 
 RTC_DATA_ATTR static uint32_t s_boot_failure_count = 0;
 
-/* File-scope sensor handles — kept alive after sysload_init task exits */
+/* File-scope sensor handles kept alive after sysload_init exits. */
 #if SA_ENABLE_SHT3X
 static sht3x_t s_sht3x_dev;
 #endif
@@ -376,7 +376,7 @@ static esp_err_t queue_calibration_request(calibration_kind_t kind, const char *
     }
 
     if (xQueueSend(s_calibration_queue, &req, 0) != pdTRUE) {
-        ESP_LOGW(TAG, "Calibration request dropped — queue full");
+        ESP_LOGW(TAG, "Calibration request dropped; queue full");
         return ESP_FAIL;
     }
 
@@ -661,7 +661,7 @@ static void reboot_after_boot_error(const char *step, esp_err_t err)
 
     if (s_boot_failure_count >= SYSLOAD_BOOT_FAILURE_RETRY_LIMIT) {
         ESP_LOGE(TAG,
-                 "%s failed (%s) — boot retry limit reached (%lu), entering safe mode",
+                 "%s failed (%s); boot retry limit reached (%lu), entering safe mode",
                  step,
                  esp_err_to_name(err),
                  (unsigned long)s_boot_failure_count);
@@ -669,7 +669,7 @@ static void reboot_after_boot_error(const char *step, esp_err_t err)
     }
 
     ESP_LOGE(TAG,
-             "%s failed (%s) — rebooting (%lu/%d)",
+             "%s failed (%s); rebooting (%lu/%d)",
              step,
              esp_err_to_name(err),
              (unsigned long)s_boot_failure_count,
@@ -690,7 +690,7 @@ static void register_command_handler_or_reboot(const char *type, mqtt_command_cb
 static void reboot_after_provision_failure(void)
 {
     led_set_state(LED_STATE_ERROR);
-    ESP_LOGE(TAG, "Provisioning failed — rebooting in 5 s");
+    ESP_LOGE(TAG, "Provisioning failed; rebooting in 5 s");
     vTaskDelay(pdMS_TO_TICKS(SYSLOAD_PROVISION_RESTART_DELAY_MS));
     esp_restart();
 }
@@ -775,7 +775,7 @@ static void run_ble_provisioning_stage(void)
     }
 
     display_service_set_boot_phase(DISPLAY_BOOT_PHASE_BLE);
-    ESP_LOGI(TAG, "Not provisioned — starting BLE provisioning");
+    ESP_LOGI(TAG, "Not provisioned; starting BLE provisioning");
     led_set_state(LED_STATE_BLE);
 
     esp_err_t err = ble_prov_start();
@@ -809,7 +809,7 @@ static void connect_wifi_stage(const char *ssid, const char *password)
     if (err != ESP_OK) {
         led_set_state(LED_STATE_ERROR);
         ESP_LOGE(
-            TAG, "Wi-Fi connect failed (%s) — preserving provisioned credentials and rebooting", esp_err_to_name(err));
+            TAG, "Wi-Fi connect failed (%s); preserving provisioned credentials and rebooting", esp_err_to_name(err));
         vTaskDelay(pdMS_TO_TICKS(SYSLOAD_BOOT_RESTART_DELAY_MS));
         esp_restart();
     }
@@ -907,34 +907,34 @@ static void on_time_sync(uint32_t ts)
 static void on_time_sync(uint32_t ts)
 {
     sync_system_clock(ts, "set_time");
-    ESP_LOGI(TAG, "DS3231 disabled — set_time(%lu) acknowledged, system clock updated", (unsigned long)ts);
+    ESP_LOGI(TAG, "DS3231 disabled; set_time(%lu) acknowledged, system clock updated", (unsigned long)ts);
 }
 #endif
 
 void sysload_init(void)
 {
-    /* 0 — LED (init first so status is visible immediately) */
+    /* 0 - LED (init first so status is visible immediately) */
     ESP_ERROR_CHECK(led_init());
     led_set_state(LED_STATE_BOOT);
 
-    /* 0.5 — Factory reset button (early so it works in every boot phase) */
+    /* 0.5 - Factory reset button (early so it works in every boot phase) */
     init_factory_reset_stage();
 
-    /* 0.75 — Optional display bring-up (non-fatal, for boot/provisioning visibility) */
+    /* 0.75 - Optional display bring-up (non-fatal, for boot/provisioning visibility) */
     start_display_stage();
 
-    /* 1 — NVS init (required by Wi-Fi and BLE provisioning) */
+    /* 1 - NVS init (required by Wi-Fi and BLE provisioning) */
     init_nvs_stage();
 
-    /* 2 — Network stack (must precede wifi_sta_init) */
+    /* 2 - Network stack (must precede wifi_sta_init) */
     init_network_stack_stage();
 
-    /* 3 — I2C bus (shared by SHT3x and DS3231, HW-01: 400 kHz) */
+    /* 3 - I2C bus (shared by SHT3x and DS3231, HW-01: 400 kHz) */
     /* Only init bus if at least one I2C device is enabled. Add to this guard
      * when new I2C devices are added. */
     init_i2c_bus_stage();
 
-    /* 4 — SHT3x temperature/humidity sensor (addr 0x44, ADDR pin low — HW-04) */
+    /* 4 - SHT3x temperature/humidity sensor (addr 0x44, ADDR pin low - HW-04) */
 #if SA_ENABLE_SHT3X
     esp_err_t sht_err = sht3x_init_desc(
         &s_sht3x_dev, SHT3X_I2C_ADDR_GND, I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN);
@@ -943,27 +943,27 @@ void sysload_init(void)
     if (sht_err == ESP_OK)
         sht_err = sht3x_init(&s_sht3x_dev);
     if (sht_err != ESP_OK) {
-        ESP_LOGW(TAG, "SHT3x init failed (%s) — sensor unavailable", esp_err_to_name(sht_err));
+        ESP_LOGW(TAG, "SHT3x init failed (%s); sensor unavailable", esp_err_to_name(sht_err));
     }
 #endif
 
-    /* 5 — DS3231 RTC (addr 0x68 — HW-04) */
+    /* 5 - DS3231 RTC (addr 0x68 - HW-04) */
 #if SA_ENABLE_DS3231
     esp_err_t rtc_err =
         ds3231_init_desc(&s_ds3231_dev, I2C_NUM_0, (gpio_num_t)SA_I2C_SDA_PIN, (gpio_num_t)SA_I2C_SCL_PIN);
     if (rtc_err == ESP_OK)
         rtc_err = i2c_dev_init(&s_ds3231_dev.i2c_dev);
     if (rtc_err != ESP_OK) {
-        ESP_LOGW(TAG, "DS3231 init failed (%s) — RTC unavailable", esp_err_to_name(rtc_err));
+        ESP_LOGW(TAG, "DS3231 init failed (%s); RTC unavailable", esp_err_to_name(rtc_err));
     }
 #endif
 
-    /* 5.5 — ADC bus + gas sensors (analog, WiFi-safe ADC1 only) */
+    /* 5.5 - ADC bus + gas sensors (analog, WiFi-safe ADC1 only) */
 #if SA_ENABLE_CO_SENSOR || SA_ENABLE_NO2_SENSOR
     {
         esp_err_t err = adc_bus_init();
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "adc_bus_init failed (%s) — gas sensors unavailable", esp_err_to_name(err));
+            ESP_LOGW(TAG, "adc_bus_init failed (%s); gas sensors unavailable", esp_err_to_name(err));
         }
     }
 
@@ -977,11 +977,11 @@ void sysload_init(void)
         calibration_worker_needed = true;
         config_load_gas_r0("co", &s_co_dev.r0, &s_co_dev.calibrated);
         if (!s_co_dev.calibrated) {
-            ESP_LOGW(TAG, "CO sensor not calibrated — send type:calibrate_co to calibrate");
+            ESP_LOGW(TAG, "CO sensor not calibrated; send type:calibrate_co to calibrate");
         }
         register_command_handler_or_reboot("calibrate_co", handle_calibrate_co);
     } else {
-        ESP_LOGW(TAG, "GM702B CO init failed (%s) — CO unavailable", esp_err_to_name(co_err));
+        ESP_LOGW(TAG, "GM702B CO init failed (%s); CO unavailable", esp_err_to_name(co_err));
     }
 #endif
 
@@ -992,11 +992,11 @@ void sysload_init(void)
         calibration_worker_needed = true;
         config_load_gas_r0("no2", &s_no2_dev.r0, &s_no2_dev.calibrated);
         if (!s_no2_dev.calibrated) {
-            ESP_LOGW(TAG, "NO2 sensor not calibrated — send type:calibrate_no2 to calibrate");
+            ESP_LOGW(TAG, "NO2 sensor not calibrated; send type:calibrate_no2 to calibrate");
         }
         register_command_handler_or_reboot("calibrate_no2", handle_calibrate_no2);
     } else {
-        ESP_LOGW(TAG, "GM102B NO2 init failed (%s) — NO2 unavailable", esp_err_to_name(no2_err));
+        ESP_LOGW(TAG, "GM102B NO2 init failed (%s); NO2 unavailable", esp_err_to_name(no2_err));
     }
 #endif
 
@@ -1009,26 +1009,26 @@ void sysload_init(void)
     }
 #endif
 
-    /* 6 — Wi-Fi station (no connect yet) */
+    /* 6 - Wi-Fi station (no connect yet) */
     init_wifi_stage();
 
-    /* 7 — BLE provisioning on first boot */
+    /* 7 - BLE provisioning on first boot */
     run_ble_provisioning_stage();
 
-    /* 8 — Load stored credentials and connect Wi-Fi (skip if already connected via ble_prov) */
+    /* 8 - Load stored credentials and connect Wi-Fi (skip if already connected via ble_prov) */
     char ssid[64] = {0};
     char password[64] = {0};
     load_wifi_credentials_stage(ssid, sizeof(ssid), password, sizeof(password));
     connect_wifi_stage(ssid, password);
 
-    /* 9 — Resolve immutable device ID and runtime config */
+    /* 9 - Resolve immutable device ID and runtime config */
     char broker_uri[128] = {0};
     char resolved_id[18] = {0};
     char secret_key[64] = {0};
     load_runtime_config_stage(
         broker_uri, sizeof(broker_uri), resolved_id, sizeof(resolved_id), secret_key, sizeof(secret_key));
 
-    /* 9.1 — Local provisioning HTTP API (must exist before first MQTT login) */
+    /* 9.1 - Local provisioning HTTP API (must exist before first MQTT login) */
     start_http_server_stage(resolved_id);
 
 #if SA_ENABLE_DS3231
@@ -1042,26 +1042,26 @@ void sysload_init(void)
 
     if (secret_key[0] == '\0') {
         display_service_set_boot_phase(DISPLAY_BOOT_PHASE_WAITING_CONFIG);
-        ESP_LOGW(TAG, "MQTT secret_key not provisioned yet — waiting for local POST /api/config");
+        ESP_LOGW(TAG, "MQTT secret_key not provisioned yet; waiting for local POST /api/config");
         s_boot_failure_count = 0;
         vTaskDelete(NULL);
     }
 
-    /* 9.2 — Runtime control bootstrap (buzzer -> relay -> mode -> MQTT handlers) */
+    /* 9.2 - Runtime control bootstrap (buzzer -> relay -> mode -> MQTT handlers) */
     init_runtime_control_stage(resolved_id);
 
-    /* 9.3 — Register time sync callback before mqtt_start to avoid race:
+    /* 9.3 - Register time sync callback before mqtt_start to avoid race:
      *        broker may deliver a queued set_time command immediately on connect */
     mqtt_register_time_sync_cb(on_time_sync);
     mqtt_register_shadow_sync_cb(handle_shadow_get_response);
 
-    /* 9.4 — Start MQTT */
+    /* 9.4 - Start MQTT */
     start_mqtt_stage(broker_uri, resolved_id, secret_key);
 
-    /* 9.5 — OTA task */
+    /* 9.5 - OTA task */
     start_ota_stage(resolved_id);
 
-    /* 10 — Sensor polling task (publishes telemetry every SA_SENSOR_POLLING_INTERVAL ms) */
+    /* 10 - Sensor polling task (publishes telemetry every SA_SENSOR_POLLING_INTERVAL ms) */
 #if SA_DEMO_NO_PERIPHERALS
     ESP_ERROR_CHECK(sensor_task_start(NULL, NULL, NULL, NULL, resolved_id));
 #elif SA_ENABLE_SHT3X || SA_ENABLE_DS3231 || SA_ENABLE_CO_SENSOR || SA_ENABLE_NO2_SENSOR
@@ -1098,14 +1098,14 @@ void sysload_init(void)
         if (any_ok) {
             ESP_ERROR_CHECK(sensor_task_start(sht_ptr, rtc_ptr, co_ptr, no2_ptr, resolved_id));
         } else {
-            ESP_LOGW(TAG, "All enabled sensors failed init — sensor_task not started");
+            ESP_LOGW(TAG, "All enabled sensors failed init; sensor_task not started");
         }
     }
 #else
-    ESP_LOGI(TAG, "No sensors enabled — sensor_task not started");
+    ESP_LOGI(TAG, "No sensors enabled; sensor_task not started");
 #endif
 
-    /* 11 — Validate OTA firmware after all subsystems running (SEC-03) */
+    /* 11 - Validate OTA firmware after all subsystems are running (SEC-03) */
     ota_validate_and_commit();
 
     display_service_set_boot_phase(DISPLAY_BOOT_PHASE_READY);

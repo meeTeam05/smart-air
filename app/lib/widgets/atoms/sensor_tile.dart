@@ -33,14 +33,16 @@ class SensorTile extends StatelessWidget {
     final c = context.colors;
     final disableAnimations =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final animationDuration =
-        disableAnimations ? Duration.zero : const Duration(milliseconds: 180);
+    final animationDuration = disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 180);
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.4;
 
     final bgColor = _getBackgroundColor(c);
-    final displayValue = dimmed ? '—' : (value ?? '—');
-    final semanticValue =
-        displayValue == '—' ? 'Unavailable' : '$displayValue $unit';
+    final displayValue = dimmed ? '--' : (value ?? '--');
+    final semanticValue = displayValue == '--'
+        ? 'Unavailable'
+        : '$displayValue $unit';
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,10 +71,7 @@ class SensorTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: AtmosphereTokens.space4),
-                  Text(
-                    unit,
-                    style: AtmosphereTextStyles.body(c.ink2),
-                  ),
+                  Text(unit, style: AtmosphereTextStyles.body(c.ink2)),
                 ],
               )
             : Row(
@@ -95,20 +94,13 @@ class SensorTile extends StatelessWidget {
                     padding: const EdgeInsets.only(
                       bottom: AtmosphereTokens.space4,
                     ),
-                    child: Text(
-                      unit,
-                      style: AtmosphereTextStyles.body(c.ink2),
-                    ),
+                    child: Text(unit, style: AtmosphereTextStyles.body(c.ink2)),
                   ),
                 ],
               ),
         const SizedBox(height: AtmosphereTokens.space8),
         if (!dimmed && sparklineData != null && sparklineData!.isNotEmpty)
-          Sparkline(
-            points: sparklineData!,
-            color: sparkColor,
-            height: 32,
-          )
+          Sparkline(points: sparklineData!, color: sparkColor, height: 32)
         else
           const SizedBox(height: 32),
       ],

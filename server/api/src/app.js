@@ -68,7 +68,7 @@ const fastify = Fastify({
     },
 });
 
-// ── Core plugins ────────────────────────────────────────────────
+// Core plugins
 await fastify.register(cors, { origin: ALLOWED_ORIGINS, credentials: true });
 await fastify.register(cookie);
 await fastify.register(dbPlugin);
@@ -83,12 +83,12 @@ registerEmqxCleanupRetryJob(fastify);
 registerRefreshTokenMarkerCleanupJob(fastify);
 registerRealtimeEventRetentionJob(fastify);
 
-// ── Rate limiting — applied globally, tighter on auth routes ────
+// Rate limiting applied globally, tighter on auth routes.
 await fastify.register(rateLimit, {
     global: false,
 });
 
-// ── Routes — all under /api prefix ──────────────────────────────
+// Routes under the /api prefix
 await fastify.register(healthRoutes, { prefix: '/api' });
 await fastify.register(authRoutes, { prefix: '/api' });
 await fastify.register(homesRoutes, { prefix: '/api' });
@@ -99,7 +99,7 @@ await fastify.register(telemetryRoutes, { prefix: '/api' });
 await fastify.register(notificationsRoutes, { prefix: '/api' });
 await fastify.register(realtimeRoutes, { prefix: '/api' });
 
-// ── Global Error Handler ─────────────────────────────────────────
+// Global error handler
 fastify.setErrorHandler((error, request, reply) => {
     const rawStatusCode = Number(error?.statusCode);
     const statusCode = Number.isInteger(rawStatusCode) && rawStatusCode >= 400 && rawStatusCode < 600
@@ -135,7 +135,7 @@ fastify.setErrorHandler((error, request, reply) => {
     });
 });
 
-// ── Start ────────────────────────────────────────────────────────
+// Start
 try {
     await fastify.listen({ port: config.port, host: '0.0.0.0' });
 } catch (err) {
@@ -143,7 +143,7 @@ try {
     process.exit(1);
 }
 
-// ── Graceful shutdown ────────────────────────────────────────────
+// Graceful shutdown
 for (const signal of ['SIGTERM', 'SIGINT']) {
     process.on(signal, async () => {
         fastify.log.info({ signal }, 'Shutting down gracefully');

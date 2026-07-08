@@ -7,7 +7,7 @@ x-default-logging: &default-logging
     max-file: "3"
 
 services:
-  # Reverse proxy — public entry point via Cloudflare Tunnel
+  # Reverse proxy - public entry point via Cloudflare Tunnel
   nginx:
     image: nginx:alpine
     container_name: sa-nginx
@@ -33,7 +33,7 @@ services:
     container_name: sa-emqx
     ports:
       - "${MQTT_LAN_BIND_IP:-0.0.0.0}:8883:8883" # Optional direct MQTT/TLS path; public default is WSS via nginx + Cloudflare Tunnel
-      - "127.0.0.1:18083:18083"     # dashboard — localhost only
+      - "127.0.0.1:18083:18083"     # dashboard - localhost only
     environment:
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD is required}
       EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:?EMQX_NODE_COOKIE is required}
@@ -54,7 +54,7 @@ services:
     networks:
       - sa-net
 
-  # API — Fastify service
+  # API - Fastify service
   api:
     build:
       context: ./api
@@ -78,7 +78,7 @@ services:
     networks:
       - sa-net
 
-  # Database — TimescaleDB (PostgreSQL + time-series)
+  # Database - TimescaleDB (PostgreSQL + time-series)
   postgres:
     image: timescale/timescaledb:latest-pg16
     container_name: sa-postgres
@@ -117,7 +117,7 @@ services:
     networks:
       - sa-net
 
-  # pgAdmin — database management UI
+  # pgAdmin - database management UI
   pgadmin:
     image: dpage/pgadmin4:8
     container_name: sa-pgadmin
@@ -141,7 +141,7 @@ services:
     networks:
       - sa-net
 
-  # Portainer — Docker management UI
+  # Portainer - Docker management UI
   portainer:
     image: portainer/portainer-ce:latest
     container_name: sa-portainer
@@ -156,7 +156,7 @@ services:
     networks:
       - sa-net
 
-  # Cloudflare Tunnel — public ingress
+  # Cloudflare Tunnel - public ingress
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: sa-cloudflared

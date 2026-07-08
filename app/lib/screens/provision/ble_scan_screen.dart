@@ -67,10 +67,7 @@ class _BleScanScreenState extends State<BleScanScreen> {
         elevation: 0,
         actions: [
           if (!_scanning)
-            TextButton(
-              onPressed: _startScan,
-              child: const Text('Scan Again'),
-            ),
+            TextButton(onPressed: _startScan, child: const Text('Scan Again')),
         ],
       ),
       body: Column(
@@ -84,7 +81,7 @@ class _BleScanScreenState extends State<BleScanScreen> {
             padding: const EdgeInsets.all(16),
             child: Text(
               _scanning
-                  ? 'Scanning for Smart Air devices…'
+                  ? 'Scanning for Smart Air devices...'
                   : 'Found ${_discovered.length} device(s)',
               style: TextStyle(color: c.textSecondary),
             ),
@@ -95,11 +92,16 @@ class _BleScanScreenState extends State<BleScanScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.bluetooth_searching,
-                            size: 64, color: c.textSecondary),
+                        Icon(
+                          Icons.bluetooth_searching,
+                          size: 64,
+                          color: c.textSecondary,
+                        ),
                         const SizedBox(height: 12),
-                        Text('No devices found',
-                            style: TextStyle(color: c.textSecondary)),
+                        Text(
+                          'No devices found',
+                          style: TextStyle(color: c.textSecondary),
+                        ),
                         const SizedBox(height: 8),
                         FilledButton(
                           onPressed: _startScan,
@@ -117,13 +119,20 @@ class _BleScanScreenState extends State<BleScanScreen> {
                       return ListTile(
                         tileColor: c.surface,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        leading: const Icon(Icons.bluetooth,
-                            color: AppColors.primary),
-                        title: Text(d.name.isNotEmpty ? d.name : 'Unknown',
-                            style: TextStyle(color: c.textPrimary)),
-                        subtitle: Text(d.remoteId,
-                            style: TextStyle(color: c.textSecondary)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        leading: const Icon(
+                          Icons.bluetooth,
+                          color: AppColors.primary,
+                        ),
+                        title: Text(
+                          d.name.isNotEmpty ? d.name : 'Unknown',
+                          style: TextStyle(color: c.textPrimary),
+                        ),
+                        subtitle: Text(
+                          d.remoteId,
+                          style: TextStyle(color: c.textSecondary),
+                        ),
                         onTap: () => context.push(
                           '/provision/wifi?homeId=${widget.homeId}&mac=${Uri.encodeComponent(d.remoteId)}',
                         ),

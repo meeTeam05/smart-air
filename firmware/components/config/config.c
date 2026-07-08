@@ -29,7 +29,7 @@ static volatile bool s_factory_reset_in_progress = false;
 /* Private namespace / key constants */
 
 /* Device / MQTT namespace */
-#define NS_DEVICE      "device"     /* 6 chars — within 15-char NVS limit */
+#define NS_DEVICE      "device"     /* 6 chars, within the 15-char NVS limit */
 #define KEY_DEVICE_ID  "device_id"  /* 9 chars */
 #define KEY_SECRET_KEY "secret_key" /* 10 chars */
 #define KEY_BROKER_URI "broker_uri" /* 10 chars */
@@ -175,7 +175,7 @@ esp_err_t config_get_mqtt_creds(char *broker_uri_buf, size_t broker_uri_len, cha
         return err;
     }
 
-    /* broker_uri — NVS first, fall back to Kconfig */
+    /* broker_uri: prefer NVS, then fall back to Kconfig. */
     if (err == ESP_OK) {
         esp_err_t r = nvs_get_str(h, KEY_BROKER_URI, broker_uri_buf, &broker_uri_len);
         if (r == ESP_ERR_NVS_NOT_FOUND) {
@@ -194,7 +194,7 @@ esp_err_t config_get_mqtt_creds(char *broker_uri_buf, size_t broker_uri_len, cha
         ESP_LOGI(TAG, "broker_uri using Kconfig default: %s", broker_uri_buf);
     }
 
-    /* secret_key — NVS first, fall back to Kconfig */
+    /* secret_key: prefer NVS, then fall back to Kconfig. */
     if (err == ESP_OK) {
         esp_err_t r = nvs_get_str(h, KEY_SECRET_KEY, secret_key_buf, &secret_key_len);
         if (r == ESP_ERR_NVS_NOT_FOUND) {
@@ -373,7 +373,7 @@ esp_err_t config_load_gas_r0(const char *sensor_name, float *r0, bool *calibrate
     esp_err_t err = nvs_open_from_partition(SA_NVS_CALIB_PARTITION, NS_GAS_CALIB, NVS_READONLY, &h);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         config_nvs_read_end();
-        return ESP_OK; /* namespace not yet created — not calibrated */
+        return ESP_OK; /* namespace not yet created; not calibrated */
     }
     if (err != ESP_OK) {
         ESP_LOGE(TAG,
@@ -394,7 +394,7 @@ esp_err_t config_load_gas_r0(const char *sensor_name, float *r0, bool *calibrate
         *calibrated = true;
         ESP_LOGI(TAG, "load_gas_r0(%s): R0 = %.0f ohm", sensor_name, *r0);
     } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-        return ESP_OK; /* not calibrated yet — not an error */
+        return ESP_OK; /* not calibrated yet; not an error */
     } else if (err != ESP_OK) {
         ESP_LOGE(TAG, "load_gas_r0(%s): nvs_get_blob failed: %s", sensor_name, esp_err_to_name(err));
         return err;

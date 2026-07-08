@@ -9,8 +9,9 @@ import '../services/realtime_service.dart';
 import 'devices_provider.dart';
 import 'homes_provider.dart';
 
-final authProvider =
-    AsyncNotifierProvider<AuthNotifier, User?>(AuthNotifier.new);
+final authProvider = AsyncNotifierProvider<AuthNotifier, User?>(
+  AuthNotifier.new,
+);
 
 class AuthNotifier extends AsyncNotifier<User?> {
   late AuthService _auth;
@@ -35,7 +36,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
     });
 
     // Restore session from SecureStorage.
-    // If token + user exist, return immediately — no network call needed.
+    // If token + user exist, return immediately; no network call is needed.
     // AuthInterceptor will refresh the access token on the first API request that gets 401.
     final refreshToken = await _storage.getRefreshToken();
     if (refreshToken == null) return null;

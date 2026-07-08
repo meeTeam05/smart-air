@@ -8,9 +8,9 @@
  * with no side effects.
  *
  * Reset sequence:
- *   LED → red static (ERROR)
- *   wifi_sta_deinit()  — clean WiFi shutdown
- *   mqtt_stop()        — destroy MQTT client
+ *   LED -> red static (ERROR)
+ *   wifi_sta_deinit()  - clean WiFi shutdown
+ *   mqtt_stop()        - destroy MQTT client
  *   erase default NVS partition while preserving calibration NVS partition
  *   esp_restart()
  *
@@ -41,7 +41,7 @@ esp_err_t factory_reset_run(void);
  * Configures the GPIO as active-low input with internal pull-up and spawns
  * a lightweight polling task (50 ms interval, Core 1, Priority 4).
  *
- * Call early in sysload_init() — after led_init() — so the button works
+ * Call early in sysload_init(), after led_init(), so the button works
  * during every phase of boot (BLE provisioning, WiFi connect, normal operation).
  *
  * @param gpio  GPIO number wired to the reset button (active-low).

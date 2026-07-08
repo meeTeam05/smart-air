@@ -19,7 +19,7 @@ function cleanNullableString(value) {
 export default async function homesRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
 
-    // ── Homes ────────────────────────────────────────────────────
+    // Homes
     fastify.get('/homes', auth, async (request) => {
         const userId = request.user.sub;
         const { rows } = await fastify.db.query(
@@ -169,7 +169,7 @@ export default async function homesRoutes(fastify) {
         return { success: true };
     });
 
-    // ── Rooms ────────────────────────────────────────────────────
+    // Rooms
     fastify.get('/homes/:homeId/rooms', auth, async (request, reply) => {
         const homeId = parseUuid(request.params.homeId);
         if (!homeId) return reply.code(400).send({ error: 'home id must be UUID' });

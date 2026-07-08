@@ -86,7 +86,7 @@ esp_err_t adc_bus_init(void)
     };
     esp_err_t cali_err = adc_cali_create_scheme_curve_fitting(&cali_cfg, &s_cali_handle);
     if (cali_err != ESP_OK) {
-        ESP_LOGW(TAG, "ADC calibration not available (%s) — raw values only", esp_err_to_name(cali_err));
+        ESP_LOGW(TAG, "ADC calibration not available (%s); raw values only", esp_err_to_name(cali_err));
         s_cali_handle = NULL;
     }
 

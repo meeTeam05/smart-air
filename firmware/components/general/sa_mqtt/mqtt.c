@@ -1,7 +1,7 @@
 /**
  * @file mqtt.c
  *
- * @brief MQTT client — MQTT over TLS/WSS to EMQX, LWT, pub/sub.
+ * @brief MQTT client for MQTT over TLS/WSS to EMQX, LWT, and pub/sub.
  *
  * Architecture:
  *   - mqtt_start() creates mqtt_task (Core 1, Priority 6, 6144 B).
@@ -70,7 +70,7 @@ static const char *mqtt_connect_return_code_name(esp_mqtt_connect_return_code_t 
     }
 }
 
-/* ── Driver state ────────────────────────────────────────────────────────── */
+/* Driver state */
 
 static esp_mqtt_client_handle_t s_client = NULL;
 static mqtt_time_sync_cb_t s_time_sync_cb = NULL;
@@ -369,7 +369,7 @@ static esp_err_t mqtt_publish_command_ack_internal(const char *command_id, bool 
     }
 
     mqtt_client_release();
-    ESP_LOGI(TAG, "Command ack → %s", s_response_topic);
+    ESP_LOGI(TAG, "Command ack -> %s", s_response_topic);
     return ESP_OK;
 }
 
@@ -392,7 +392,7 @@ static esp_err_t mqtt_publish_shadow_get_request(esp_mqtt_client_handle_t client
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Published shadow/get → %s (msg_id=%d)", s_shadow_get_topic, msg_id);
+    ESP_LOGI(TAG, "Published shadow/get -> %s (msg_id=%d)", s_shadow_get_topic, msg_id);
     return ESP_OK;
 }
 
@@ -428,7 +428,7 @@ static esp_err_t mqtt_subscribe_required_topics(esp_mqtt_client_handle_t client)
     return ESP_OK;
 }
 
-/* ── MQTT event handler ──────────────────────────────────────────────────── */
+/* MQTT event handler */
 
 static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -448,7 +448,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         /* FW-05: subscribe inside CONNECTED so re-connects re-subscribe */
         esp_err_t subscribe_err = mqtt_subscribe_required_topics(client);
         if (subscribe_err != ESP_OK) {
-            ESP_LOGE(TAG, "Required topic subscription setup failed (%s) — forcing reconnect", esp_err_to_name(subscribe_err));
+            ESP_LOGE(TAG, "Required topic subscription setup failed (%s); forcing reconnect", esp_err_to_name(subscribe_err));
             esp_mqtt_client_disconnect(client);
             mqtt_client_release();
             break;
@@ -459,7 +459,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         char msg[80];
         snprintf(msg, sizeof(msg), "{\"online\":true,\"firmware\":\"%s\"}", CONFIG_FIRMWARE_VERSION);
         esp_mqtt_client_publish(client, s_status_topic, msg, 0, 1, 1);
-        ESP_LOGI(TAG, "Published online status → %s", s_status_topic);
+        ESP_LOGI(TAG, "Published online status -> %s", s_status_topic);
 
         esp_err_t shadow_report_err = device_mode_publish_current_shadow();
         if (shadow_report_err != ESP_OK) {
@@ -478,7 +478,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
     case MQTT_EVENT_DISCONNECTED:
         mqtt_pending_rx_reset();
         led_set_state(LED_STATE_WIFI);
-        ESP_LOGW(TAG, "Disconnected — reconnecting automatically");
+        ESP_LOGW(TAG, "Disconnected; reconnecting automatically");
         break;
 
     case MQTT_EVENT_DATA: {
@@ -502,7 +502,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
 
         ESP_LOGI(TAG, "RX [%s]: %s", topic, payload);
 
-        /* Route: command → dispatch handler → ack with actual result */
+        /* Route command -> dispatch handler -> ack with actual result. */
         if (strstr(topic, "/command") != NULL) {
             cJSON *root = cJSON_ParseWithLength(payload, strlen(payload));
             if (root != NULL) {
@@ -669,7 +669,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                      mqtt_connect_return_code_name(ev->error_handle->connect_return_code),
                      ev->error_handle->connect_return_code);
         } else if (ev->error_handle->error_type == MQTT_ERROR_TYPE_SUBSCRIBE_FAILED) {
-            ESP_LOGE(TAG, "Broker reported subscribe failure — forcing reconnect");
+            ESP_LOGE(TAG, "Broker reported subscribe failure; forcing reconnect");
 
             esp_mqtt_client_handle_t client = mqtt_client_acquire();
             if (client != NULL) {
@@ -691,7 +691,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
     }
 }
 
-/* ── FreeRTOS tasks ──────────────────────────────────────────────────────── */
+/* FreeRTOS tasks */
 
 static void mqtt_task(void *arg)
 {
@@ -749,7 +749,7 @@ static void mqtt_task(void *arg)
         goto fail_client;
     }
 
-    /* Task work is done — library runs the connection loop internally */
+    /* Task work is done; the library runs the connection loop internally. */
 done:
     if (start_ctx != NULL) {
         start_ctx->result = err;
@@ -767,7 +767,7 @@ fail_client:
     goto done;
 }
 
-/* ── Public API ──────────────────────────────────────────────────────────── */
+/* Public API */
 
 void mqtt_register_time_sync_cb(mqtt_time_sync_cb_t cb)
 {

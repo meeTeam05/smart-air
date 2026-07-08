@@ -67,29 +67,31 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
 
     setState(() => _scanning = true);
 
-    _scanSub = _ble.scan(timeout: const Duration(seconds: 12)).listen(
-      (device) {
-        if (!mounted) return;
-        if (!BleConfig.matchesProvisioningName(device.name)) return;
-        setState(() {
-          if (_devices.every((d) => d.remoteId != device.remoteId)) {
-            _devices.add(device);
-            _devices.sort((a, b) => b.rssi.compareTo(a.rssi));
-          }
-        });
-      },
-      onError: (error) {
-        if (!mounted) return;
-        setState(() {
-          _scanning = false;
-          _error = error.toString();
-        });
-      },
-      onDone: () {
-        if (!mounted) return;
-        setState(() => _scanning = false);
-      },
-    );
+    _scanSub = _ble
+        .scan(timeout: const Duration(seconds: 12))
+        .listen(
+          (device) {
+            if (!mounted) return;
+            if (!BleConfig.matchesProvisioningName(device.name)) return;
+            setState(() {
+              if (_devices.every((d) => d.remoteId != device.remoteId)) {
+                _devices.add(device);
+                _devices.sort((a, b) => b.rssi.compareTo(a.rssi));
+              }
+            });
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              _scanning = false;
+              _error = error.toString();
+            });
+          },
+          onDone: () {
+            if (!mounted) return;
+            setState(() => _scanning = false);
+          },
+        );
 
     _scanTimeout = Timer(const Duration(seconds: 15), () {
       if (!mounted) return;
@@ -160,9 +162,9 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
         _connecting = false;
         _error = error.toString();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 
@@ -192,7 +194,7 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
                   ),
                   const SizedBox(height: AtmosphereTokens.space16),
                   Text(
-                    'Scanning…',
+                    'Scanning...',
                     style: TextStyle(color: c.ink, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: AtmosphereTokens.space8),
@@ -238,8 +240,8 @@ class _Step2BleScanScreenState extends State<Step2BleScanScreen> {
       primaryLabel: _scanning
           ? 'Scanning...'
           : _error != null
-              ? 'Check again'
-              : 'Scan',
+          ? 'Check again'
+          : 'Scan',
       primaryEnabled: !_scanning && !_connecting,
       onPrimary: _startScan,
       secondaryLabel: 'Back',
@@ -307,10 +309,7 @@ class _DeviceTile extends StatelessWidget {
               children: [
                 Text(
                   '${device.rssi} dBm',
-                  style: TextStyle(
-                    color: c.brand,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(color: c.brand, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 Text(

@@ -17,5 +17,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`[placeholder] API listening on :${PORT} — replace with Fastify in Phase 3`);
+    console.log(`[placeholder] API listening on :${PORT} - replace with Fastify in Phase 3`);
 });

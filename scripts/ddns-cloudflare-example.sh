@@ -40,7 +40,7 @@ main() {
   fi
 
   update_cf_record "$record_id" "$current_ip"
-  echo "[$(date)] Updated: $cf_ip → $current_ip"
+  echo "[$(date)] Updated: $cf_ip -> $current_ip"
 }
 
 main

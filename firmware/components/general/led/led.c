@@ -1,14 +1,14 @@
 /**
  * @file led.c
  *
- * @brief WS2812 RGB LED driver — raw RMT bytes encoder, 500 ms blink timer.
+ * @brief WS2812 RGB LED driver with raw RMT byte encoding and a 500 ms blink timer.
  *
  * Uses only the built-in esp_driver_rmt component (no external dependencies).
  *
  * Timing at 10 MHz RMT clock (1 tick = 100 ns):
- *   bit0 — HIGH 400 ns (4 ticks), LOW 850 ns (9 ticks)
- *   bit1 — HIGH 800 ns (8 ticks), LOW 450 ns (5 ticks)
- *   reset — line idles LOW for 500 ms between writes (>> 50 µs required)
+ *   bit0 - HIGH 400 ns (4 ticks), LOW 850 ns (9 ticks)
+ *   bit1 - HIGH 800 ns (8 ticks), LOW 450 ns (5 ticks)
+ *   reset - line idles LOW for 500 ms between writes (>> 50 us required)
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -23,7 +23,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-/* ── Color table + driver state + helpers (only when LED enabled) ─────────── */
+/* Color table, driver state, and helpers. */
 
 #if SA_ENABLE_LED
 
@@ -40,8 +40,8 @@ static const led_color_t s_color_table[] = {
     [LED_STATE_WIFI] = {200, 180, 0, true},        /* yellow blink  */
     [LED_STATE_ONLINE] = {0, 180, 0, false},       /* green  static */
     [LED_STATE_OTA] = {120, 0, 120, true},         /* purple blink  */
-    [LED_STATE_ERROR] = {180, 0, 0, false},        /* red    static — fatal   */
-    [LED_STATE_FACTORY_RESET] = {180, 0, 0, true}, /* red    blink  — cancellable */
+    [LED_STATE_ERROR] = {180, 0, 0, false},        /* red    static - fatal */
+    [LED_STATE_FACTORY_RESET] = {180, 0, 0, true}, /* red    blink  - cancellable */
     [LED_STATE_OFF] = {0, 0, 0, false},
 };
 
@@ -150,12 +150,12 @@ static void cleanup_init_failure(void)
 
 #endif /* SA_ENABLE_LED */
 
-/* ── Public API ──────────────────────────────────────────────────────────── */
+/* Public API */
 
 esp_err_t led_init(void)
 {
 #if SA_ENABLE_LED
-    /* RMT TX channel — 10 MHz clock → 100 ns per tick */
+    /* RMT TX channel - 10 MHz clock gives 100 ns per tick. */
     rmt_tx_channel_config_t chan_cfg = {
         .gpio_num = SA_LED_PIN,
         .clk_src = RMT_CLK_SRC_DEFAULT,
@@ -170,8 +170,8 @@ esp_err_t led_init(void)
     }
 
     /* WS2812B NRZ bit timing (10 MHz = 100 ns/tick):
-     *   bit0 — HIGH 400 ns (4 ticks), LOW 850 ns (9 ticks)  [spec: 0.4/0.85 µs]
-     *   bit1 — HIGH 800 ns (8 ticks), LOW 450 ns (5 ticks)  [spec: 0.8/0.45 µs] */
+     *   bit0 - HIGH 400 ns (4 ticks), LOW 850 ns (9 ticks)  [spec: 0.4/0.85 us]
+     *   bit1 - HIGH 800 ns (8 ticks), LOW 450 ns (5 ticks)  [spec: 0.8/0.45 us] */
     rmt_bytes_encoder_config_t enc_cfg = {
         .bit0 = {.duration0 = 4, .level0 = 1, .duration1 = 9, .level1 = 0},
         .bit1 = {.duration0 = 8, .level0 = 1, .duration1 = 5, .level1 = 0},

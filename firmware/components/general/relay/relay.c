@@ -149,7 +149,7 @@ static esp_err_t relay_publish_delta(int channel, bool on)
     cJSON_free(payload);
 
     if (msg_id < 0) {
-        ESP_LOGW(TAG, "mqtt_publish failed — MQTT not ready yet");
+        ESP_LOGW(TAG, "mqtt_publish failed; MQTT not ready yet");
         return ESP_FAIL;
     }
 

@@ -46,15 +46,19 @@ class _Step5NameScreenState extends ConsumerState<Step5NameScreen> {
       _nameCtrl = TextEditingController(text: 'Smart Air');
       return;
     }
-    final suffix =
-        widget.deviceId.replaceAll(RegExp(r'[^A-Fa-f0-9]'), '').toUpperCase();
+    final suffix = widget.deviceId
+        .replaceAll(RegExp(r'[^A-Fa-f0-9]'), '')
+        .toUpperCase();
     final displaySuffix = suffix.isEmpty
         ? widget.deviceId
-            .substring(widget.deviceId.length -
-                (widget.deviceId.length < 6 ? widget.deviceId.length : 6))
-            .toUpperCase()
-        : suffix
-            .substring(suffix.length - (suffix.length < 6 ? suffix.length : 6));
+              .substring(
+                widget.deviceId.length -
+                    (widget.deviceId.length < 6 ? widget.deviceId.length : 6),
+              )
+              .toUpperCase()
+        : suffix.substring(
+            suffix.length - (suffix.length < 6 ? suffix.length : 6),
+          );
     _nameCtrl = TextEditingController(text: 'Smart Air $displaySuffix');
   }
 
@@ -71,7 +75,9 @@ class _Step5NameScreenState extends ConsumerState<Step5NameScreen> {
     setState(() => _saving = true);
 
     try {
-      await ref.read(deviceServiceProvider).updateDevice(
+      await ref
+          .read(deviceServiceProvider)
+          .updateDevice(
             widget.deviceId,
             name: _nameCtrl.text.trim(),
             roomId: _selectedRoomId,
@@ -83,9 +89,9 @@ class _Step5NameScreenState extends ConsumerState<Step5NameScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 
@@ -173,34 +179,28 @@ class _Step5NameScreenState extends ConsumerState<Step5NameScreen> {
                     },
                   ),
                   const SizedBox(height: AtmosphereTokens.space16),
-                  Text(
-                    'Home',
-                    style: AtmosphereTextStyles.body(c.ink),
-                  ),
+                  Text('Home', style: AtmosphereTextStyles.body(c.ink)),
                   const SizedBox(height: AtmosphereTokens.space8),
                   _ReadonlyValueCard(
                     value: selectedHome?.name.isNotEmpty == true
                         ? selectedHome!.name
                         : homesAsync.isLoading
-                            ? 'Loading home…'
-                            : 'Unknown home',
+                        ? 'Loading home...'
+                        : 'Unknown home',
                   ),
                   if (selectedHome != null && selectedHome.id.isNotEmpty) ...[
                     const SizedBox(height: AtmosphereTokens.space16),
-                    Text(
-                      'Room',
-                      style: AtmosphereTextStyles.body(c.ink),
-                    ),
+                    Text('Room', style: AtmosphereTextStyles.body(c.ink)),
                     const SizedBox(height: AtmosphereTokens.space8),
                     _DropdownCard<String?>(
                       value: _selectedRoomId,
                       hint: roomsAsync == null
                           ? 'Select a home first'
                           : roomsAsync.isLoading
-                              ? 'Loading rooms…'
-                              : roomList.isEmpty
-                                  ? 'No room selected'
-                                  : 'Optional',
+                          ? 'Loading rooms...'
+                          : roomList.isEmpty
+                          ? 'No room selected'
+                          : 'Optional',
                       items: [
                         const DropdownMenuItem<String?>(
                           value: null,
@@ -229,7 +229,7 @@ class _Step5NameScreenState extends ConsumerState<Step5NameScreen> {
           ),
         ],
       ),
-      primaryLabel: _saving ? 'Saving…' : 'Save',
+      primaryLabel: _saving ? 'Saving...' : 'Save',
       primaryLoading: _saving,
       primaryEnabled: !_saving,
       onPrimary: _save,
@@ -299,10 +299,7 @@ class _ReadonlyValueCard extends StatelessWidget {
         horizontal: AtmosphereTokens.space12,
         vertical: AtmosphereTokens.space16,
       ),
-      child: Text(
-        value,
-        style: AtmosphereTextStyles.body(c.ink),
-      ),
+      child: Text(value, style: AtmosphereTextStyles.body(c.ink)),
     );
   }
 }

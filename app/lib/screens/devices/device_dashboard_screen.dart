@@ -30,16 +30,16 @@ class _PendingControlAction {
   _PendingControlAction.mode({
     required this.commandId,
     required this.expectedMode,
-  })  : kind = _PendingControlKind.mode,
-        channel = null,
-        expectedRelayState = null;
+  }) : kind = _PendingControlKind.mode,
+       channel = null,
+       expectedRelayState = null;
 
   _PendingControlAction.relay({
     required this.commandId,
     required this.channel,
     required this.expectedRelayState,
-  })  : kind = _PendingControlKind.relay,
-        expectedMode = null;
+  }) : kind = _PendingControlKind.relay,
+       expectedMode = null;
 
   final String commandId;
   final _PendingControlKind kind;
@@ -98,8 +98,9 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     final relay2 = reported['relay_2'] as bool? ?? false;
     final relay3 = reported['relay_3'] as bool? ?? false;
 
-    final telemetryLiveAsync =
-        ref.watch(telemetryLiveProvider(widget.deviceId));
+    final telemetryLiveAsync = ref.watch(
+      telemetryLiveProvider(widget.deviceId),
+    );
     final telemetryState = telemetryLiveAsync.valueOrNull;
     final telemetryPoints = telemetryState?.points ?? const <TelemetryPoint>[];
     final latestTelemetry = telemetryState?.latest;
@@ -168,7 +169,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
             const CircularProgressIndicator(),
             const SizedBox(height: AtmosphereTokens.space16),
             Text(
-              'Loading device dashboard…',
+              'Loading device dashboard...',
               textAlign: TextAlign.center,
               style: AtmosphereTextStyles.h2(c.ink),
             ),
@@ -186,22 +187,30 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     List<double> trimSparkline(List<double> l) =>
         l.length > 30 ? l.sublist(l.length - 30) : l;
 
-    final tempSparkline = trimSparkline(telemetryPoints
-        .where((p) => p.temperature != null)
-        .map((p) => p.temperature!)
-        .toList());
-    final humiditySparkline = trimSparkline(telemetryPoints
-        .where((p) => p.humidity != null)
-        .map((p) => p.humidity!)
-        .toList());
-    final coSparkline = trimSparkline(telemetryPoints
-        .where((p) => p.coPpm != null)
-        .map((p) => p.coPpm!)
-        .toList());
-    final no2Sparkline = trimSparkline(telemetryPoints
-        .where((p) => p.no2Ppm != null)
-        .map((p) => p.no2Ppm!)
-        .toList());
+    final tempSparkline = trimSparkline(
+      telemetryPoints
+          .where((p) => p.temperature != null)
+          .map((p) => p.temperature!)
+          .toList(),
+    );
+    final humiditySparkline = trimSparkline(
+      telemetryPoints
+          .where((p) => p.humidity != null)
+          .map((p) => p.humidity!)
+          .toList(),
+    );
+    final coSparkline = trimSparkline(
+      telemetryPoints
+          .where((p) => p.coPpm != null)
+          .map((p) => p.coPpm!)
+          .toList(),
+    );
+    final no2Sparkline = trimSparkline(
+      telemetryPoints
+          .where((p) => p.no2Ppm != null)
+          .map((p) => p.no2Ppm!)
+          .toList(),
+    );
 
     final statusText = _presenceText(device);
 
@@ -234,9 +243,10 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                 final relayColumns = textScale > 1.7
                     ? 1
                     : constraints.maxWidth >= 360
-                        ? 2
-                        : 1;
-                final relayWidth = (constraints.maxWidth -
+                    ? 2
+                    : 1;
+                final relayWidth =
+                    (constraints.maxWidth -
                         ((relayColumns - 1) * AtmosphereTokens.space12)) /
                     relayColumns;
 
@@ -248,8 +258,9 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                     icon: AppIcons.temp,
                     tone: SensorTone.warm,
                     sparkColor: c.danger,
-                    sparklineData:
-                        tempSparkline.isNotEmpty ? tempSparkline : null,
+                    sparklineData: tempSparkline.isNotEmpty
+                        ? tempSparkline
+                        : null,
                     dimmed: !isOn,
                   ),
                   SensorTile(
@@ -259,8 +270,9 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                     icon: AppIcons.humidity,
                     tone: SensorTone.air,
                     sparkColor: c.accent,
-                    sparklineData:
-                        humiditySparkline.isNotEmpty ? humiditySparkline : null,
+                    sparklineData: humiditySparkline.isNotEmpty
+                        ? humiditySparkline
+                        : null,
                     dimmed: !isOn,
                   ),
                   SensorTile(
@@ -280,8 +292,9 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                     icon: AppIcons.smog,
                     tone: SensorTone.no2,
                     sparkColor: const Color(0xFF7A4FD0),
-                    sparklineData:
-                        no2Sparkline.isNotEmpty ? no2Sparkline : null,
+                    sparklineData: no2Sparkline.isNotEmpty
+                        ? no2Sparkline
+                        : null,
                     dimmed: !isOn,
                   ),
                 ];
@@ -371,7 +384,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                                 style: AtmosphereTextStyles.h2(c.ink),
                               ),
                               Text(
-                                '· 3 channels',
+                                '- 3 channels',
                                 style: AtmosphereTextStyles.caption(c.ink3),
                               ),
                             ],
@@ -382,10 +395,8 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                             runSpacing: AtmosphereTokens.space12,
                             children: relayCards
                                 .map(
-                                  (card) => SizedBox(
-                                    width: relayWidth,
-                                    child: card,
-                                  ),
+                                  (card) =>
+                                      SizedBox(width: relayWidth, child: card),
                                 )
                                 .toList(),
                           ),
@@ -412,7 +423,8 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                                 ),
                                 TextButton(
                                   onPressed: () => context.push(
-                                      '/devices/${widget.deviceId}/commands'),
+                                    '/devices/${widget.deviceId}/commands',
+                                  ),
                                   style: TextButton.styleFrom(
                                     minimumSize: const Size(48, 48),
                                     tapTargetSize:
@@ -423,7 +435,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                                     ),
                                   ),
                                   child: Text(
-                                    'View all →',
+                                    'View all ->',
                                     style: AtmosphereTextStyles.body(c.brand),
                                   ),
                                 ),
@@ -435,28 +447,28 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
                                 commandsAsync.hasError
                                     ? 'Unable to load command activity.'
                                     : commandsAsync.isLoading
-                                        ? 'Loading command activity...'
-                                        : 'No command activity yet.',
+                                    ? 'Loading command activity...'
+                                    : 'No command activity yet.',
                                 style: AtmosphereTextStyles.body(
                                   commandsAsync.hasError ? c.danger : c.ink2,
                                 ),
                               )
                             else
-                              ...recentCommands.take(3).map(
-                                (command) {
-                                  final (icon, label) =
-                                      _formatRecentActivity(command);
-                                  final (tone, badgeLabel) =
-                                      _statusBadge(command.status);
-                                  return HistoryRow(
-                                    icon: icon,
-                                    label: label,
-                                    sub: _relativeTime(command.createdAt),
-                                    badgeTone: tone,
-                                    badgeLabel: badgeLabel,
-                                  );
-                                },
-                              ),
+                              ...recentCommands.take(3).map((command) {
+                                final (icon, label) = _formatRecentActivity(
+                                  command,
+                                );
+                                final (tone, badgeLabel) = _statusBadge(
+                                  command.status,
+                                );
+                                return HistoryRow(
+                                  icon: icon,
+                                  label: label,
+                                  sub: _relativeTime(command.createdAt),
+                                  badgeTone: tone,
+                                  badgeLabel: badgeLabel,
+                                );
+                              }),
                           ],
                         ),
                       ),
@@ -476,13 +488,13 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     final type = payload['type'] as String? ?? 'unknown';
     return switch (type) {
       'device_mode' => (
-          AppIcons.bolt,
-          'Mode changed to ${(payload['mode'] ?? '?').toString().toUpperCase()}'
-        ),
+        AppIcons.bolt,
+        'Mode changed to ${(payload['mode'] ?? '?').toString().toUpperCase()}',
+      ),
       'relay_set' => (
-          AppIcons.wind,
-          'Relay ${payload['relay'] ?? '?'} turned ${payload['state'] == true ? 'on' : 'off'}',
-        ),
+        AppIcons.wind,
+        'Relay ${payload['relay'] ?? '?'} turned ${payload['state'] == true ? 'on' : 'off'}',
+      ),
       'calibrate_co' => (AppIcons.cog, 'CO calibration requested'),
       'calibrate_no2' => (AppIcons.cog, 'NO2 calibration requested'),
       _ => (AppIcons.device, type),
@@ -535,12 +547,9 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
 
   void _showCommandFailureSnackBar(String message) {
     final c = context.colors;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: c.danger,
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: c.danger));
   }
 
   void _cancelPendingAction(_PendingControlAction? action) {
@@ -577,8 +586,10 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
   bool _matchesCurrentPendingAction(_PendingControlAction action) {
     return switch (action.kind) {
       _PendingControlKind.mode => identical(_pendingModeAction, action),
-      _PendingControlKind.relay =>
-        identical(_pendingRelayActions[action.channel], action),
+      _PendingControlKind.relay => identical(
+        _pendingRelayActions[action.channel],
+        action,
+      ),
     };
   }
 
@@ -609,11 +620,12 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     action.shadowRefreshTimer = Timer(_shadowRefreshGrace, () async {
       if (!mounted || !_matchesCurrentPendingAction(action)) return;
       await ref.read(shadowProvider(widget.deviceId).notifier).refresh();
-      final refreshedShadow =
-          ref.read(shadowProvider(widget.deviceId)).valueOrNull;
+      final refreshedShadow = ref
+          .read(shadowProvider(widget.deviceId))
+          .valueOrNull;
       if (refreshedShadow == null) return;
       if (_applyShadowResolution(refreshedShadow, action)) return;
-      // Shadow not yet updated — keep loading and let SSE resolve it.
+      // Shadow not yet updated; keep loading and let SSE resolve it.
       // Hard timeout clears loading if firmware never confirms.
       action.hardTimeoutTimer?.cancel();
       action.hardTimeoutTimer = Timer(_shadowHardTimeout, () {
@@ -636,16 +648,18 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     ];
 
     for (final action in pendingActions) {
-      final command =
-          commands.where((item) => item.id == action.commandId).firstOrNull;
+      final command = commands
+          .where((item) => item.id == action.commandId)
+          .firstOrNull;
       if (command == null) continue;
 
       switch (command.status) {
         case 'done':
           action.queueTimer?.cancel();
           action.queueTimer = null;
-          final currentShadow =
-              ref.read(shadowProvider(widget.deviceId)).valueOrNull;
+          final currentShadow = ref
+              .read(shadowProvider(widget.deviceId))
+              .valueOrNull;
           if (currentShadow != null &&
               _applyShadowResolution(currentShadow, action)) {
             continue;
@@ -716,9 +730,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Switch to Standby?'),
-          content: const Text(
-            'Sensors will pause and relays will turn off.',
-          ),
+          content: const Text('Sensors will pause and relays will turn off.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -739,10 +751,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
           .read(deviceServiceProvider)
           .setMode(widget.deviceId, newMode);
       _trackPendingAction(
-        _PendingControlAction.mode(
-          commandId: commandId,
-          expectedMode: newMode,
-        ),
+        _PendingControlAction.mode(commandId: commandId, expectedMode: newMode),
       );
     } catch (e) {
       if (mounted) {
@@ -752,7 +761,10 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
   }
 
   Future<void> _handleRelayToggle(
-      int channel, bool currentState, bool deviceOn) async {
+    int channel,
+    bool currentState,
+    bool deviceOn,
+  ) async {
     if (!deviceOn) {
       final c = context.colors;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -795,7 +807,7 @@ class _DeviceDashboardScreenState extends ConsumerState<DeviceDashboardScreen> {
     if (device?.online == true) return '● Online';
     final lastSeen = device?.lastSeen;
     if (lastSeen == null) return '● Offline';
-    return '● Offline · ${_relativeTime(lastSeen)}';
+    return '● Offline - ${_relativeTime(lastSeen)}';
   }
 
   String? _blockingErrorMessage({

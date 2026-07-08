@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Lightweight global state using ValueNotifier — no package dependency.
+/// Lightweight global state using ValueNotifier with no package dependency.
 class AppState {
   AppState._();
 
-  /// Current ThemeMode — light (default), dark, or system.
+  /// Current ThemeMode: light (default), dark, or system.
   static final themeMode = ValueNotifier<ThemeMode>(ThemeMode.light);
 
   static const Map<String, String> themeModeLabels = {

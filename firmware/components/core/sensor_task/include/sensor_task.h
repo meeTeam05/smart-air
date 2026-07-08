@@ -1,7 +1,7 @@
 /**
  * @file sensor_task.h
  *
- * @brief Sensor polling task — SHT3x + DS3231 + GM-702B CO + GM-102B NO2.
+ * @brief Sensor polling task for SHT3x, DS3231, GM-702B CO, and GM-102B NO2.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  *
@@ -9,7 +9,7 @@
  *   - sensor_task_start() spawns sensor_task_fn (Core 1, Priority 5, 4096 B).
  *   - The device_id is passed in by the caller and used to build MQTT topics.
  *   - Every SA_SENSOR_POLLING_INTERVAL ms: read all sensors -> publish JSON to MQTT.
- *   - Any sensor pointer may be NULL (disabled/failed) — that field reports null in JSON.
+ *   - Any sensor pointer may be NULL (disabled/failed); that field reports null in JSON.
  */
 
 #pragma once

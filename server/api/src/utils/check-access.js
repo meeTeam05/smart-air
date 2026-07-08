@@ -2,9 +2,9 @@
  * Shared authorization helpers.
  *
  * Three levels of access check:
- *   checkDeviceAccess — user is a member of the home that owns this device
- *   checkMembership   — user is a member of a specific home (any role)
- *   requireRole       — user has a specific role in a home (throws 403)
+ *   checkDeviceAccess - user is a member of the home that owns this device
+ *   checkMembership   - user is a member of a specific home (any role)
+ *   requireRole       - user has a specific role in a home (throws 403)
  */
 
 export async function checkDeviceAccess(fastify, deviceId, userId) {

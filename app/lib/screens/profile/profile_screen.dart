@@ -30,10 +30,7 @@ class ProfileScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(AtmosphereTokens.space16),
         children: [
           // Page title
-          Text(
-            'Profile',
-            style: AtmosphereTextStyles.pageTitle(c.ink),
-          ),
+          Text('Profile', style: AtmosphereTextStyles.pageTitle(c.ink)),
           const SizedBox(height: AtmosphereTokens.space20),
 
           // Account card
@@ -89,10 +86,7 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(height: AtmosphereTokens.space24),
 
           // Homes section
-          Text(
-            'HOMES',
-            style: AtmosphereTextStyles.label(c.ink3),
-          ),
+          Text('HOMES', style: AtmosphereTextStyles.label(c.ink3)),
           const SizedBox(height: AtmosphereTokens.space12),
 
           homesState.when(
@@ -127,20 +121,20 @@ class ProfileScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(AtmosphereTokens.space16),
               decoration: BoxDecoration(
                 color: c.paper,
-                borderRadius:
-                    BorderRadius.circular(AtmosphereTokens.radiusCard),
+                borderRadius: BorderRadius.circular(
+                  AtmosphereTokens.radiusCard,
+                ),
                 border: Border.all(color: c.line),
               ),
-              child: Center(
-                child: CircularProgressIndicator(color: c.brand),
-              ),
+              child: Center(child: CircularProgressIndicator(color: c.brand)),
             ),
             error: (_, __) => Container(
               padding: const EdgeInsets.all(AtmosphereTokens.space16),
               decoration: BoxDecoration(
                 color: c.paper,
-                borderRadius:
-                    BorderRadius.circular(AtmosphereTokens.radiusCard),
+                borderRadius: BorderRadius.circular(
+                  AtmosphereTokens.radiusCard,
+                ),
                 border: Border.all(color: c.line),
               ),
               child: Text(
@@ -153,10 +147,7 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(height: AtmosphereTokens.space24),
 
           // App settings section
-          Text(
-            'APP SETTINGS',
-            style: AtmosphereTextStyles.label(c.ink3),
-          ),
+          Text('APP SETTINGS', style: AtmosphereTextStyles.label(c.ink3)),
           const SizedBox(height: AtmosphereTokens.space12),
 
           _SettingsCard(
@@ -223,7 +214,8 @@ class ProfileScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('About'),
         content: const Text(
-            'Smart Air v0.1.0\n\nIndoor air quality monitor and smart device controller.'),
+          'Smart Air v0.1.0\n\nIndoor air quality monitor and smart device controller.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -258,7 +250,7 @@ class ProfileScreen extends ConsumerWidget {
   }
 }
 
-// ── Settings card ─────────────────────────────────────────────────────────────
+// Settings card
 
 class _SettingsCard extends StatelessWidget {
   final List<Widget> children;
@@ -280,7 +272,7 @@ class _SettingsCard extends StatelessWidget {
   }
 }
 
-// ── Settings row ──────────────────────────────────────────────────────────────
+// Settings row
 
 class _SettingRow extends StatelessWidget {
   final IconData icon;
@@ -312,10 +304,7 @@ class _SettingRow extends StatelessWidget {
             Icon(icon, size: 20, color: c.ink2),
             const SizedBox(width: AtmosphereTokens.space12),
             Expanded(
-              child: Text(
-                label,
-                style: AtmosphereTextStyles.body(c.ink),
-              ),
+              child: Text(label, style: AtmosphereTextStyles.body(c.ink)),
             ),
             if (trailing != null)
               trailing!
@@ -328,7 +317,7 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
-// ── Theme selector ────────────────────────────────────────────────────────────
+// Theme selector
 
 class _ThemeSelector extends StatelessWidget {
   @override

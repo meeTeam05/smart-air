@@ -40,6 +40,6 @@ export default async function healthRoutes(fastify) {
     // Readiness: all backing services are connected and usable
     fastify.get('/health/ready', sendReadiness);
 
-    // Alias for backward compatibility — preserves JSON readiness behavior directly
+    // Backward-compatible alias that preserves JSON readiness behavior.
     fastify.get('/health', sendReadiness);
 }

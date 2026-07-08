@@ -97,7 +97,7 @@ async function getDeviceOtaState(fastify, deviceId) {
 export default async function devicesRoutes(fastify) {
     const auth = { preHandler: fastify.authenticate };
 
-    // POST /api/devices — called after BLE provisioning
+    // POST /api/devices is called after BLE provisioning.
     fastify.post('/devices', { preHandler: fastify.authenticate, config: { rateLimit: RATE_LIMIT_DEVICE } }, async (request, reply) => {
         const userId = request.user.sub;
         const { device_id, name, home_id, room_id } = request.body || {};
@@ -134,7 +134,7 @@ export default async function devicesRoutes(fastify) {
             try {
                 emqxResult = await createDeviceUser(normalizedDeviceId, secretKey, fastify.log, request.id);
             } catch (err) {
-                fastify.log.warn({ err }, 'EMQX user creation failed — device not saved');
+                fastify.log.warn({ err }, 'EMQX user creation failed; device not saved');
                 err.statusCode = 502;
                 err.clientMessage = 'Device provisioning failed';
                 throw err;
@@ -175,7 +175,7 @@ export default async function devicesRoutes(fastify) {
         return reply.code(201).send({ ...device, secret_key: secretKey });
     });
 
-    // GET /api/devices/announce/:mac — provisioning poll: has device announced itself online?
+    // GET /api/devices/announce/:mac polls whether the device announced itself online.
     // Returns {announced: true} when MQTT bridge saw the device come online.
     // The record disappears after 5 minutes so stale announcements don't linger.
     fastify.get('/devices/announce/:mac', auth, async (request, reply) => {

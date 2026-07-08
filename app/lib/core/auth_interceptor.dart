@@ -11,7 +11,7 @@ void setAccessToken(String? token) => _accessToken = token;
 String? getAccessToken() => _accessToken;
 
 /// Incremented whenever a 401 cannot be recovered. auth_provider listens to
-/// this signal to set state → null, which triggers the router redirect guard.
+/// this signal to set state -> null, which triggers the router redirect guard.
 final forceLogoutSignalProvider = StateProvider<int>((_) => 0);
 
 class AuthInterceptor extends Interceptor {
@@ -36,7 +36,9 @@ class AuthInterceptor extends Interceptor {
 
   @override
   Future<void> onError(
-      DioException err, ErrorInterceptorHandler handler) async {
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
     final statusCode = err.response?.statusCode;
 
     // Only attempt refresh on 401 from non-auth endpoints.
@@ -61,10 +63,7 @@ class AuthInterceptor extends Interceptor {
             ...err.requestOptions.headers,
             'Authorization': 'Bearer $newAccess',
           },
-          extra: {
-            ...err.requestOptions.extra,
-            'authRetried': true,
-          },
+          extra: {...err.requestOptions.extra, 'authRetried': true},
         ),
       );
       handler.resolve(retryResponse);
@@ -88,10 +87,10 @@ class AuthInterceptor extends Interceptor {
     future
         .then<void>((_) {}, onError: (Object _, StackTrace __) {})
         .whenComplete(() {
-      if (identical(_refreshFuture, future)) {
-        _refreshFuture = null;
-      }
-    });
+          if (identical(_refreshFuture, future)) {
+            _refreshFuture = null;
+          }
+        });
     return future;
   }
 
@@ -143,10 +142,10 @@ class AuthInterceptor extends Interceptor {
   }
 
   DioException _authError(DioException source) => DioException(
-        requestOptions: source.requestOptions,
-        error: const AuthException(),
-        type: DioExceptionType.badResponse,
-      );
+    requestOptions: source.requestOptions,
+    error: const AuthException(),
+    type: DioExceptionType.badResponse,
+  );
 
   DioException _classified(DioException err) {
     if (err.type == DioExceptionType.connectionTimeout ||

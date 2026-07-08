@@ -54,7 +54,7 @@ void ble_prov_stop(void);
 esp_err_t ble_prov_load_credentials(char *ssid_buf, size_t ssid_len, char *pass_buf, size_t pass_len);
 
 /**
- * @brief Clear stored credentials — forces BLE re-provisioning on next boot.
+ * @brief Clear stored credentials and force BLE re-provisioning on next boot.
  * 
  * @return ESP_OK on success, or an error code.
  */

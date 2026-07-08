@@ -42,8 +42,9 @@ class _Step3WifiScreenState extends ConsumerState<Step3WifiScreen> {
   String? _registeredSecretKey;
 
   String _defaultProvisioningName(String deviceId) {
-    final suffix =
-        deviceId.replaceAll(RegExp(r'[^A-Fa-f0-9]'), '').toUpperCase();
+    final suffix = deviceId
+        .replaceAll(RegExp(r'[^A-Fa-f0-9]'), '')
+        .toUpperCase();
     if (suffix.isEmpty) {
       final fallbackLength = deviceId.length < 6 ? deviceId.length : 6;
       return 'Smart Air ${deviceId.substring(deviceId.length - fallbackLength).toUpperCase()}';
@@ -78,8 +79,10 @@ class _Step3WifiScreenState extends ConsumerState<Step3WifiScreen> {
         throw StateError('Select a home before provisioning.');
       }
 
-      final result =
-          await _ble.sendCredentials(_ssidCtrl.text.trim(), _passCtrl.text);
+      final result = await _ble.sendCredentials(
+        _ssidCtrl.text.trim(),
+        _passCtrl.text,
+      );
       final deviceService = ref.read(deviceServiceProvider);
       String? secretKey;
 
@@ -128,9 +131,9 @@ class _Step3WifiScreenState extends ConsumerState<Step3WifiScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _sending = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 
@@ -221,7 +224,7 @@ class _Step3WifiScreenState extends ConsumerState<Step3WifiScreen> {
           ),
         ],
       ),
-      primaryLabel: _sending ? 'Sending…' : 'Send credentials',
+      primaryLabel: _sending ? 'Sending...' : 'Send credentials',
       primaryLoading: _sending,
       primaryEnabled: !_sending,
       onPrimary: _sendCredentials,

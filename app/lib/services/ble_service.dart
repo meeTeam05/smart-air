@@ -35,7 +35,7 @@ class BleService {
   BluetoothDevice? _device;
   StreamSubscription<List<int>>? _notifySub;
 
-  // ── Permission ─────────────────────────────────────────────────────────────
+  // Permissions
 
   Future<int> _androidSdkInt() async {
     if (!Platform.isAndroid) return 0;
@@ -47,10 +47,7 @@ class BleService {
     if (Platform.isAndroid && androidSdkInt < 31) {
       return [Permission.locationWhenInUse];
     }
-    return [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-    ];
+    return [Permission.bluetoothScan, Permission.bluetoothConnect];
   }
 
   bool _permissionGranted(PermissionStatus status) {
@@ -108,13 +105,13 @@ class BleService {
     await openAppSettings();
   }
 
-  // ── Adapter state ──────────────────────────────────────────────────────────
+  // Adapter state
 
   /// Single current adapter state snapshot.
   Future<BluetoothAdapterState> get adapterState async =>
       FlutterBluePlus.adapterState.first;
 
-  // ── Scan ───────────────────────────────────────────────────────────────────
+  // Scan
 
   /// Scans for nearby Smart Air BLE devices.
   ///
@@ -128,30 +125,29 @@ class BleService {
       androidScanMode: AndroidScanMode.lowLatency,
     );
 
-    final sub = FlutterBluePlus.onScanResults.listen(
-      (results) {
-        for (final r in results) {
-          // Prefer advName (from BLE advertisement/scan-response packet).
-          // platformName is the Android cache — empty for unseen devices.
-          final advName = r.advertisementData.advName.trim();
-          final platformName = r.device.platformName.trim();
-          final name = advName.isNotEmpty
-              ? advName
-              : platformName.isNotEmpty
-                  ? platformName
-                  : 'Unknown (${r.device.remoteId.str.substring(r.device.remoteId.str.length - 5)})';
+    final sub = FlutterBluePlus.onScanResults.listen((results) {
+      for (final r in results) {
+        // Prefer advName (from BLE advertisement/scan-response packet).
+        // platformName is the Android cache; it is empty for unseen devices.
+        final advName = r.advertisementData.advName.trim();
+        final platformName = r.device.platformName.trim();
+        final name = advName.isNotEmpty
+            ? advName
+            : platformName.isNotEmpty
+            ? platformName
+            : 'Unknown (${r.device.remoteId.str.substring(r.device.remoteId.str.length - 5)})';
 
-          if (!BleConfig.matchesProvisioningName(name)) continue;
+        if (!BleConfig.matchesProvisioningName(name)) continue;
 
-          controller.add(BleDeviceInfo(
+        controller.add(
+          BleDeviceInfo(
             remoteId: r.device.remoteId.str,
             name: name,
             rssi: r.rssi,
-          ));
-        }
-      },
-      onError: controller.addError,
-    );
+          ),
+        );
+      }
+    }, onError: controller.addError);
 
     // Guard: only close the controller after the scan has actually started.
     // FlutterBluePlus.isScanning is a ValueStream that emits its current value
@@ -174,7 +170,7 @@ class BleService {
   /// Stop an in-progress scan early.
   Future<void> stopScan() => FlutterBluePlus.stopScan();
 
-  // ── Provisioning ───────────────────────────────────────────────────────────
+  // Provisioning
 
   final _notifyController = StreamController<String>.broadcast();
 
@@ -248,7 +244,7 @@ class BleService {
     await ssidChar.write(utf8.encode(ssid), withoutResponse: false);
     await passChar.write(utf8.encode(password), withoutResponse: false);
 
-    // Wait for the notify — device sends it after WiFi connect attempt
+    // Wait for the notify sent after the WiFi connect attempt.
     final String jsonStr;
     try {
       jsonStr = await notifyStream
@@ -256,7 +252,8 @@ class BleService {
           .first;
     } catch (_) {
       throw BleException(
-          'Timed out waiting for device response (${timeout.inSeconds}s)');
+        'Timed out waiting for device response (${timeout.inSeconds}s)',
+      );
     }
 
     final Map<String, dynamic> result;
@@ -268,7 +265,8 @@ class BleService {
 
     if (result['status'] != 'ok') {
       throw const BleException(
-          'Device failed to connect to WiFi — check password');
+        'Device failed to connect to WiFi; check password',
+      );
     }
 
     final deviceId = result['device_id'] as String?;
@@ -287,7 +285,7 @@ class BleService {
     );
   }
 
-  // ── Connect + read ─────────────────────────────────────────────────────────
+  // Connect and read
 
   /// Connects to a device and reads one [SensorSnapshot].
   ///
@@ -298,7 +296,7 @@ class BleService {
     _device = BluetoothDevice.fromId(info.remoteId);
 
     try {
-      // mtu: null — skip automatic requestMtu(512) which causes
+      // mtu: null skips automatic requestMtu(512), which causes
       // PlatformException(requestMtu, device is disconnected) on some Android
       // versions when the peripheral doesn't respond to MTU exchange in time.
       await _device!.connect(timeout: const Duration(seconds: 10), mtu: null);
@@ -348,7 +346,7 @@ class BleService {
     }
   }
 
-  // ── Disconnect ─────────────────────────────────────────────────────────────
+  // Disconnect
 
   /// Disconnects from the current device (no-op if not connected).
   Future<void> disconnect() async {
@@ -358,13 +356,13 @@ class BleService {
       try {
         await _device!.disconnect();
       } catch (_) {
-        // Ignore disconnect errors — device may already be gone
+        // Ignore disconnect errors; the device may already be gone.
       }
       _device = null;
     }
   }
 
-  // ── Cleanup ────────────────────────────────────────────────────────────────
+  // Cleanup
 
   Future<void> dispose() async {
     await stopScan();
@@ -372,7 +370,7 @@ class BleService {
   }
 }
 
-// ── Exception ─────────────────────────────────────────────────────────────────
+// Exception
 
 class BleException implements Exception {
   final String message;

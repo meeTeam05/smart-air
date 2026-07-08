@@ -1,21 +1,19 @@
 import '../core/app_config.dart';
 
-// BLE data models for Smart Air firmware test mode.
-// Used when the ESP32-S3 is running in test mode (no WiFi/MQTT).
-// Replace placeholder UUIDs with real firmware UUIDs before production.
+// BLE data models for provisioning and firmware test mode.
 
-// ── GATT UUIDs ────────────────────────────────────────────────────────────────
+// GATT UUIDs
 
 /// UUIDs verified against firmware/components/drivers/general/ble_prov/ble_prov.c
 class SmartAirGatt {
   SmartAirGatt._();
 
-  // Provisioning service — firmware: BLE_UUID16_INIT(0xFFFE)
+  // Provisioning service; firmware uses BLE_UUID16_INIT(0xFFFE).
   static const String serviceUuid = BleConfig.provisioningServiceUuid;
-  // Sensor read characteristics (test mode — placeholder, not used in provisioning)
+  // Sensor read characteristics (test-mode placeholders, not used in provisioning).
   static const String tempCharUuid = BleConfig.tempCharacteristicUuid;
   static const String humCharUuid = BleConfig.humidityCharacteristicUuid;
-  // Provisioning characteristics — firmware: FF01, FF02, FF03
+  // Provisioning characteristics; firmware uses FF01, FF02, FF03.
   static const String provSsidCharUuid =
       BleConfig.provisioningSsidCharacteristicUuid;
   static const String provPassCharUuid =
@@ -27,7 +25,7 @@ class SmartAirGatt {
   static const String deviceNamePrefix = BleConfig.provisioningDeviceNamePrefix;
 }
 
-// ── Device info ───────────────────────────────────────────────────────────────
+// Device info
 
 /// Lightweight descriptor of a discovered BLE device.
 class BleDeviceInfo {
@@ -52,16 +50,13 @@ class BleDeviceInfo {
 enum RssiLevel { strong, medium, weak }
 
 class BleProvisioningResult {
-  const BleProvisioningResult({
-    required this.deviceId,
-    required this.ip,
-  });
+  const BleProvisioningResult({required this.deviceId, required this.ip});
 
   final String deviceId;
   final String ip;
 }
 
-// ── Sensor snapshot ───────────────────────────────────────────────────────────
+// Sensor snapshot
 
 /// A single reading from the ESP32-S3 sensor characteristic.
 class SensorSnapshot {
@@ -78,8 +73,8 @@ class SensorSnapshot {
   /// Parse raw bytes from the GATT characteristic.
   ///
   /// Expected encoding (8 bytes, little-endian):
-  ///   bytes 0-3  → temperature as float32
-  ///   bytes 4-7  → humidity as float32
+  ///   bytes 0-3  -> temperature as float32
+  ///   bytes 4-7  -> humidity as float32
   ///
   /// Returns null if the byte array is malformed.
   static SensorSnapshot? fromBytes(List<int> bytes) {
@@ -104,7 +99,7 @@ class SensorSnapshot {
   String get humidityLabel => '${humidity.toStringAsFixed(0)}%';
 }
 
-// ── Internal helper ───────────────────────────────────────────────────────────
+// Internal helper
 
 class _ByteHelper {
   static double fromInt32(int bits) {
@@ -131,7 +126,7 @@ class _ByteHelper {
   }
 }
 
-// ── BLE scan/connection state ─────────────────────────────────────────────────
+// BLE scan/connection state
 
 enum BleState {
   idle,

@@ -9,7 +9,7 @@
  *   - ota_task_fn blocks on the queue, downloads the firmware via esp_https_ota,
  *     publishes progress every 10% to device/{id}/ota/progress, then reboots.
  *   - ota_validate_and_commit() marks the new firmware valid after the system
- *     proves it works — satisfies SEC-03 rollback requirement.
+ *     proves it works and satisfies SEC-03 rollback.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -30,12 +30,12 @@
 #include <string.h>
 #include <strings.h>
 
-/* Forward declaration — resolved at link time from sa_mqtt component (no CMake dep needed) */
+/* Forward declaration resolved at link time from sa_mqtt (no CMake dependency). */
 extern int mqtt_publish(const char *topic, const char *payload, int qos, bool retain);
 
 static const char *TAG = "ota";
 
-/* ── Driver state ────────────────────────────────────────────────────────── */
+/* Driver state */
 
 typedef struct {
     char url[256];
@@ -46,7 +46,7 @@ static QueueHandle_t s_ota_queue = NULL;
 static char s_progress_topic[96]; /* device/{id}/ota/progress */
 static bool s_ota_started = false;
 
-/* ── Internal helpers ────────────────────────────────────────────────────── */
+/* Internal helpers */
 
 static void report_ota_state(uint8_t percent, display_ota_stage_t stage, display_ota_error_t error)
 {
@@ -95,7 +95,7 @@ static esp_err_t format_hex_string(const uint8_t *bytes, size_t byte_count, char
     return ESP_OK;
 }
 
-/* ── FreeRTOS task ───────────────────────────────────────────────────────── */
+/* FreeRTOS task */
 
 static void ota_task_fn(void *arg)
 {
@@ -128,7 +128,7 @@ static void ota_task_fn(void *arg)
             continue;
         }
 
-        /* Download loop — publish progress every 10% */
+        /* Download loop; publish progress every 10%. */
         int last_bucket = -1;
         while (1) {
             err = esp_https_ota_perform(ota_handle);
@@ -159,14 +159,14 @@ static void ota_task_fn(void *arg)
 
         report_ota_state(100, DISPLAY_OTA_STAGE_VERIFYING, DISPLAY_OTA_ERROR_NONE);
 
-        /* Validate SHA256 BEFORE finish() — finish() changes the boot pointer,
+        /* Validate SHA256 before finish(); finish() changes the boot pointer,
          * so a mismatch detected after finish() would leave boot targeting a bad image.
          * Verify against the next-update partition (where OTA wrote data). */
         if (msg.sha256[0] != '\0') {
             const esp_partition_t *target = esp_ota_get_next_update_partition(NULL);
             uint8_t digest[32];
             if (target == NULL || esp_partition_get_sha256(target, digest) != ESP_OK) {
-                ESP_LOGE(TAG, "SHA256 read failed — rejecting OTA image");
+                ESP_LOGE(TAG, "SHA256 read failed; rejecting OTA image");
                 esp_https_ota_abort(ota_handle);
                 report_ota_state(100, DISPLAY_OTA_STAGE_FAILED, DISPLAY_OTA_ERROR_GENERIC);
                 publish_progress(0, "failed");
@@ -182,7 +182,7 @@ static void ota_task_fn(void *arg)
                 continue;
             }
             if (strcasecmp(actual_hex, msg.sha256) != 0) {
-                ESP_LOGE(TAG, "SHA256 mismatch — expected %s, got %s", msg.sha256, actual_hex);
+                ESP_LOGE(TAG, "SHA256 mismatch; expected %s, got %s", msg.sha256, actual_hex);
                 esp_https_ota_abort(ota_handle);
                 report_ota_state(100, DISPLAY_OTA_STAGE_FAILED, DISPLAY_OTA_ERROR_SHA256_MISMATCH);
                 publish_progress(0, "sha256_mismatch");
@@ -199,7 +199,7 @@ static void ota_task_fn(void *arg)
             continue;
         }
 
-        ESP_LOGI(TAG, "OTA download complete — rebooting");
+        ESP_LOGI(TAG, "OTA download complete; rebooting");
         report_ota_state(100, DISPLAY_OTA_STAGE_REBOOTING, DISPLAY_OTA_ERROR_NONE);
         publish_progress(100, "rebooting");
 
@@ -209,7 +209,7 @@ static void ota_task_fn(void *arg)
     }
 }
 
-/* ── Public API ──────────────────────────────────────────────────────────── */
+/* Public API */
 
 esp_err_t ota_task_start(const char *device_id)
 {
@@ -246,17 +246,17 @@ esp_err_t ota_trigger(const char *url, const char *sha256)
 
     /* SEC-02: HTTPS only */
     if (url == NULL || strncmp(url, "https://", 8) != 0) {
-        ESP_LOGW(TAG, "OTA trigger rejected — URL must start with https://");
+        ESP_LOGW(TAG, "OTA trigger rejected; URL must start with https://");
         return ESP_ERR_INVALID_ARG;
     }
 
     if (strnlen(url, sizeof(msg.url)) >= sizeof(msg.url)) {
-        ESP_LOGW(TAG, "OTA trigger rejected — URL exceeds %u bytes", (unsigned)(sizeof(msg.url) - 1U));
+        ESP_LOGW(TAG, "OTA trigger rejected; URL exceeds %u bytes", (unsigned)(sizeof(msg.url) - 1U));
         return ESP_ERR_INVALID_SIZE;
     }
 
     if (s_ota_queue == NULL) {
-        ESP_LOGW(TAG, "OTA trigger ignored — queue not initialised");
+        ESP_LOGW(TAG, "OTA trigger ignored; queue not initialised");
         return ESP_FAIL;
     }
 
@@ -267,7 +267,7 @@ esp_err_t ota_trigger(const char *url, const char *sha256)
 
     /* Non-blocking: drop trigger if a download is already queued */
     if (xQueueSend(s_ota_queue, &msg, 0) != pdTRUE) {
-        ESP_LOGW(TAG, "OTA trigger dropped — queue full (download already pending)");
+        ESP_LOGW(TAG, "OTA trigger dropped; queue full (download already pending)");
         report_ota_state(0, DISPLAY_OTA_STAGE_STARTING, DISPLAY_OTA_ERROR_BUSY);
         publish_progress(0, "busy");
         return ESP_FAIL;
@@ -285,7 +285,7 @@ void ota_validate_and_commit(void)
     if (esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
         esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
         if (err == ESP_OK) {
-            ESP_LOGI(TAG, "OTA validated — new firmware committed");
+            ESP_LOGI(TAG, "OTA validated; new firmware committed");
         } else {
             ESP_LOGE(TAG, "esp_ota_mark_app_valid_cancel_rollback failed (%s)", esp_err_to_name(err));
         }

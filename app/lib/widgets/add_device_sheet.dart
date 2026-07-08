@@ -2,10 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../app_theme.dart';
 
-/// —————————————————————————————————————————————————————————————————————————
-/// Simulated device found after a BLE/WiFi scan.
-/// In production this would come from a real network discovery result.
-/// —————————————————————————————————————————————————————————————————————————
+/// Simulated device found by the add-device demo.
 class _DiscoveredDevice {
   final String name;
   final String model;
@@ -32,10 +29,8 @@ class _DiscoveredDevice {
   }
 }
 
-/// —————————————————————————————————————————————————————————————————————————
-/// AddDeviceSheet  — shows a BLE/WiFi scan UI
-/// Returns `true` via Navigator.pop when a device is successfully added.
-/// —————————————————————————————————————————————————————————————————————————
+/// Demo BLE/WiFi scan sheet.
+/// Returns `true` when a device is added.
 class AddDeviceSheet extends StatefulWidget {
   const AddDeviceSheet({super.key});
 
@@ -50,7 +45,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
   _ScanState _state = _ScanState.idle;
   _DiscoveredDevice? _found;
 
-  // ── Ripple animation ────────────────────────────────────────────────────
+  // Ripple animation
   late final AnimationController _ripple;
 
   @override
@@ -68,9 +63,8 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
     super.dispose();
   }
 
-  // ── Simulated scan ──────────────────────────────────────────────────────
-  // TODO: Replace with actual BLE (flutter_blue_plus) or mDNS / HTTP
-  // discovery on mobile. On web we can't do BLE; show a helpful note.
+  // Simulated scan
+  // TODO: Replace with real BLE or local discovery on mobile.
   Future<void> _startScan() async {
     setState(() {
       _state = _ScanState.scanning;
@@ -88,7 +82,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
     // In production: replace with real BLE scan result.
     final device = _DiscoveredDevice(
       name: 'Smart Air',
-      model: 'ESP32-S3  ·  SA-01',
+      model: 'ESP32-S3 / SA-01',
       mac: _fakeMac(),
       rssi: -48 - math.Random().nextInt(20),
     );
@@ -106,13 +100,12 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
   String _fakeMac() {
     final r = math.Random();
     return List.generate(
-            6,
-            (_) =>
-                r.nextInt(256).toRadixString(16).padLeft(2, '0').toUpperCase())
-        .join(':');
+      6,
+      (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0').toUpperCase(),
+    ).join(':');
   }
 
-  // ── UI ──────────────────────────────────────────────────────────────────
+  // UI
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -127,7 +120,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Handle ──────────────────────────────────────────────────────
+          // Handle
           Container(
             width: 36,
             height: 4,
@@ -138,7 +131,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
             ),
           ),
 
-          // ── Header ──────────────────────────────────────────────────────
+          // Header
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 8, 12),
             child: Row(
@@ -162,7 +155,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
 
           Divider(height: 0, color: c.border),
 
-          // ── Body ────────────────────────────────────────────────────────
+          // Body
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
@@ -182,12 +175,12 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
     );
   }
 
-  // ── Scan area ────────────────────────────────────────────────────────────
+  // Scan area
   Widget _buildScanArea() {
     final c = context.colors;
     return Column(
       children: [
-        // ── Radar graphic ──────────────────────────────────────────────
+        // Radar graphic
         SizedBox(
           width: 180,
           height: 180,
@@ -219,14 +212,14 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
                   _state == _ScanState.found
                       ? Icons.check_circle_outline
                       : _state == _ScanState.notFound
-                          ? Icons.search_off
-                          : Icons.wifi_tethering,
+                      ? Icons.search_off
+                      : Icons.wifi_tethering,
                   size: 44,
                   color: _state == _ScanState.found
                       ? AppColors.online
                       : _state == _ScanState.scanning
-                          ? AppColors.primary
-                          : c.textSecondary,
+                      ? AppColors.primary
+                      : c.textSecondary,
                 ),
               ),
             ],
@@ -235,7 +228,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
 
         const SizedBox(height: 16),
 
-        // ── Status text ────────────────────────────────────────────────
+        // Status text
         Text(
           _stateTitle(),
           style: TextStyle(
@@ -248,16 +241,12 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
         Text(
           _stateSubtitle(),
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12,
-            color: c.textSecondary,
-            height: 1.5,
-          ),
+          style: TextStyle(fontSize: 12, color: c.textSecondary, height: 1.5),
         ),
 
         const SizedBox(height: 20),
 
-        // ── Action button ──────────────────────────────────────────────
+        // Action button
         if (_state == _ScanState.idle)
           FilledButton.icon(
             onPressed: _startScan,
@@ -268,7 +257,8 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
               foregroundColor: AtmosphereTokens.paper,
               minimumSize: const Size(200, 46),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
 
@@ -302,7 +292,8 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
               side: const BorderSide(color: AppColors.primary),
               minimumSize: const Size(160, 42),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
       ],
@@ -335,7 +326,7 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
     }
   }
 
-  // ── Found device card ─────────────────────────────────────────────────────
+  // Found device card
   Widget _buildFoundCard(_DiscoveredDevice dev) {
     final c = context.colors;
     return Container(
@@ -344,7 +335,9 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
         color: c.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.4), width: 1.5),
+          color: AppColors.primary.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
       ),
       child: Column(
         children: [
@@ -358,8 +351,11 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
                   color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child:
-                    const Icon(Icons.air, color: AppColors.primary, size: 30),
+                child: const Icon(
+                  Icons.air,
+                  color: AppColors.primary,
+                  size: 30,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -389,13 +385,18 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.signal_wifi_4_bar,
-                          color: dev.signalColor(), size: 14),
+                      Icon(
+                        Icons.signal_wifi_4_bar,
+                        color: dev.signalColor(),
+                        size: 14,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         dev.signalLabel,
-                        style:
-                            TextStyle(fontSize: 11, color: dev.signalColor()),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: dev.signalColor(),
+                        ),
                       ),
                     ],
                   ),
@@ -447,7 +448,8 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
                 backgroundColor: AppColors.primary,
                 foregroundColor: AtmosphereTokens.paper,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               child: const Text(
@@ -472,11 +474,11 @@ class _AddDeviceSheetState extends State<AddDeviceSheet>
   }
 }
 
-// ── Ripple ring ───────────────────────────────────────────────────────────────
+// Ripple ring
 
 class _RippleRing extends StatelessWidget {
   final AnimationController controller;
-  final double delay; // 0.0 – 1.0
+  final double delay; // 0.0 - 1.0
   final double maxRadius;
 
   const _RippleRing({
@@ -511,7 +513,7 @@ class _RippleRing extends StatelessWidget {
   }
 }
 
-// ── Info chip ─────────────────────────────────────────────────────────────────
+// Info chip
 
 class _InfoChip extends StatelessWidget {
   final IconData icon;
@@ -532,10 +534,7 @@ class _InfoChip extends StatelessWidget {
         children: [
           Icon(icon, size: 11, color: c.textSecondary),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(fontSize: 11, color: c.textSecondary),
-          ),
+          Text(label, style: TextStyle(fontSize: 11, color: c.textSecondary)),
         ],
       ),
     );

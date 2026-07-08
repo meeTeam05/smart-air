@@ -1,17 +1,17 @@
 /**
  * @file factory_reset.c
  *
- * @brief Physical factory reset button — 50 ms polling, hold-to-reset.
+ * @brief Physical factory reset button with 50 ms polling and hold-to-reset.
  *
  * State machine (runs in factory_reset_task):
  *
- *   IDLE  → button not pressed, hold_ms == 0
- *   HOLD  → button pressed, 0 < hold_ms < SA_FACTORY_RESET_HOLD_MS
+ *   IDLE  -> button not pressed, hold_ms == 0
+ *   HOLD  -> button pressed, 0 < hold_ms < SA_FACTORY_RESET_HOLD_MS
  *             LED switches to FACTORY_RESET (red blink) after 1 s
- *   RESET → hold_ms >= SA_FACTORY_RESET_HOLD_MS → factory_reset_run()
+ *   RESET -> hold_ms >= SA_FACTORY_RESET_HOLD_MS -> factory_reset_run()
  *
  * Releasing during HOLD restores the LED state that was active before hold
- * started and returns to IDLE — no side effects.
+ * started and returns to IDLE with no side effects.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet
  */
@@ -39,7 +39,7 @@ static const char *TAG = "factory_reset";
 
 static gpio_num_t s_gpio;
 
-/* ── Reset sequence ──────────────────────────────────────────────────────── */
+/* Reset sequence */
 
 esp_err_t factory_reset_run(void)
 {
@@ -49,7 +49,7 @@ esp_err_t factory_reset_run(void)
         return err;
     }
 
-    ESP_LOGW(TAG, "Factory reset triggered — erasing provisioning data");
+    ESP_LOGW(TAG, "Factory reset triggered; erasing provisioning data");
     ESP_LOGW(TAG, "Factory reset scope: Wi-Fi provisioning + MQTT creds/URI + mode + relay state");
     ESP_LOGW(TAG, "Gas calibration R0 is preserved in the '%s' NVS partition", SA_NVS_CALIB_PARTITION);
 
@@ -89,7 +89,7 @@ esp_err_t factory_reset_run(void)
 
 #if SA_ENABLE_FACTORY_RESET
 
-/* ── Polling task ────────────────────────────────────────────────────────── */
+/* Polling task */
 
 static void factory_reset_task(void *arg)
 {
@@ -106,7 +106,7 @@ static void factory_reset_task(void *arg)
         if (level != 0) {
             /* Button released or not pressed */
             if (was_holding) {
-                /* User cancelled — restore previous LED state */
+                /* User cancelled; restore the previous LED state. */
                 ESP_LOGI(TAG, "Hold cancelled after %lu ms", (unsigned long)hold_ms);
                 led_set_state(saved_state);
             }
@@ -124,7 +124,7 @@ static void factory_reset_task(void *arg)
             saved_state = led_get_state();
             was_holding = true;
             led_set_state(LED_STATE_FACTORY_RESET);
-            ESP_LOGI(TAG, "Hold detected — keep holding for factory reset (%d ms total)", SA_FACTORY_RESET_HOLD_MS);
+            ESP_LOGI(TAG, "Hold detected; keep holding for factory reset (%d ms total)", SA_FACTORY_RESET_HOLD_MS);
         }
 
         if (hold_ms >= (uint32_t)SA_FACTORY_RESET_HOLD_MS) {
@@ -140,7 +140,7 @@ static void factory_reset_task(void *arg)
 }
 #endif /* SA_ENABLE_FACTORY_RESET */
 
-/* ── Public API ──────────────────────────────────────────────────────────── */
+/* Public API */
 
 esp_err_t factory_reset_init(gpio_num_t gpio)
 {
@@ -160,7 +160,7 @@ esp_err_t factory_reset_init(gpio_num_t gpio)
         return err;
     }
 
-    /* Core 1, Priority 4, stack 3072 B — lightweight polling task */
+    /* Core 1, priority 4, stack 3072 B: lightweight polling task. */
     BaseType_t rc = xTaskCreatePinnedToCore(factory_reset_task, "fr_task", 3072, NULL, 4, NULL, APP_CPU_NUM);
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore failed");

@@ -1,7 +1,7 @@
 /**
  * @file ota.h
  *
- * @brief HTTPS OTA firmware update — MQTT-triggered, progress reporting,
+ * @brief HTTPS OTA firmware update with MQTT trigger, progress reporting,
  *        local display status, rollback.
  *
  * Copyright (C) 2026 MinhNhat & BaoViet

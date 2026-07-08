@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../design/tokens.dart';
-/// ── SAMPLE MOCKUP SCREEN ──────────────────────────────────────────────────
+
+/// SAMPLE MOCKUP SCREEN
 /// Màn hình này được thiết kế ĐỘC LẬP để bạn có thể review hướng UI mới.
 /// Bạn có thể thử trỏ home của MaterialApp về `SampleUiMockup()` để xem trực tiếp.
 /// Hướng thiết kế: Light, Tối giản (Minimal), Hiện đại, Rõ ràng.
@@ -13,7 +14,12 @@ class SampleUiMockup extends StatefulWidget {
 
 class _SampleUiMockupState extends State<SampleUiMockup> {
   int _selectedRoom = 0;
-  final List<String> _rooms = ['All Devices', 'Living Room', 'Bedroom', 'Kitchen'];
+  final List<String> _rooms = [
+    'All Devices',
+    'Living Room',
+    'Bedroom',
+    'Kitchen',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -29,9 +35,7 @@ class _SampleUiMockupState extends State<SampleUiMockup> {
             const SizedBox(height: 16),
             _buildRoomTabs(),
             const SizedBox(height: 20),
-            Expanded(
-              child: _buildDeviceGrid(),
-            ),
+            Expanded(child: _buildDeviceGrid()),
           ],
         ),
       ),
@@ -80,11 +84,11 @@ class _SampleUiMockupState extends State<SampleUiMockup> {
                   color: const Color(0xFF0F172A).withValues(alpha: 0.05),
                   blurRadius: 15,
                   offset: const Offset(0, 4),
-                )
+                ),
               ],
             ),
             child: const Icon(Icons.add_rounded, color: Color(0xFF1E293B)),
-          )
+          ),
         ],
       ),
     );
@@ -110,10 +114,14 @@ class _SampleUiMockupState extends State<SampleUiMockup> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF1E293B) : Colors.transparent,
+                color: isSelected
+                    ? const Color(0xFF1E293B)
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isSelected ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                  color: isSelected
+                      ? const Color(0xFF1E293B)
+                      : const Color(0xFFE2E8F0),
                   width: 1.5,
                 ),
               ),
@@ -122,7 +130,9 @@ class _SampleUiMockupState extends State<SampleUiMockup> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  color: isSelected ? AtmosphereTokens.paper : const Color(0xFF64748B),
+                  color: isSelected
+                      ? AtmosphereTokens.paper
+                      : const Color(0xFF64748B),
                 ),
               ),
             ),
@@ -139,7 +149,7 @@ class _SampleUiMockupState extends State<SampleUiMockup> {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
-      childAspectRatio: 0.85, 
+      childAspectRatio: 0.85,
       physics: const BouncingScrollPhysics(),
       children: const [
         _MockupDeviceCard(
@@ -197,14 +207,18 @@ class _MockupDeviceCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.04), // Bóng đổ mượt, sáng tạo cảm giác trôi nổi
+            color: const Color(0xFF0F172A).withValues(
+              alpha: 0.04,
+            ), // Bóng đổ mượt, sáng tạo cảm giác trôi nổi
             blurRadius: 20,
             spreadRadius: 0,
             offset: const Offset(0, 8),
           ),
         ],
         border: Border.all(
-          color: isActive ? const Color(0xFF3B82F6).withValues(alpha: 0.5) : Colors.transparent, // Highlight thẻ nếu đang bật
+          color: isActive
+              ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+              : Colors.transparent, // Highlight thẻ nếu đang bật
           width: 1.5,
         ),
       ),
@@ -222,14 +236,16 @@ class _MockupDeviceCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: isOnline 
-                      ? const Color(0xFFEFF6FF)  // Xanh lam lợt
-                      : const Color(0xFFF1F5F9), // Xám lợt
+                    color: isOnline
+                        ? const Color(0xFFEFF6FF) // Xanh lam lợt
+                        : const Color(0xFFF1F5F9), // Xám lợt
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    Icons.air_rounded, 
-                    color: isOnline ? const Color(0xFF3B82F6) : const Color(0xFF94A3B8),
+                    Icons.air_rounded,
+                    color: isOnline
+                        ? const Color(0xFF3B82F6)
+                        : const Color(0xFF94A3B8),
                     size: 24,
                   ),
                 ),
@@ -239,26 +255,41 @@ class _MockupDeviceCard extends StatelessWidget {
                     height: 8,
                     margin: const EdgeInsets.only(top: 8, right: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981), // Xanh lá online (Emerald)
+                      color: const Color(
+                        0xFF10B981,
+                      ), // Xanh lá online (Emerald)
                       shape: BoxShape.circle,
                       boxShadow: [
-                        BoxShadow(color: const Color(0xFF10B981).withValues(alpha: 0.4), blurRadius: 4),
+                        BoxShadow(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                          blurRadius: 4,
+                        ),
                       ],
                     ),
                   )
-                else 
-                   Container(
+                else
+                  Container(
                     margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text('Offline', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600)),
-                   )
+                    child: const Text(
+                      'Offline',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
               ],
             ),
-            
+
             // Middle: Information
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -290,13 +321,21 @@ class _MockupDeviceCard extends StatelessWidget {
             if (isOnline && temp != null && hum != null)
               Row(
                 children: [
-                  _buildSensorData(Icons.thermostat_rounded, const Color(0xFFF59E0B), temp!),
+                  _buildSensorData(
+                    Icons.thermostat_rounded,
+                    const Color(0xFFF59E0B),
+                    temp!,
+                  ),
                   const SizedBox(width: 8),
-                  _buildSensorData(Icons.water_drop_rounded, const Color(0xFF3B82F6), hum!),
+                  _buildSensorData(
+                    Icons.water_drop_rounded,
+                    const Color(0xFF3B82F6),
+                    hum!,
+                  ),
                 ],
               )
             else if (!isOnline)
-              const SizedBox(height: 24) // Placeholder 
+              const SizedBox(height: 24), // Placeholder
           ],
         ),
       ),

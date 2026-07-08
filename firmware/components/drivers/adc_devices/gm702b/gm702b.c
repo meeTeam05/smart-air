@@ -6,7 +6,7 @@
  * Copyright (C) 2026 MinhNhat & BaoViet
  *
  * Reads analog voltage from DFRobot SEN0564 breakout board via ADC1.
- * Converts voltage → resistance → Rs/R0 ratio → CO ppm via lookup table.
+ * Converts voltage -> resistance -> Rs/R0 ratio -> CO ppm via lookup table.
  *
  * CO characteristic: Rs DECREASES as CO concentration increases.
  * Rs/R0 < 1 indicates CO present.
@@ -40,7 +40,7 @@ static portMUX_TYPE s_state_lock = portMUX_INITIALIZER_UNLOCKED;
         }                                                                \
     } while (0)
 
-/* ── Lookup table: Rs/R0 → CO ppm (from datasheet Fig.3) ──────────────── */
+/* Lookup table: Rs/R0 -> CO ppm (from datasheet Fig.3) */
 /* Log-log relationship. Points extracted from GM-702B characteristic curve. */
 
 typedef struct {
@@ -87,11 +87,11 @@ static float log_interp(float r1, float p1, float r2, float p2, float r)
  */
 static float ratio_to_ppm_co(float ratio)
 {
-    /* Above clean-air baseline — no CO detected */
+    /* Above clean-air baseline; no CO detected. */
     if (ratio >= CO_CURVE[0].ratio) {
         return 0.0f;
     }
-    /* Below minimum ratio — clamp to max range */
+    /* Below minimum ratio; clamp to max range. */
     if (ratio <= CO_CURVE[CO_CURVE_LEN - 1].ratio) {
         return GM702B_CO_PPM_MAX;
     }
@@ -193,7 +193,7 @@ static void gm702b_set_calibration_state(gm702b_t *dev, float r0, bool calibrate
     portEXIT_CRITICAL(&s_state_lock);
 }
 
-/* ── Public API ────────────────────────────────────────────────────────── */
+/* Public API */
 
 esp_err_t gm702b_init(gm702b_t *dev, adc_channel_t channel, float rl, float vc)
 {
@@ -252,13 +252,13 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
     }
 
     if (valid == 0) {
-        ESP_LOGE(TAG, "Calibration failed — no valid readings");
+        ESP_LOGE(TAG, "Calibration failed; no valid readings");
         return last_err;
     }
 
     if (valid < CALIBRATION_MIN_VALID_SAMPLES) {
         ESP_LOGE(TAG,
-                 "Calibration failed — insufficient valid readings (%d/%d, need at least %d)",
+                 "Calibration failed; insufficient valid readings (%d/%d, need at least %d)",
                  valid,
                  CALIBRATION_SAMPLES,
                  CALIBRATION_MIN_VALID_SAMPLES);
@@ -270,7 +270,7 @@ esp_err_t gm702b_calibrate(gm702b_t *dev)
     esp_err_t stability_err = calculate_stable_r0(rs_samples, valid, &r0, &relative_stddev);
     if (stability_err != ESP_OK) {
         ESP_LOGE(TAG,
-                 "Calibration failed — unstable clean-air baseline (relative stddev %.2f%%, max %.2f%%)",
+                 "Calibration failed; unstable clean-air baseline (relative stddev %.2f%%, max %.2f%%)",
                  relative_stddev * 100.0f,
                  CALIBRATION_MAX_RELATIVE_STDDEV * 100.0f);
         return stability_err;

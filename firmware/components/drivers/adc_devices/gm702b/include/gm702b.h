@@ -6,9 +6,9 @@
  * Copyright (C) 2026 MinhNhat & BaoViet
  *
  * DFRobot SEN0564 breakout board. Heater circuit managed by board.
- * ESP32 reads analog output via ADC1 → converts voltage to CO ppm.
+ * ESP32 reads analog output via ADC1 and converts voltage to CO ppm.
  *
- * Detection range: 5–5000 ppm CO.
+ * Detection range: 5-5000 ppm CO.
  * Preheat required: ≥24h first use.
  */
 #pragma once
