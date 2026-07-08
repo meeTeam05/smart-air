@@ -28,7 +28,7 @@
 #define BUZZER_LEDC_MODE    LEDC_LOW_SPEED_MODE
 #define BUZZER_LEDC_TIMER   LEDC_TIMER_1
 #define BUZZER_LEDC_CHANNEL LEDC_CHANNEL_0
-#define BUZZER_QUEUE_DEPTH  4
+#define BUZZER_QUEUE_DEPTH  8
 #define BUZZER_TASK_STACK   2048
 #define BUZZER_TASK_PRIO    2
 
@@ -40,7 +40,10 @@ static portMUX_TYPE s_buzzer_lock_guard = portMUX_INITIALIZER_UNLOCKED;
 static QueueHandle_t s_buzzer_queue;
 static TaskHandle_t s_buzzer_task_handle;
 
+typedef buzzer_pattern_step_t buzzer_queue_item_t;
+
 static void buzzer_task_fn(void *arg);
+static bool buzzer_prepare_queue_locked(QueueHandle_t *queue_out, size_t needed_slots);
 static SemaphoreHandle_t ensure_buzzer_lock(void)
 {
     if (s_buzzer_lock != NULL) {
@@ -91,7 +94,7 @@ static esp_err_t buzzer_init_locked(void)
         return err;
     }
 
-    s_buzzer_queue = xQueueCreate(BUZZER_QUEUE_DEPTH, sizeof(uint32_t));
+    s_buzzer_queue = xQueueCreate(BUZZER_QUEUE_DEPTH, sizeof(buzzer_queue_item_t));
     if (s_buzzer_queue == NULL) {
         ESP_LOGE(TAG, "xQueueCreate failed");
         return ESP_ERR_NO_MEM;
@@ -108,6 +111,31 @@ static esp_err_t buzzer_init_locked(void)
     s_initialized = true;
     ESP_LOGI(TAG, "init OK (GPIO%d, %d Hz)", CONFIG_SA_BUZZER_PIN, BUZZER_FREQ_HZ);
     return ESP_OK;
+}
+
+static bool buzzer_prepare_queue_locked(QueueHandle_t *queue_out, size_t needed_slots)
+{
+    if (!s_initialized) {
+        esp_err_t init_err = buzzer_init_locked();
+        if (init_err != ESP_OK) {
+            ESP_LOGE(TAG, "buzzer_init failed before beep (%s)", esp_err_to_name(init_err));
+            return false;
+        }
+    }
+
+    QueueHandle_t queue = s_buzzer_queue;
+    if (queue == NULL) {
+        ESP_LOGE(TAG, "buzzer queue missing");
+        return false;
+    }
+
+    if ((size_t)uxQueueSpacesAvailable(queue) < needed_slots) {
+        ESP_LOGW(TAG, "buzzer queue lacks space for %lu step(s)", (unsigned long)needed_slots);
+        return false;
+    }
+
+    *queue_out = queue;
+    return true;
 }
 
 static esp_err_t buzzer_set_output(bool enabled)
@@ -131,19 +159,25 @@ static void buzzer_task_fn(void *arg)
 {
     (void)arg;
 
-    uint32_t duration_ms = 0;
+    buzzer_queue_item_t step = {0};
     while (true) {
-        if (xQueueReceive(s_buzzer_queue, &duration_ms, portMAX_DELAY) != pdTRUE) {
+        if (xQueueReceive(s_buzzer_queue, &step, portMAX_DELAY) != pdTRUE) {
             continue;
         }
 
-        if (buzzer_set_output(true) != ESP_OK) {
-            continue;
+        if (step.enabled) {
+            if (buzzer_set_output(true) != ESP_OK) {
+                continue;
+            }
+        } else {
+            buzzer_set_output(false);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(duration_ms));
+        vTaskDelay(pdMS_TO_TICKS(step.duration_ms));
 
-        buzzer_set_output(false);
+        if (step.enabled) {
+            buzzer_set_output(false);
+        }
     }
 }
 
@@ -169,6 +203,26 @@ void buzzer_beep_ms(uint32_t duration_ms)
         return;
     }
 
+    const buzzer_pattern_step_t step = {
+        .enabled = true,
+        .duration_ms = duration_ms,
+    };
+    buzzer_beep_pattern(&step, 1);
+}
+
+void buzzer_beep_pattern(const buzzer_pattern_step_t *steps, size_t count)
+{
+    if (steps == NULL || count == 0) {
+        return;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        if (steps[i].duration_ms == 0) {
+            ESP_LOGW(TAG, "buzzer pattern step %lu has zero duration", (unsigned long)i);
+            return;
+        }
+    }
+
     SemaphoreHandle_t lock = ensure_buzzer_lock();
     if (lock == NULL) {
         ESP_LOGE(TAG, "buzzer lock init failed");
@@ -180,25 +234,21 @@ void buzzer_beep_ms(uint32_t duration_ms)
         return;
     }
 
-    if (!s_initialized) {
-        esp_err_t init_err = buzzer_init_locked();
-        if (init_err != ESP_OK) {
-            ESP_LOGE(TAG, "buzzer_init failed before beep (%s)", esp_err_to_name(init_err));
-            xSemaphoreGive(lock);
-            return;
-        }
-    }
-    QueueHandle_t queue = s_buzzer_queue;
-    xSemaphoreGive(lock);
-
-    if (queue == NULL) {
-        ESP_LOGE(TAG, "buzzer queue missing");
+    QueueHandle_t queue = NULL;
+    if (!buzzer_prepare_queue_locked(&queue, count)) {
+        xSemaphoreGive(lock);
         return;
     }
 
-    if (xQueueSend(queue, &duration_ms, 0) != pdTRUE) {
-        ESP_LOGW(TAG, "buzzer queue full - dropped %lu ms beep", (unsigned long)duration_ms);
+    for (size_t i = 0; i < count; i++) {
+        buzzer_queue_item_t step = steps[i];
+        if (xQueueSend(queue, &step, 0) != pdTRUE) {
+            ESP_LOGW(TAG, "buzzer queue full - dropped pattern at step %lu", (unsigned long)i);
+            break;
+        }
     }
+
+    xSemaphoreGive(lock);
 }
 
 #else
@@ -211,6 +261,12 @@ esp_err_t buzzer_init(void)
 void buzzer_beep_ms(uint32_t duration_ms)
 {
     (void)duration_ms;
+}
+
+void buzzer_beep_pattern(const buzzer_pattern_step_t *steps, size_t count)
+{
+    (void)steps;
+    (void)count;
 }
 
 #endif

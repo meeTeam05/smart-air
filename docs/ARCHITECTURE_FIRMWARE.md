@@ -25,12 +25,12 @@ Firmware hiện được tổ chức thành các nhóm component chính:
 | Nhóm | Vai trò hiện tại | Ví dụ |
 | --- | --- | --- |
 | `config/` | constants dùng toàn firmware, mapping Kconfig, API đọc/ghi NVS | `config.h`, `config.c` |
-| `core/` | orchestration boot, sensor task, device mode | `sysload`, `sensor_task`, `device_mode` |
+| `core/` | orchestration boot, sensor task, device mode, display UI state/rendering | `sysload`, `sensor_task`, `device_mode`, `display_service` |
 | `general/` | runtime services chung và peripheral-facing helpers | `wifi`, `ble_prov`, `httpd`, `sa_mqtt`, `relay`, `factory_reset`, `led`, `buzzer` |
 | `drivers/` | abstraction cho bus và device-level drivers | `i2c_bus`, `adc_bus`, `sht3x`, `ds3231`, `gm702b`, `gm102b`, `ili9225`, `sd_card` |
 | `ota/` | OTA queue/task và post-boot validation | `ota.c`, `ota.h` |
 
-Ở trạng thái repo hiện tại, orchestration runtime thực sự đang dùng mạnh `wifi`, `ble_prov`, `httpd`, `sa_mqtt`, `sensor_task`, `device_mode`, `relay`, `factory_reset`, `ota`, cùng các sensor drivers I2C/ADC. Driver tree cho `ILI9225` và `SD card` đã có mặt trong cấu trúc source + Kconfig, nhưng `sysload_init()` hiện chưa wire display/SD vào boot path đang chạy.
+Ở trạng thái repo hiện tại, orchestration runtime thực sự đang dùng mạnh `wifi`, `ble_prov`, `httpd`, `sa_mqtt`, `sensor_task`, `device_mode`, `relay`, `factory_reset`, `ota`, `display_service`, cùng các sensor drivers I2C/ADC. `sysload_init()` đã wire `display_service` vào boot path ở chế độ non-fatal để thiết bị có boot/provisioning visibility và local OTA progress screen khi build bật `ILI9225`. `SD card` driver tree vẫn có mặt trong source + Kconfig nhưng chưa được wire vào boot path đang chạy.
 
 ```mermaid
 flowchart TD
@@ -90,30 +90,32 @@ flowchart TD
 
 1. init LED để trạng thái boot hiện ra ngay lập tức
 2. init factory-reset button từ sớm để nút reset hoạt động ở mọi phase boot
-3. init NVS
-4. init network stack
-5. init I2C bus nếu có ít nhất một I2C device được bật
-6. init `SHT3x` nếu bật
-7. init `DS3231` nếu bật
-8. init `ADC1` bus và gas sensors nếu bật; load R0 calibration đã lưu trong NVS partition `calib` và register command handlers `calibrate_co` / `calibrate_no2`
-9. start calibration worker nếu có gas sensor cần worker
-10. init Wi-Fi station
-11. nếu chưa provisioning Wi-Fi thì chạy BLE provisioning flow
-12. load Wi-Fi credentials từ NVS và kết nối Wi-Fi nếu chưa kết nối sẵn qua BLE flow
-13. resolve immutable `device_id`, load `broker_uri`, `secret_key`
-14. start local HTTP server trước MQTT login đầu tiên
-15. seed system clock rồi thử SNTP sync best-effort
-16. nếu chưa có `secret_key` thì dừng tại đây và chờ `POST /api/config`
-17. init buzzer, relay, device mode, rồi register runtime command handlers
-18. register time-sync callback và shadow-sync callback cho MQTT
-19. start MQTT client
-20. start OTA task
-21. start sensor task nếu có sensor runtime hợp lệ, hoặc start demo sensor task khi `SA_DEMO_NO_PERIPHERALS=y`
-22. sau cùng gọi `ota_validate_and_commit()` để commit image OTA vừa boot nếu image đang ở trạng thái pending verify
+3. init `display_service` theo kiểu non-fatal; nếu thành công thì boot UI bắt đầu ở phase `BOOT`
+4. init NVS
+5. init network stack
+6. init I2C bus nếu có ít nhất một I2C device được bật
+7. init `SHT3x` nếu bật
+8. init `DS3231` nếu bật
+9. init `ADC1` bus và gas sensors nếu bật; load R0 calibration đã lưu trong NVS partition `calib` và register command handlers `calibrate_co` / `calibrate_no2`
+10. start calibration worker nếu có gas sensor cần worker
+11. init Wi-Fi station
+12. nếu chưa provisioning Wi-Fi thì chạy BLE provisioning flow
+13. load Wi-Fi credentials từ NVS và kết nối Wi-Fi nếu chưa kết nối sẵn qua BLE flow
+14. resolve immutable `device_id`, load `broker_uri`, `secret_key`
+15. start local HTTP server trước MQTT login đầu tiên
+16. seed system clock rồi thử SNTP sync best-effort
+17. nếu chưa có `secret_key` thì dừng tại đây và chờ `POST /api/config`
+18. init buzzer, relay, device mode, rồi register runtime command handlers
+19. register time-sync callback và shadow-sync callback cho MQTT
+20. start MQTT client
+21. start OTA task
+22. start sensor task nếu có sensor runtime hợp lệ, hoặc start demo sensor task khi `SA_DEMO_NO_PERIPHERALS=y`
+23. sau cùng gọi `ota_validate_and_commit()` để commit image OTA vừa boot nếu image đang ở trạng thái pending verify
 
 Một vài ràng buộc kiến trúc đang encode trực tiếp trong boot flow:
 
 - local HTTP provisioning phải có trước lần MQTT login đầu tiên
+- display là optional và non-fatal; khi init fail thiết bị vẫn tiếp tục boot headless
 - MQTT callbacks cho `set_time` và `shadow/get_response` phải được register trước `mqtt_start()` để tránh race khi broker push dữ liệu ngay sau connect
 - sensor task chỉ start khi có device ID hợp lệ và ít nhất một source dữ liệu runtime hợp lệ, trừ demo mode
 - OTA image chỉ được mark valid sau khi các subsystem chính đã lên thành công
@@ -322,6 +324,7 @@ flowchart LR
     SENSOR["sensor_task"] --> PUB["publish telemetry + shadow/report"]
     MODE["device_mode / relay"] --> PUB
     OTAW["ota worker"] --> PROGRESS["publish ota/progress"]
+    OTAW --> TFT["display_service OTA screen"]
     PUB --> START
     PROGRESS --> START
 ```
@@ -470,6 +473,20 @@ Kiến trúc này làm hai việc tách biệt:
 
 - OTA trigger là async và non-blocking với phần còn lại của runtime
 - post-boot validation quyết định image mới có được commit hay rollback hay không
+
+Khi build bật `ILI9225`, OTA worker cũng đẩy state trực tiếp sang `display_service` để render local OTA full-screen:
+
+- title `FIRMWARE UPDATE`
+- percent lớn + progress bar
+- status text ngắn cho `Preparing update`, `Downloading firmware`, `Verifying package`, `Rebooting...`
+- warning `Do not power off`
+- lỗi local ngắn như `Download failed`, `Checksum mismatch`, `Update already in progress`
+
+OTA screen là render override tạm thời:
+
+- nó override mode-off trong lúc OTA active
+- producers nền như sensor, relay, device mode vẫn tiếp tục update state runtime
+- nếu OTA fail, màn lỗi được giữ 3 giây rồi renderer quay về màn đúng theo `phase` và `mode_on`
 
 ## 12. Hard assumptions hiện có
 

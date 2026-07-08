@@ -4,6 +4,7 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
+        buzzer
         config
         display_service
         json

@@ -22,6 +22,29 @@ typedef enum {
     DISPLAY_BOOT_PHASE_READY,
 } display_boot_phase_t;
 
+typedef enum {
+    DISPLAY_OTA_STAGE_IDLE = 0,
+    DISPLAY_OTA_STAGE_STARTING,
+    DISPLAY_OTA_STAGE_DOWNLOADING,
+    DISPLAY_OTA_STAGE_VERIFYING,
+    DISPLAY_OTA_STAGE_REBOOTING,
+    DISPLAY_OTA_STAGE_FAILED,
+} display_ota_stage_t;
+
+typedef enum {
+    DISPLAY_OTA_ERROR_NONE = 0,
+    DISPLAY_OTA_ERROR_GENERIC,
+    DISPLAY_OTA_ERROR_SHA256_MISMATCH,
+    DISPLAY_OTA_ERROR_BUSY,
+} display_ota_error_t;
+
+typedef struct {
+    bool active;
+    uint8_t percent;
+    display_ota_stage_t stage;
+    display_ota_error_t error;
+} display_ota_state_t;
+
 typedef struct {
     bool have_temperature_humidity;
     float temperature_c;
@@ -68,3 +91,10 @@ void display_service_set_relay_states(const bool relay_states[3]);
  * @brief Update the latest sensor snapshot shown by the runtime UI.
  */
 void display_service_set_sensor_snapshot(const display_sensor_snapshot_t *snapshot);
+
+/**
+ * @brief Update the OTA display state.
+ *
+ * Safe to call even when the display is disabled or not ready yet; such calls become no-ops.
+ */
+void display_service_set_ota_state(const display_ota_state_t *state);

@@ -305,7 +305,7 @@ esp_err_t relay_get_all(bool states[RELAY_CHANNEL_COUNT])
     return ESP_OK;
 }
 
-esp_err_t relay_force_all_off(void)
+static esp_err_t relay_force_all_off_common(bool beep)
 {
     bool any_changed = false;
     esp_err_t first_err = ESP_OK;
@@ -341,10 +341,20 @@ esp_err_t relay_force_all_off(void)
         any_changed = true;
     }
 
-    if (any_changed) {
+    if (beep && any_changed) {
         buzzer_beep_ms(RELAY_BEEP_MS_ALL_OFF);
     }
 
     relay_push_display_state();
     return first_err;
+}
+
+esp_err_t relay_force_all_off(void)
+{
+    return relay_force_all_off_common(true);
+}
+
+esp_err_t relay_force_all_off_silent(void)
+{
+    return relay_force_all_off_common(false);
 }

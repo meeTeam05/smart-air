@@ -50,6 +50,8 @@ static const char *TAG = "display_service";
 #define DISPLAY_SELF_TEST_TICK_MS   20
 #define DISPLAY_INIT_WAIT_BASE_MS   2000
 #define DISPLAY_INIT_WAIT_MARGIN_MS 500
+#define DISPLAY_OTA_HOLD_US         3000000LL
+#define DISPLAY_OTA_DOT_STEP_US     350000LL
 
 #define DISPLAY_COLOR_BG        0xFFFFFF
 #define DISPLAY_COLOR_STATUS_BG 0xF1F3F6
@@ -58,6 +60,8 @@ static const char *TAG = "display_service";
 #define DISPLAY_COLOR_MUTED     0x6B7280
 #define DISPLAY_COLOR_FAINT     0x9AA3B2
 #define DISPLAY_COLOR_ACCENT    0x2D7DD2
+#define DISPLAY_COLOR_WARNING   0xD97706
+#define DISPLAY_COLOR_DANGER    0xD32F2F
 
 /* Fall back to compiled-in LVGL fonts so the display service builds with lean sdkconfig variants. */
 #if CONFIG_LV_FONT_MONTSERRAT_10
@@ -107,11 +111,17 @@ static const char *TAG = "display_service";
 #endif
 
 typedef struct {
+    display_ota_state_t state;
+    int64_t message_deadline_us;
+} display_ota_runtime_t;
+
+typedef struct {
     display_boot_phase_t phase;
     bool mode_known;
     bool mode_on;
     bool relay_states[DISPLAY_RELAY_COUNT];
     display_sensor_snapshot_t sensor;
+    display_ota_runtime_t ota;
 } display_state_t;
 
 static SemaphoreHandle_t s_init_done = NULL;
@@ -139,6 +149,12 @@ typedef struct {
 static lv_obj_t *s_boot_view = NULL;
 static lv_obj_t *s_boot_logo = NULL;
 static lv_obj_t *s_boot_status = NULL;
+static lv_obj_t *s_ota_view = NULL;
+static lv_obj_t *s_ota_title = NULL;
+static lv_obj_t *s_ota_percent = NULL;
+static lv_obj_t *s_ota_bar = NULL;
+static lv_obj_t *s_ota_status = NULL;
+static lv_obj_t *s_ota_note = NULL;
 static lv_obj_t *s_runtime_view = NULL;
 static lv_obj_t *s_status_ssid = NULL;
 static lv_obj_t *s_status_rssi = NULL;
@@ -223,6 +239,34 @@ static void prepare_screen(lv_obj_t *scr, uint32_t bg_hex)
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 }
 
+static void clear_ota_runtime(display_ota_runtime_t *ota)
+{
+    if (ota == NULL) {
+        return;
+    }
+
+    memset(ota, 0, sizeof(*ota));
+    ota->state.stage = DISPLAY_OTA_STAGE_IDLE;
+    ota->state.error = DISPLAY_OTA_ERROR_NONE;
+}
+
+static void refresh_ota_state(int64_t now_us)
+{
+    portENTER_CRITICAL(&s_state_lock);
+    display_ota_runtime_t *ota = &s_state.ota;
+    if (ota->state.error != DISPLAY_OTA_ERROR_NONE && ota->message_deadline_us > 0 &&
+        now_us >= ota->message_deadline_us) {
+        if (ota->state.error == DISPLAY_OTA_ERROR_BUSY && ota->state.active &&
+            ota->state.stage != DISPLAY_OTA_STAGE_FAILED) {
+            ota->state.error = DISPLAY_OTA_ERROR_NONE;
+            ota->message_deadline_us = 0;
+        } else {
+            clear_ota_runtime(ota);
+        }
+    }
+    portEXIT_CRITICAL(&s_state_lock);
+}
+
 static lv_obj_t *create_signal_bars(lv_obj_t *parent)
 {
     lv_obj_t *wrap = lv_obj_create(parent);
@@ -300,6 +344,12 @@ static void build_screen(void)
     lv_img_set_src(s_boot_logo, &LOGO);
     lv_obj_align(s_boot_logo, LV_ALIGN_CENTER, 0, -10);
 
+    lv_obj_t *boot_version = lv_label_create(s_boot_view);
+    lv_label_set_text_fmt(boot_version, "%s", FIRMWARE_VERSION);
+    style_text(boot_version, DISPLAY_FONT_XS, DISPLAY_COLOR_MUTED);
+    lv_obj_set_style_text_align(boot_version, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(boot_version, LV_ALIGN_CENTER, 0, 50);
+
     s_boot_status = lv_label_create(s_boot_view);
     lv_obj_set_width(s_boot_status, DISPLAY_TEXT_W);
     style_text(s_boot_status, DISPLAY_FONT_SM, DISPLAY_COLOR_MUTED);
@@ -307,6 +357,49 @@ static void build_screen(void)
     lv_label_set_long_mode(s_boot_status, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(s_boot_status, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(s_boot_status, LV_ALIGN_BOTTOM_MID, 0, -12);
+
+    s_ota_view = lv_obj_create(scr);
+    prepare_panel_obj(s_ota_view, DISPLAY_COLOR_BG);
+    lv_obj_set_size(s_ota_view, DISPLAY_LOGICAL_W, DISPLAY_LOGICAL_H);
+
+    s_ota_title = lv_label_create(s_ota_view);
+    lv_label_set_text(s_ota_title, "FIRMWARE UPDATE");
+    style_text(s_ota_title, DISPLAY_FONT_SM, DISPLAY_COLOR_ACCENT);
+    lv_obj_set_style_text_letter_space(s_ota_title, 1, 0);
+    lv_obj_align(s_ota_title, LV_ALIGN_TOP_MID, 0, 18);
+
+    s_ota_percent = lv_label_create(s_ota_view);
+    lv_label_set_text(s_ota_percent, "0%");
+    style_text(s_ota_percent, DISPLAY_FONT_CLOCK, DISPLAY_COLOR_TEXT);
+    lv_obj_align(s_ota_percent, LV_ALIGN_CENTER, 0, -18);
+
+    s_ota_bar = lv_bar_create(s_ota_view);
+    lv_obj_set_size(s_ota_bar, 176, 12);
+    lv_obj_align(s_ota_bar, LV_ALIGN_CENTER, 0, 20);
+    lv_bar_set_range(s_ota_bar, 0, 100);
+    lv_bar_set_value(s_ota_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_radius(s_ota_bar, 6, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(DISPLAY_COLOR_DIVIDER), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_ota_bar, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_ota_bar, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(DISPLAY_COLOR_ACCENT), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(s_ota_bar, LV_OPA_COVER, LV_PART_INDICATOR);
+
+    s_ota_status = lv_label_create(s_ota_view);
+    lv_obj_set_width(s_ota_status, DISPLAY_TEXT_W);
+    lv_label_set_text(s_ota_status, "Preparing update");
+    lv_label_set_long_mode(s_ota_status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(s_ota_status, LV_TEXT_ALIGN_CENTER, 0);
+    style_text(s_ota_status, DISPLAY_FONT_SM, DISPLAY_COLOR_TEXT);
+    lv_obj_align(s_ota_status, LV_ALIGN_CENTER, 0, 48);
+
+    s_ota_note = lv_label_create(s_ota_view);
+    lv_obj_set_width(s_ota_note, DISPLAY_TEXT_W);
+    lv_label_set_text(s_ota_note, "Do not power off");
+    lv_label_set_long_mode(s_ota_note, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(s_ota_note, LV_TEXT_ALIGN_CENTER, 0);
+    style_text(s_ota_note, DISPLAY_FONT_XS, DISPLAY_COLOR_MUTED);
+    lv_obj_align(s_ota_note, LV_ALIGN_BOTTOM_MID, 0, -16);
 
     s_runtime_view = lv_obj_create(scr);
     prepare_panel_obj(s_runtime_view, DISPLAY_COLOR_BG);
@@ -427,6 +520,8 @@ static void build_screen(void)
     lv_obj_set_style_text_align(status_version, LV_TEXT_ALIGN_LEFT, 0);
     style_text(status_version, DISPLAY_FONT_XS, DISPLAY_COLOR_MUTED);
     lv_obj_align(status_version, LV_ALIGN_TOP_LEFT, 5, DISPLAY_STATUSBAR_H + 1);
+
+    set_hidden(s_ota_view, true);
 }
 
 #if SA_DISP_SELF_TEST
@@ -536,6 +631,7 @@ static void render_boot_phase(display_boot_phase_t phase)
     }
 
     set_hidden(s_boot_view, false);
+    set_hidden(s_ota_view, true);
     set_hidden(s_runtime_view, true);
 
     const char *status = "Booting";
@@ -564,6 +660,106 @@ static void render_boot_phase(display_boot_phase_t phase)
     }
 
     lv_label_set_text(s_boot_status, status);
+}
+
+static const char *ota_base_status(display_ota_stage_t stage)
+{
+    switch (stage) {
+    case DISPLAY_OTA_STAGE_STARTING:
+        return "Preparing update";
+    case DISPLAY_OTA_STAGE_DOWNLOADING:
+        return "Downloading firmware";
+    case DISPLAY_OTA_STAGE_VERIFYING:
+        return "Verifying package";
+    case DISPLAY_OTA_STAGE_REBOOTING:
+        return "Rebooting";
+    case DISPLAY_OTA_STAGE_FAILED:
+        return "Update failed";
+    case DISPLAY_OTA_STAGE_IDLE:
+    default:
+        return "Preparing update";
+    }
+}
+
+static const char *ota_error_text(display_ota_error_t error)
+{
+    switch (error) {
+    case DISPLAY_OTA_ERROR_SHA256_MISMATCH:
+        return "Checksum mismatch";
+    case DISPLAY_OTA_ERROR_BUSY:
+        return "Update already in progress";
+    case DISPLAY_OTA_ERROR_GENERIC:
+        return "Download failed";
+    case DISPLAY_OTA_ERROR_NONE:
+    default:
+        return "Update failed";
+    }
+}
+
+static void append_status_dots(char *buf, size_t buf_len, int64_t now_us)
+{
+    size_t used = strlen(buf);
+    if (used + 4U >= buf_len) {
+        return;
+    }
+
+    size_t dot_count = (size_t)((now_us / DISPLAY_OTA_DOT_STEP_US) % 4);
+    for (size_t i = 0; i < dot_count; i++) {
+        buf[used++] = '.';
+    }
+    buf[used] = '\0';
+}
+
+static void render_ota(const display_state_t *state, int64_t now_us)
+{
+    if (state == NULL || s_ota_view == NULL) {
+        return;
+    }
+
+    const display_ota_runtime_t *ota = &state->ota;
+    if (!ota->state.active) {
+        return;
+    }
+
+    prepare_screen(lv_scr_act(), DISPLAY_COLOR_BG);
+    set_hidden(s_boot_view, true);
+    set_hidden(s_ota_view, false);
+    set_hidden(s_runtime_view, true);
+
+    uint32_t accent = DISPLAY_COLOR_ACCENT;
+    uint32_t note_color = DISPLAY_COLOR_MUTED;
+    const char *note = "Do not power off";
+    if (ota->state.stage == DISPLAY_OTA_STAGE_FAILED) {
+        accent = DISPLAY_COLOR_DANGER;
+        note_color = DISPLAY_COLOR_DANGER;
+        note = ota_error_text(ota->state.error);
+    } else if (ota->state.error == DISPLAY_OTA_ERROR_BUSY) {
+        note_color = DISPLAY_COLOR_WARNING;
+        note = ota_error_text(ota->state.error);
+    }
+
+    char percent_buf[8];
+    snprintf(percent_buf, sizeof(percent_buf), "%u%%", (unsigned)ota->state.percent);
+    lv_label_set_text(s_ota_percent, percent_buf);
+    lv_bar_set_value(s_ota_bar, ota->state.percent, LV_ANIM_OFF);
+
+    char status_buf[32];
+    snprintf(status_buf, sizeof(status_buf), "%s", ota_base_status(ota->state.stage));
+    if (ota->state.stage == DISPLAY_OTA_STAGE_STARTING || ota->state.stage == DISPLAY_OTA_STAGE_DOWNLOADING ||
+        ota->state.stage == DISPLAY_OTA_STAGE_VERIFYING) {
+        append_status_dots(status_buf, sizeof(status_buf), now_us);
+    } else if (ota->state.stage == DISPLAY_OTA_STAGE_REBOOTING) {
+        strlcpy(status_buf, "Rebooting...", sizeof(status_buf));
+    }
+    lv_label_set_text(s_ota_status, status_buf);
+    lv_label_set_text(s_ota_note, note);
+
+    style_text(s_ota_title, DISPLAY_FONT_SM, accent);
+    style_text(s_ota_percent, DISPLAY_FONT_CLOCK, accent);
+    lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(DISPLAY_COLOR_DIVIDER), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(accent), LV_PART_INDICATOR);
+    style_text(s_ota_status, DISPLAY_FONT_SM, DISPLAY_COLOR_TEXT);
+    style_text(s_ota_note, DISPLAY_FONT_XS, note_color);
 }
 
 static uint8_t signal_level_from_rssi(int rssi_dbm)
@@ -621,12 +817,14 @@ static void render_runtime(const display_state_t *state, time_t now, bool wifi_c
     if (state->mode_known && !state->mode_on) {
         prepare_screen(lv_scr_act(), 0x000000);
         set_hidden(s_boot_view, true);
+        set_hidden(s_ota_view, true);
         set_hidden(s_runtime_view, true);
         return;
     }
 
     prepare_screen(lv_scr_act(), DISPLAY_COLOR_BG);
     set_hidden(s_boot_view, true);
+    set_hidden(s_ota_view, true);
     set_hidden(s_runtime_view, false);
 
     char ssid_buf[33] = "No Wi-Fi";
@@ -725,6 +923,9 @@ static void render_runtime(const display_state_t *state, time_t now, bool wifi_c
 
 static void render_screen(void)
 {
+    int64_t now_us = esp_timer_get_time();
+    refresh_ota_state(now_us);
+
     display_state_t state;
     snapshot_state(&state);
 
@@ -734,6 +935,11 @@ static void render_screen(void)
     int rssi_dbm = 0;
     if (wifi_connected && wifi_sta_get_rssi(&rssi_dbm) == ESP_OK) {
         have_rssi = true;
+    }
+
+    if (state.ota.state.active) {
+        render_ota(&state, now_us);
+        return;
     }
 
     if (state.phase == DISPLAY_BOOT_PHASE_READY) {
@@ -1002,5 +1208,42 @@ void display_service_set_sensor_snapshot(const display_sensor_snapshot_t *snapsh
     portEXIT_CRITICAL(&s_state_lock);
 #else
     (void)snapshot;
+#endif
+}
+
+void display_service_set_ota_state(const display_ota_state_t *state)
+{
+#if SA_ENABLE_ILI9225
+    if (state == NULL) {
+        return;
+    }
+
+    portENTER_CRITICAL(&s_state_lock);
+    display_ota_runtime_t *ota = &s_state.ota;
+    if (!state->active) {
+        clear_ota_runtime(ota);
+        portEXIT_CRITICAL(&s_state_lock);
+        return;
+    }
+
+    if (state->error == DISPLAY_OTA_ERROR_BUSY && ota->state.active && ota->state.stage != DISPLAY_OTA_STAGE_FAILED) {
+        ota->state.error = DISPLAY_OTA_ERROR_BUSY;
+        ota->message_deadline_us = esp_timer_get_time() + DISPLAY_OTA_HOLD_US;
+        portEXIT_CRITICAL(&s_state_lock);
+        return;
+    }
+
+    ota->state = *state;
+    if (ota->state.stage == DISPLAY_OTA_STAGE_FAILED) {
+        ota->message_deadline_us = esp_timer_get_time() + DISPLAY_OTA_HOLD_US;
+    } else if (ota->state.error == DISPLAY_OTA_ERROR_BUSY) {
+        ota->message_deadline_us = esp_timer_get_time() + DISPLAY_OTA_HOLD_US;
+    } else {
+        ota->message_deadline_us = 0;
+        ota->state.error = DISPLAY_OTA_ERROR_NONE;
+    }
+    portEXIT_CRITICAL(&s_state_lock);
+#else
+    (void)state;
 #endif
 }
