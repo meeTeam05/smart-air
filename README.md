@@ -44,9 +44,13 @@ Devices provision over BLE, publish telemetry/shadow over MQTT, and serve the ap
 ### Assembly
 
 <p align="center">
-  <img src="assets/hardware/real-a.jpg" alt="Assembly View A" width="31%">
-  <img src="assets/hardware/real-b.jpg" alt="Assembly View B" width="31%">
-  <img src="assets/hardware/real-c.jpg" alt="Assembly View C" width="31%">
+  <img src="assets/hardware/real-a.jpg" alt="Assembly View A" width="45%">
+  <img src="assets/hardware/real-b.jpg" alt="Assembly View B" width="45%">
+</p>
+
+<p align="center">
+  <img src="assets/hardware/real-c.jpg" alt="Assembly View C" width="45%">
+  <img src="assets/hardware/real-d.jpg" alt="Assembly View D" width="45%">
 </p>
 
 ## Firmware
